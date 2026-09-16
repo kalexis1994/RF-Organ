@@ -4,7 +4,7 @@ use rf_organ_dsp::{
     PercussionHarmonic, PercussionVolume, ScannerMode,
 };
 
-pub const PARAMETER_COUNT: usize = 37;
+pub const PARAMETER_COUNT: usize = 41;
 pub const DRAWBAR_FIRST: u32 = 2;
 pub const DRAWBAR_LAST: u32 = DRAWBAR_FIRST + DRAWBAR_COUNT as u32 - 1;
 pub const LOWER_DRAWBAR_FIRST: u32 = 24;
@@ -34,6 +34,10 @@ pub struct Settings {
     pub pedal_drawbars: [u8; PEDAL_DRAWBAR_COUNT],
     pub upper_scanner: bool,
     pub lower_scanner: bool,
+    pub console_drive: f64,
+    pub console_bass: f64,
+    pub console_treble: f64,
+    pub expression_character: f64,
 }
 
 impl Default for Settings {
@@ -59,6 +63,10 @@ impl Default for Settings {
             pedal_drawbars: [8, 0],
             upper_scanner: true,
             lower_scanner: false,
+            console_drive: 0.32,
+            console_bass: 0.0,
+            console_treble: 0.0,
+            expression_character: 0.55,
         }
     }
 }
@@ -77,6 +85,10 @@ impl Settings {
             && unit(self.transformer_hysteresis)
             && unit(self.leslie_mix)
             && unit(self.leslie_acceleration)
+            && unit(self.console_drive)
+            && bipolar(self.console_bass)
+            && bipolar(self.console_treble)
+            && unit(self.expression_character)
     }
 
     pub fn parameter(self, index: u32) -> Option<f64> {
@@ -113,6 +125,10 @@ impl Settings {
             }
             35 => bool_value(self.upper_scanner),
             36 => bool_value(self.lower_scanner),
+            37 => self.console_drive,
+            38 => self.console_bass,
+            39 => self.console_treble,
+            40 => self.expression_character,
             _ => return None,
         })
     }
@@ -164,6 +180,10 @@ impl Settings {
             }
             35 if value == 0.0 || value == 1.0 => self.upper_scanner = value == 1.0,
             36 if value == 0.0 || value == 1.0 => self.lower_scanner = value == 1.0,
+            37 => self.console_drive = value,
+            38 => self.console_bass = value,
+            39 => self.console_treble = value,
+            40 => self.expression_character = value,
             _ => return None,
         }
         self.valid().then_some(self)
@@ -189,6 +209,12 @@ impl Settings {
             self.transformer_drive as f32,
             self.transformer_hysteresis as f32,
         );
+        let _ = engine.set_console(
+            self.console_drive as f32,
+            self.console_bass as f32,
+            self.console_treble as f32,
+        );
+        let _ = engine.set_expression_character(self.expression_character as f32);
         engine.set_leslie_mode(self.leslie_mode);
         let _ = engine.set_leslie_mix(self.leslie_mix as f32);
         let _ = engine.set_leslie_acceleration(self.leslie_acceleration as f32);
@@ -229,6 +255,7 @@ pub fn presets() -> [(&'static str, &'static str, &'static str, Settings); 4] {
                 drawbars: [8, 8, 8, 0, 0, 0, 0, 8, 0],
                 leslie_mode: LeslieMode::Tremolo,
                 transformer_drive: 0.52,
+                console_drive: 0.44,
                 percussion_enabled: true,
                 percussion_harmonic: PercussionHarmonic::Third,
                 percussion_volume: PercussionVolume::Normal,
@@ -244,6 +271,9 @@ pub fn presets() -> [(&'static str, &'static str, &'static str, Settings); 4] {
                 drawbars: [8, 8, 8, 8, 6, 8, 4, 8, 6],
                 leslie_mode: LeslieMode::Chorale,
                 transformer_drive: 0.62,
+                console_drive: 0.48,
+                console_bass: 0.18,
+                console_treble: -0.08,
                 leakage: 0.28,
                 scanner_mode: ScannerMode::Chorus3,
                 lower_drawbars: [8, 8, 8, 8, 6, 0, 0, 0, 0],
@@ -262,6 +292,10 @@ fn unit(value: f64) -> bool {
 
 fn finite_range(value: f64, minimum: f64, maximum: f64) -> bool {
     value.is_finite() && (minimum..=maximum).contains(&value)
+}
+
+fn bipolar(value: f64) -> bool {
+    finite_range(value, -1.0, 1.0)
 }
 
 fn bool_value(value: bool) -> f64 {

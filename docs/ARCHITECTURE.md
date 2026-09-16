@@ -11,11 +11,9 @@ upper + lower manuals and pedal contacts
       |
 independent drawbar buses + foldback + leakage
       |
-shared matching transformer
-      |
 scanner vibrato / chorus
       |
-expression
+matching transformer + console preamplifier + expression
       |
 integrated Leslie (crossover, horn, drum, inertia, Doppler, stereo radiation)
       |
@@ -39,12 +37,13 @@ models. Higher-cost electromagnetic, circuit and measurement work will live in
 future analysis/laboratory crates and produce calibrated coefficients for the
 production engine.
 
-## Version 0.3.0 limitations
+## Version 0.4.0 limitations
 
 - Pedal keying and drawbar topology are present, but pedal sustain and console
   matching-network constants remain provisional.
 - Scanner and percussion topology are implemented, but their electrical
   constants are not yet calibrated against a reference console.
-- Contact bounce, matching-transformer and Leslie constants are provisional.
+- Contact bounce, matching-transformer, console preamplifier and Leslie
+  constants are provisional.
 - Leslie cabinet reflections and angle-dependent measured filters are not yet
   included.

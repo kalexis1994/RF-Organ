@@ -6,6 +6,7 @@
 //! The implementation is intentionally allocation-free. The current constants
 //! establish a physically informed baseline and remain subject to measurement.
 
+mod electronics;
 mod leslie;
 mod manual;
 mod pedal;
@@ -21,6 +22,7 @@ pub use percussion::{PercussionDecay, PercussionHarmonic, PercussionVolume};
 pub use scanner::ScannerMode;
 pub use tonewheel::{TONEWHEEL_COUNT, gear_frequency};
 
+use electronics::ConsoleElectronics;
 use leslie::Leslie;
 use manual::Manual;
 use pedal::Pedalboard;
@@ -50,6 +52,7 @@ pub struct OrganEngine {
     lower: Manual,
     pedals: Pedalboard,
     transformer: MatchingTransformer,
+    electronics: ConsoleElectronics,
     scanner: ScannerVibrato,
     percussion: Percussion,
     leslie: Leslie,
@@ -74,6 +77,7 @@ impl OrganEngine {
             lower: Manual::new(sample_rate),
             pedals: Pedalboard::new(sample_rate),
             transformer: MatchingTransformer::new(sample_rate),
+            electronics: ConsoleElectronics::new(sample_rate),
             scanner: ScannerVibrato::new(sample_rate),
             percussion: Percussion::new(sample_rate),
             leslie: Leslie::new(sample_rate),
@@ -213,6 +217,14 @@ impl OrganEngine {
         self.transformer.set(drive, hysteresis)
     }
 
+    pub fn set_console(&mut self, drive: f32, bass: f32, treble: f32) -> bool {
+        self.electronics.set(drive, bass, treble)
+    }
+
+    pub fn set_expression_character(&mut self, value: f32) -> bool {
+        self.electronics.set_expression_character(value)
+    }
+
     pub fn set_scanner_mode(&mut self, mode: ScannerMode) {
         self.scanner.set_mode(mode);
     }
@@ -275,7 +287,8 @@ impl OrganEngine {
             + if self.lower_scanner { 0.0 } else { lower }
             + pedals;
         let console = direct + self.scanner.process(scanner_input);
-        let organ = self.transformer.process(console) * self.expression * self.output_level;
+        let transformed = self.transformer.process(console);
+        let organ = self.electronics.process(transformed, self.expression) * self.output_level;
         self.leslie.process(organ)
     }
 
@@ -286,6 +299,7 @@ impl OrganEngine {
         self.lower.reset();
         self.pedals.reset();
         self.transformer.reset();
+        self.electronics.reset(1.0);
         self.scanner.reset();
         self.percussion.reset();
         self.leslie.reset();

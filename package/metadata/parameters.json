@@ -5,7 +5,8 @@
     { "id": "lower", "name": "Lower Manual", "order": 1 },
     { "id": "pedals", "name": "Pedals", "order": 2 },
     { "id": "generator", "name": "Generator", "order": 3 },
-    { "id": "leslie", "name": "Rotary Speaker", "order": 4 }
+    { "id": "electronics", "name": "Console Electronics", "order": 4 },
+    { "id": "leslie", "name": "Rotary Speaker", "order": 5 }
   ],
   "parameters": [
     {
@@ -419,6 +420,46 @@
       "kind": { "type": "boolean", "default": false },
       "flags": { "automatable": true },
       "suggested_control": "toggle"
+    },
+    {
+      "index": 37,
+      "id": "console-drive",
+      "name": "Preamp Drive",
+      "page": "electronics",
+      "order": 0,
+      "kind": { "type": "float", "minimum": 0.0, "maximum": 1.0, "default": 0.32, "step": 0.001 },
+      "flags": { "automatable": true },
+      "suggested_control": "knob"
+    },
+    {
+      "index": 38,
+      "id": "console-bass",
+      "name": "Bass Trim",
+      "page": "electronics",
+      "order": 1,
+      "kind": { "type": "float", "minimum": -1.0, "maximum": 1.0, "default": 0.0, "step": 0.001 },
+      "flags": { "automatable": true, "advanced": true },
+      "suggested_control": "knob"
+    },
+    {
+      "index": 39,
+      "id": "console-treble",
+      "name": "Treble Trim",
+      "page": "electronics",
+      "order": 2,
+      "kind": { "type": "float", "minimum": -1.0, "maximum": 1.0, "default": 0.0, "step": 0.001 },
+      "flags": { "automatable": true, "advanced": true },
+      "suggested_control": "knob"
+    },
+    {
+      "index": 40,
+      "id": "expression-character",
+      "name": "Swell Character",
+      "page": "electronics",
+      "order": 3,
+      "kind": { "type": "float", "minimum": 0.0, "maximum": 1.0, "default": 0.55, "step": 0.001 },
+      "flags": { "automatable": true, "advanced": true },
+      "suggested_control": "knob"
     }
   ],
   "semantic_controls": [
