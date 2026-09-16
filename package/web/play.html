@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en" data-leslie="off">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>RF-Organ Console</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <div><p class="eyebrow">RACKFORGE ELECTROMECHANICAL</p><h1>RF<span>–</span>ORGAN</h1></div>
+        <label class="program">Program<select id="programs" disabled></select></label>
+        <p id="status" role="status">Connecting to RackForge…</p>
+      </header>
+
+      <section class="performance panel">
+        <label>Output<input id="output" data-parameter="0" type="range" min="0" max="1.5" step="0.01" disabled /></label>
+        <label>Expression<input id="expression" data-parameter="1" type="range" min="0" max="1" step="0.001" disabled /></label>
+        <div class="rotary-state" aria-hidden="true"><span></span><b>ROTARY</b></div>
+        <label>Leslie<select id="leslie-mode" data-parameter="16" disabled><option value="0">Off</option><option value="1">Brake</option><option value="2">Chorale</option><option value="3">Tremolo</option></select></label>
+        <label>Mix<input id="leslie-mix" data-parameter="17" type="range" min="0" max="1" step="0.001" disabled /></label>
+        <label>Inertia<input id="rotor-inertia" data-parameter="18" type="range" min="0" max="1" step="0.001" disabled /></label>
+      </section>
+
+      <section class="manuals">
+        <article class="panel manual upper">
+          <div class="section-title"><div><p class="eyebrow">CHANNEL 1</p><h2>Upper Manual</h2></div><label class="switch">Vibrato<input id="upper-vibrato" data-parameter="35" type="checkbox" disabled /></label></div>
+          <div class="drawbars">
+            <label><span>16'</span><input id="u16" data-parameter="2" type="range" min="0" max="8" step="1" disabled /></label>
+            <label><span>5⅓'</span><input id="u513" data-parameter="3" type="range" min="0" max="8" step="1" disabled /></label>
+            <label><span>8'</span><input id="u8" data-parameter="4" type="range" min="0" max="8" step="1" disabled /></label>
+            <label><span>4'</span><input id="u4" data-parameter="5" type="range" min="0" max="8" step="1" disabled /></label>
+            <label><span>2⅔'</span><input id="u223" data-parameter="6" type="range" min="0" max="8" step="1" disabled /></label>
+            <label><span>2'</span><input id="u2" data-parameter="7" type="range" min="0" max="8" step="1" disabled /></label>
+            <label><span>1⅗'</span><input id="u135" data-parameter="8" type="range" min="0" max="8" step="1" disabled /></label>
+            <label><span>1⅓'</span><input id="u113" data-parameter="9" type="range" min="0" max="8" step="1" disabled /></label>
+            <label><span>1'</span><input id="u1" data-parameter="10" type="range" min="0" max="8" step="1" disabled /></label>
+          </div>
+        </article>
+
+        <article class="panel manual lower">
+          <div class="section-title"><div><p class="eyebrow">CHANNEL 2</p><h2>Lower Manual</h2></div><label class="switch">Vibrato<input id="lower-vibrato" data-parameter="36" type="checkbox" disabled /></label></div>
+          <div class="drawbars">
+            <label><span>16'</span><input id="l16" data-parameter="24" type="range" min="0" max="8" step="1" disabled /></label>
+            <label><span>5⅓'</span><input id="l513" data-parameter="25" type="range" min="0" max="8" step="1" disabled /></label>
+            <label><span>8'</span><input id="l8" data-parameter="26" type="range" min="0" max="8" step="1" disabled /></label>
+            <label><span>4'</span><input id="l4" data-parameter="27" type="range" min="0" max="8" step="1" disabled /></label>
+            <label><span>2⅔'</span><input id="l223" data-parameter="28" type="range" min="0" max="8" step="1" disabled /></label>
+            <label><span>2'</span><input id="l2" data-parameter="29" type="range" min="0" max="8" step="1" disabled /></label>
+            <label><span>1⅗'</span><input id="l135" data-parameter="30" type="range" min="0" max="8" step="1" disabled /></label>
+            <label><span>1⅓'</span><input id="l113" data-parameter="31" type="range" min="0" max="8" step="1" disabled /></label>
+            <label><span>1'</span><input id="l1" data-parameter="32" type="range" min="0" max="8" step="1" disabled /></label>
+          </div>
+        </article>
+      </section>
+
+      <section class="switchboard panel">
+        <div><p class="eyebrow">UPPER MANUAL</p><h2>Percussion</h2></div>
+        <label class="switch">On<input id="percussion" data-parameter="20" type="checkbox" disabled /></label>
+        <label>Harmonic<select id="percussion-harmonic" data-parameter="21" disabled><option value="0">Second</option><option value="1">Third</option></select></label>
+        <label>Volume<select id="percussion-volume" data-parameter="22" disabled><option value="0">Soft</option><option value="1">Normal</option></select></label>
+        <label>Decay<select id="percussion-decay" data-parameter="23" disabled><option value="0">Slow</option><option value="1">Fast</option></select></label>
+        <label>Scanner<select id="scanner-mode" data-parameter="19" disabled><option value="0">Off</option><option value="1">V1</option><option value="2">V2</option><option value="3">V3</option><option value="4">C1</option><option value="5">C2</option><option value="6">C3</option></select></label>
+      </section>
+
+      <section class="bottom-grid">
+        <article class="panel pedals">
+          <div><p class="eyebrow">CHANNEL 3 · 25 NOTES</p><h2>Pedal Clavier</h2></div>
+          <label>16'<input id="p16" data-parameter="33" type="range" min="0" max="8" step="1" disabled /></label>
+          <label>8'<input id="p8" data-parameter="34" type="range" min="0" max="8" step="1" disabled /></label>
+        </article>
+        <article class="panel cabinet">
+          <div><p class="eyebrow">INTEGRATED</p><h2>Rotary Cabinet</h2></div>
+          <label>Mic Distance<input id="mic-distance" data-parameter="41" type="range" min="0" max="1" step="0.001" disabled /></label>
+          <label>Width<input id="stereo-width" data-parameter="42" type="range" min="0" max="1" step="0.001" disabled /></label>
+          <label>Reflections<input id="reflections" data-parameter="43" type="range" min="0" max="1" step="0.001" disabled /></label>
+          <label>Horn / Drum<input id="rotor-balance" data-parameter="44" type="range" min="-1" max="1" step="0.001" disabled /></label>
+        </article>
+      </section>
+
+      <details class="panel advanced">
+        <summary>Console calibration</summary>
+        <div class="advanced-grid">
+          <label>Contact Spread<input id="contact-spread" data-parameter="11" type="range" min="0" max="1" step="0.001" disabled /></label>
+          <label>Contact Bounce<input id="contact-bounce" data-parameter="12" type="range" min="0" max="1" step="0.001" disabled /></label>
+          <label>Generator Leakage<input id="leakage" data-parameter="13" type="range" min="0" max="1" step="0.001" disabled /></label>
+          <label>Transformer Drive<input id="transformer-drive" data-parameter="14" type="range" min="0" max="1" step="0.001" disabled /></label>
+          <label>Transformer Memory<input id="transformer-memory" data-parameter="15" type="range" min="0" max="1" step="0.001" disabled /></label>
+          <label>Preamp Drive<input id="console-drive" data-parameter="37" type="range" min="0" max="1" step="0.001" disabled /></label>
+          <label>Bass Trim<input id="console-bass" data-parameter="38" type="range" min="-1" max="1" step="0.001" disabled /></label>
+          <label>Treble Trim<input id="console-treble" data-parameter="39" type="range" min="-1" max="1" step="0.001" disabled /></label>
+          <label>Swell Character<input id="swell-character" data-parameter="40" type="range" min="0" max="1" step="0.001" disabled /></label>
+        </div>
+      </details>
+    </main>
+    <script type="module" src="bootstrap.js"></script>
+  </body>
+</html>

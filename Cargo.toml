@@ -1,9 +1,14 @@
 [workspace]
 resolver = "3"
-members = ["crates/rf-organ-dsp", "crates/rf-organ-lab", "crates/rf-organ-plugin"]
+members = [
+    "crates/rf-organ-dsp",
+    "crates/rf-organ-lab",
+    "crates/rf-organ-plugin",
+    "crates/rf-organ-ui",
+]
 
 [workspace.package]
-version = "0.5.0"
+version = "0.6.0"
 edition = "2024"
 rust-version = "1.98"
 license = "GPL-2.0-or-later"
@@ -12,6 +17,7 @@ publish = false
 [workspace.dependencies]
 rf-organ-dsp = { path = "crates/rf-organ-dsp" }
 rackforge-plugin-sdk = { path = "../rackforge/crates/rackforge-plugin-sdk" }
+serde_json = "1.0"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

@@ -3,7 +3,7 @@
 RF-Organ is a physically informed tonewheel-organ instrument for RackForge.
 It is written in Rust and licensed under GPL-2.0-or-later.
 
-The current `0.5.0` baseline establishes the real-time architecture:
+The current `0.6.0` baseline establishes the real-time architecture:
 
 - one continuously rotating bank of 91 shared tonewheels;
 - 60 Hz gear-ratio tuning instead of ideal equal temperament;
@@ -17,8 +17,10 @@ The current `0.5.0` baseline establishes the real-time architecture:
 - single-trigger second/third-harmonic percussion with console-style switches;
 - an integrated Leslie with independent rotors, spectral directivity,
   microphone geometry and early cabinet reflections.
+- a RackForge play surface implemented in Rust/WASM, with console-style
+  drawbars and direct access to every automatable parameter.
 
-The sound constants are intentionally provisional. This first version is a
+The sound constants are intentionally provisional. This baseline is a
 testable scaffold for measurement and calibration, not a finished clone.
 
 ## MIDI baseline
@@ -37,12 +39,18 @@ cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 cargo build --release -p rf-organ-plugin --target wasm32-unknown-unknown
 Copy-Item target/wasm32-unknown-unknown/release/rf_organ_plugin.wasm package/component.wasm
+cargo build --release -p rf-organ-ui --target wasm32-unknown-unknown
+wasm-bindgen target/wasm32-unknown-unknown/release/rf_organ_ui.wasm --target web --out-dir package/web --out-name app --no-typescript
 cargo run --manifest-path ../rackforge/Cargo.toml --target-dir target/rackforge-core -p rackforge-core -- inspect package
 target/rackforge-core/debug/rackforge-core.exe smoke package --preset chorale-888
 ```
 
 The RackForge development SDK is consumed from the sibling `rackforge`
 checkout. Package metadata lives under `package/`.
+
+The custom surface is declared through the package's `web_ui` manifest table.
+Its HTML and CSS are static, `bootstrap.js` only initializes the module, and
+the generated `app.js` bridge plus `app_bg.wasm` contain the Rust UI runtime.
 
 Deterministic calibration renders are produced by the Rust-only laboratory:
 

@@ -5,7 +5,7 @@ id = "org.rackforge.organ"
 name = "RF-Organ"
 short_name = "RF-ORGAN"
 vendor = "RackForge"
-version = "0.5.0"
+version = "0.6.0"
 description = "Physical-model tonewheel organ with an integrated rotary speaker module"
 kind = "instrument"
 state_version = 5
@@ -30,3 +30,10 @@ path = "component.wasm"
 runtime_descriptor = "metadata/runtime.json"
 parameter_schema = "metadata/parameters.json"
 preset_catalog = "metadata/presets.json"
+
+[web_ui]
+api_version = 1
+
+[[web_ui.surfaces]]
+kind = "play"
+entry = "web/play.html"
