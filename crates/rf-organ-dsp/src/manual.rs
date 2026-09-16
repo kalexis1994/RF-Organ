@@ -227,7 +227,12 @@ impl Manual {
         }
     }
 
-    pub fn sample(&self, wheels: &[f32; TONEWHEEL_COUNT], leakage: f32) -> f32 {
+    pub fn sample(
+        &self,
+        wheels: &[f32; TONEWHEEL_COUNT],
+        leakage: f32,
+        suppress_ninth_drawbar: bool,
+    ) -> f32 {
         let mut output = 0.0;
         for (index, gain) in self.wheel_gains.iter().copied().enumerate() {
             if gain == 0.0 {
@@ -237,7 +242,30 @@ impl Manual {
             let leak = pair.map_or(0.0, |pair| wheels[pair]);
             output += gain * (wheels[index] + leakage * leak);
         }
+        if suppress_ninth_drawbar {
+            let level = DRAWBAR_LEVELS[self.drawbars[8] as usize];
+            for key in &self.keys {
+                let contact = key.contacts[8];
+                let index = contact.wheel as usize;
+                let leak = compartment_pair(index).map_or(0.0, |pair| wheels[pair]);
+                output -= contact.gate * level * (wheels[index] + leakage * leak);
+            }
+        }
         output * 0.055
+    }
+
+    pub fn harmonic_sample(&self, wheels: &[f32; TONEWHEEL_COUNT], bus: usize) -> f32 {
+        debug_assert!(bus < DRAWBAR_COUNT);
+        let mut output = 0.0;
+        for key in &self.keys {
+            let contact = key.contacts[bus];
+            output += contact.gate * wheels[contact.wheel as usize];
+        }
+        output * 0.055
+    }
+
+    pub fn is_active(&self, note: u8) -> Option<bool> {
+        key_index(note).map(|key| self.keys[key].active)
     }
 
     pub fn reset(&mut self) {

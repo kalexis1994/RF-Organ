@@ -13,6 +13,8 @@ drawbar buses + foldback + leakage
       |
 shared matching transformer
       |
+scanner vibrato / chorus
+      |
 expression
       |
 integrated Leslie (crossover, horn, drum, inertia, Doppler, stereo radiation)
@@ -37,11 +39,12 @@ models. Higher-cost electromagnetic, circuit and measurement work will live in
 future analysis/laboratory crates and produce calibrated coefficients for the
 production engine.
 
-## Version 0.1.0 limitations
+## Version 0.2.0 limitations
 
 - Upper manual only; lower manual and pedalboard are reserved for the next
   structural milestone.
-- Scanner vibrato and percussion are not yet implemented.
+- Scanner and percussion topology are implemented, but their electrical
+  constants are not yet calibrated against a reference console.
 - Contact bounce, matching-transformer and Leslie constants are provisional.
 - Leslie cabinet reflections and angle-dependent measured filters are not yet
   included.

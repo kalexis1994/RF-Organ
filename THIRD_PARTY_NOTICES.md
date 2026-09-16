@@ -28,6 +28,11 @@ work progresses.
 
 ## Published physical-model references
 
-See `docs/RESEARCH.md` for the Hammond service documentation, tonewheel,
-scanner-vibrato and Leslie papers that define the research baseline.
+The scanner implementation is an independent reduced Rust model informed by
+the Hammond service documentation, patent US2560568A and Werner, Dunkel and
+Germain's DAFx-2016 wave-digital-filter paper. Version 0.2 uses the documented
+16-contact scanning topology and console switch semantics, but does not copy
+the paper's WDF equations or third-party implementation code.
 
+See `docs/RESEARCH.md` for the Hammond service documentation, tonewheel,
+scanner-vibrato and Leslie papers that define the wider research baseline.

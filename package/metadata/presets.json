@@ -26,7 +26,7 @@
       "category": "Organ",
       "order": 1,
       "tags": ["tonewheel", "rotary", "chorale"],
-      "description": "888 registration through the integrated slow rotary cabinet."
+      "description": "888 registration with C3 scanner chorus through the integrated slow rotary cabinet."
     },
     {
       "id": "tremolo-jazz",
@@ -36,7 +36,7 @@
       "category": "Organ",
       "order": 2,
       "tags": ["tonewheel", "rotary", "tremolo"],
-      "description": "Percussive jazz registration with fast integrated rotary motion."
+      "description": "Third-harmonic single-trigger percussion with fast integrated rotary motion."
     },
     {
       "id": "gospel-full",
@@ -46,7 +46,7 @@
       "category": "Organ",
       "order": 3,
       "tags": ["tonewheel", "rotary", "full"],
-      "description": "Full drawbar registration, transformer drive and slow rotary motion."
+      "description": "Full drawbars, C3 scanner chorus, transformer drive and slow rotary motion."
     }
   ]
 }

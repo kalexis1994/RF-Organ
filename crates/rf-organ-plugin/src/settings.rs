@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-use rf_organ_dsp::{DRAWBAR_COUNT, LeslieMode, OrganEngine};
+use rf_organ_dsp::{
+    DRAWBAR_COUNT, LeslieMode, OrganEngine, PercussionDecay, PercussionHarmonic, PercussionVolume,
+    ScannerMode,
+};
 
-pub const PARAMETER_COUNT: usize = 19;
+pub const PARAMETER_COUNT: usize = 24;
 pub const DRAWBAR_FIRST: u32 = 2;
 pub const DRAWBAR_LAST: u32 = DRAWBAR_FIRST + DRAWBAR_COUNT as u32 - 1;
 
@@ -18,6 +21,11 @@ pub struct Settings {
     pub leslie_mode: LeslieMode,
     pub leslie_mix: f64,
     pub leslie_acceleration: f64,
+    pub scanner_mode: ScannerMode,
+    pub percussion_enabled: bool,
+    pub percussion_harmonic: PercussionHarmonic,
+    pub percussion_volume: PercussionVolume,
+    pub percussion_decay: PercussionDecay,
 }
 
 impl Default for Settings {
@@ -34,6 +42,11 @@ impl Default for Settings {
             leslie_mode: LeslieMode::Off,
             leslie_mix: 0.82,
             leslie_acceleration: 0.5,
+            scanner_mode: ScannerMode::Off,
+            percussion_enabled: false,
+            percussion_harmonic: PercussionHarmonic::Third,
+            percussion_volume: PercussionVolume::Normal,
+            percussion_decay: PercussionDecay::Fast,
         }
     }
 }
@@ -67,6 +80,17 @@ impl Settings {
             16 => f64::from(self.leslie_mode as u8),
             17 => self.leslie_mix,
             18 => self.leslie_acceleration,
+            19 => f64::from(self.scanner_mode as u8),
+            20 => {
+                if self.percussion_enabled {
+                    1.0
+                } else {
+                    0.0
+                }
+            }
+            21 => f64::from(self.percussion_harmonic as u8),
+            22 => f64::from(self.percussion_volume as u8),
+            23 => f64::from(self.percussion_decay as u8),
             _ => return None,
         })
     }
@@ -93,6 +117,19 @@ impl Settings {
             }
             17 => self.leslie_mix = value,
             18 => self.leslie_acceleration = value,
+            19 if value.fract() == 0.0 => {
+                self.scanner_mode = ScannerMode::from_index(value as u8)?;
+            }
+            20 if value == 0.0 || value == 1.0 => self.percussion_enabled = value == 1.0,
+            21 if value.fract() == 0.0 => {
+                self.percussion_harmonic = PercussionHarmonic::from_index(value as u8)?;
+            }
+            22 if value.fract() == 0.0 => {
+                self.percussion_volume = PercussionVolume::from_index(value as u8)?;
+            }
+            23 if value.fract() == 0.0 => {
+                self.percussion_decay = PercussionDecay::from_index(value as u8)?;
+            }
             _ => return None,
         }
         self.valid().then_some(self)
@@ -115,6 +152,11 @@ impl Settings {
         engine.set_leslie_mode(self.leslie_mode);
         let _ = engine.set_leslie_mix(self.leslie_mix as f32);
         let _ = engine.set_leslie_acceleration(self.leslie_acceleration as f32);
+        engine.set_scanner_mode(self.scanner_mode);
+        engine.set_percussion_enabled(self.percussion_enabled);
+        engine.set_percussion_harmonic(self.percussion_harmonic);
+        engine.set_percussion_volume(self.percussion_volume);
+        engine.set_percussion_decay(self.percussion_decay);
     }
 }
 
@@ -133,6 +175,7 @@ pub fn presets() -> [(&'static str, &'static str, &'static str, Settings); 4] {
             "888 registration through the integrated slow rotary cabinet.",
             Settings {
                 leslie_mode: LeslieMode::Chorale,
+                scanner_mode: ScannerMode::Chorus3,
                 ..straight
             },
         ),
@@ -144,6 +187,10 @@ pub fn presets() -> [(&'static str, &'static str, &'static str, Settings); 4] {
                 drawbars: [8, 8, 8, 0, 0, 0, 0, 8, 0],
                 leslie_mode: LeslieMode::Tremolo,
                 transformer_drive: 0.52,
+                percussion_enabled: true,
+                percussion_harmonic: PercussionHarmonic::Third,
+                percussion_volume: PercussionVolume::Normal,
+                percussion_decay: PercussionDecay::Fast,
                 ..straight
             },
         ),
@@ -156,6 +203,7 @@ pub fn presets() -> [(&'static str, &'static str, &'static str, Settings); 4] {
                 leslie_mode: LeslieMode::Chorale,
                 transformer_drive: 0.62,
                 leakage: 0.28,
+                scanner_mode: ScannerMode::Chorus3,
                 ..straight
             },
         ),

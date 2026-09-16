@@ -8,15 +8,21 @@
 
 mod leslie;
 mod manual;
+mod percussion;
+mod scanner;
 mod tonewheel;
 mod transformer;
 
 pub use leslie::LeslieMode;
 pub use manual::{DRAWBAR_COUNT, MANUAL_FIRST_NOTE, MANUAL_KEY_COUNT, drawbar_wheel};
+pub use percussion::{PercussionDecay, PercussionHarmonic, PercussionVolume};
+pub use scanner::ScannerMode;
 pub use tonewheel::{TONEWHEEL_COUNT, gear_frequency};
 
 use leslie::Leslie;
 use manual::Manual;
+use percussion::Percussion;
+use scanner::ScannerVibrato;
 use tonewheel::TonewheelBank;
 use transformer::MatchingTransformer;
 
@@ -32,10 +38,13 @@ pub struct OrganEngine {
     tonewheels: TonewheelBank,
     upper: Manual,
     transformer: MatchingTransformer,
+    scanner: ScannerVibrato,
+    percussion: Percussion,
     leslie: Leslie,
     output_level: f32,
     expression: f32,
     leakage: f32,
+    held_notes: u8,
 }
 
 impl OrganEngine {
@@ -49,23 +58,48 @@ impl OrganEngine {
             tonewheels: TonewheelBank::new(sample_rate),
             upper: Manual::new(sample_rate),
             transformer: MatchingTransformer::new(sample_rate),
+            scanner: ScannerVibrato::new(sample_rate),
+            percussion: Percussion::new(sample_rate),
             leslie: Leslie::new(sample_rate),
             output_level: 0.72,
             expression: 1.0,
             leakage: 0.025,
+            held_notes: 0,
         })
     }
 
     pub fn note_on(&mut self, note: u8, velocity: f32) -> bool {
-        self.upper.note_on(note, velocity)
+        let Some(was_active) = self.upper.is_active(note) else {
+            return false;
+        };
+        if !self.upper.note_on(note, velocity) {
+            return false;
+        }
+        if !was_active {
+            if self.held_notes == 0 {
+                self.percussion.trigger();
+            }
+            self.held_notes = self.held_notes.saturating_add(1);
+        }
+        true
     }
 
     pub fn note_off(&mut self, note: u8, velocity: f32) -> bool {
-        self.upper.note_off(note, velocity)
+        let Some(was_active) = self.upper.is_active(note) else {
+            return false;
+        };
+        if !self.upper.note_off(note, velocity) {
+            return false;
+        }
+        if was_active {
+            self.held_notes = self.held_notes.saturating_sub(1);
+        }
+        true
     }
 
     pub fn all_notes_off(&mut self) {
         self.upper.reset();
+        self.held_notes = 0;
     }
 
     pub fn set_drawbar(&mut self, index: usize, position: u8) -> bool {
@@ -112,6 +146,26 @@ impl OrganEngine {
         self.transformer.set(drive, hysteresis)
     }
 
+    pub fn set_scanner_mode(&mut self, mode: ScannerMode) {
+        self.scanner.set_mode(mode);
+    }
+
+    pub fn set_percussion_enabled(&mut self, enabled: bool) {
+        self.percussion.set_enabled(enabled);
+    }
+
+    pub fn set_percussion_harmonic(&mut self, harmonic: PercussionHarmonic) {
+        self.percussion.set_harmonic(harmonic);
+    }
+
+    pub fn set_percussion_volume(&mut self, volume: PercussionVolume) {
+        self.percussion.set_volume(volume);
+    }
+
+    pub fn set_percussion_decay(&mut self, decay: PercussionDecay) {
+        self.percussion.set_decay(decay);
+    }
+
     pub fn set_leslie_mode(&mut self, mode: LeslieMode) {
         self.leslie.set_mode(mode);
     }
@@ -127,8 +181,19 @@ impl OrganEngine {
     pub fn next_sample(&mut self) -> [f32; 2] {
         self.tonewheels.tick();
         self.upper.tick_contacts();
-        let buses = self.upper.sample(self.tonewheels.samples(), self.leakage);
-        let organ = self.transformer.process(buses) * self.expression * self.output_level;
+        let wheels = self.tonewheels.samples();
+        let buses = self
+            .upper
+            .sample(wheels, self.leakage, self.percussion.enabled());
+        let percussion_bus = match self.percussion.harmonic() {
+            PercussionHarmonic::Second => 3,
+            PercussionHarmonic::Third => 4,
+        };
+        let percussion = self
+            .percussion
+            .process(self.upper.harmonic_sample(wheels, percussion_bus));
+        let transformed = self.transformer.process(buses + percussion);
+        let organ = self.scanner.process(transformed) * self.expression * self.output_level;
         self.leslie.process(organ)
     }
 
@@ -137,8 +202,11 @@ impl OrganEngine {
     pub fn reset(&mut self) {
         self.upper.reset();
         self.transformer.reset();
+        self.scanner.reset();
+        self.percussion.reset();
         self.leslie.reset();
         self.expression = 1.0;
+        self.held_notes = 0;
     }
 }
 
@@ -186,5 +254,22 @@ mod tests {
             stereo_difference += (left - right).abs();
         }
         assert!(stereo_difference > 0.1);
+    }
+
+    #[test]
+    fn percussion_sounds_with_the_drawbars_closed() {
+        let mut engine = OrganEngine::new(48_000.0).expect("valid engine");
+        for drawbar in 0..DRAWBAR_COUNT {
+            assert!(engine.set_drawbar(drawbar, 0));
+        }
+        engine.set_percussion_enabled(true);
+        engine.set_percussion_harmonic(PercussionHarmonic::Third);
+        assert!(engine.note_on(60, 1.0));
+        let mut energy = 0.0;
+        for _ in 0..4096 {
+            let [left, right] = engine.next_sample();
+            energy += left * left + right * right;
+        }
+        assert!(energy > 0.001);
     }
 }

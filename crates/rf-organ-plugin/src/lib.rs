@@ -13,7 +13,8 @@ pub use settings::{PARAMETER_COUNT, Settings, presets};
 
 pub const MAX_FRAMES: u32 = 4096;
 pub const MAX_EVENTS: usize = 256;
-pub const STATE_VERSION: u32 = 1;
+pub const STATE_VERSION: u32 = 2;
+pub const STATE_BYTES_V1: usize = 8 + 19 * 8;
 pub const STATE_BYTES: usize = 8 + PARAMETER_COUNT * 8;
 
 #[derive(Default)]
@@ -166,15 +167,20 @@ impl Processor for RfOrganProcessor {
     }
 
     fn load_state(&mut self, state: &[u8]) -> bool {
-        if state.len() != STATE_BYTES || &state[..4] != b"RFOR" {
+        if ![STATE_BYTES_V1, STATE_BYTES].contains(&state.len()) || &state[..4] != b"RFOR" {
             return false;
         }
         let version = u32::from_le_bytes(state[4..8].try_into().expect("validated state"));
-        if version != STATE_VERSION {
+        let fields = match (version, state.len()) {
+            (1, STATE_BYTES_V1) => 19,
+            (STATE_VERSION, STATE_BYTES) => PARAMETER_COUNT,
+            _ => return false,
+        };
+        if fields > PARAMETER_COUNT {
             return false;
         }
         let mut settings = Settings::default();
-        for index in 0..PARAMETER_COUNT as u32 {
+        for index in 0..fields as u32 {
             let offset = 8 + index as usize * 8;
             let value = f64::from_le_bytes(
                 state[offset..offset + 8]
@@ -322,6 +328,19 @@ mod tests {
         let mut restored = RfOrganProcessor::default();
         assert!(restored.load_state(&bytes));
         assert_eq!(restored.settings, source.settings);
+    }
+
+    #[test]
+    fn version_one_state_migrates_with_new_controls_at_defaults() {
+        let source = RfOrganProcessor::default();
+        let mut current = [0_u8; STATE_BYTES];
+        assert_eq!(source.save_state(&mut current), Some(STATE_BYTES));
+        let mut legacy = [0_u8; STATE_BYTES_V1];
+        legacy.copy_from_slice(&current[..STATE_BYTES_V1]);
+        legacy[4..8].copy_from_slice(&1_u32.to_le_bytes());
+        let mut restored = RfOrganProcessor::default();
+        assert!(restored.load_state(&legacy));
+        assert_eq!(restored.settings, Settings::default());
     }
 
     #[test]

@@ -204,6 +204,89 @@
       "kind": { "type": "float", "minimum": 0.0, "maximum": 1.0, "default": 0.5, "step": 0.001 },
       "flags": { "automatable": true },
       "suggested_control": "knob"
+    },
+    {
+      "index": 19,
+      "id": "scanner-mode",
+      "name": "Scanner Vibrato",
+      "page": "organ",
+      "order": 11,
+      "kind": {
+        "type": "enum",
+        "default": 0,
+        "choices": [
+          { "value": 0, "name": "Off" },
+          { "value": 1, "name": "V1" },
+          { "value": 2, "name": "V2" },
+          { "value": 3, "name": "V3" },
+          { "value": 4, "name": "C1" },
+          { "value": 5, "name": "C2" },
+          { "value": 6, "name": "C3" }
+        ]
+      },
+      "flags": { "automatable": true },
+      "suggested_control": "list"
+    },
+    {
+      "index": 20,
+      "id": "percussion-enabled",
+      "name": "Percussion",
+      "page": "organ",
+      "order": 12,
+      "kind": { "type": "boolean", "default": false },
+      "flags": { "automatable": true },
+      "suggested_control": "toggle"
+    },
+    {
+      "index": 21,
+      "id": "percussion-harmonic",
+      "name": "Percussion Harmonic",
+      "page": "organ",
+      "order": 13,
+      "kind": {
+        "type": "enum",
+        "default": 1,
+        "choices": [
+          { "value": 0, "name": "Second" },
+          { "value": 1, "name": "Third" }
+        ]
+      },
+      "flags": { "automatable": true },
+      "suggested_control": "list"
+    },
+    {
+      "index": 22,
+      "id": "percussion-volume",
+      "name": "Percussion Volume",
+      "page": "organ",
+      "order": 14,
+      "kind": {
+        "type": "enum",
+        "default": 1,
+        "choices": [
+          { "value": 0, "name": "Soft" },
+          { "value": 1, "name": "Normal" }
+        ]
+      },
+      "flags": { "automatable": true },
+      "suggested_control": "list"
+    },
+    {
+      "index": 23,
+      "id": "percussion-decay",
+      "name": "Percussion Decay",
+      "page": "organ",
+      "order": 15,
+      "kind": {
+        "type": "enum",
+        "default": 1,
+        "choices": [
+          { "value": 0, "name": "Slow" },
+          { "value": 1, "name": "Fast" }
+        ]
+      },
+      "flags": { "automatable": true },
+      "suggested_control": "list"
     }
   ],
   "semantic_controls": [
