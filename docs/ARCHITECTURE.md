@@ -11,13 +11,15 @@ upper + lower manuals and pedal contacts
       |
 independent drawbar buses + foldback + leakage
       |
-scanner vibrato / chorus
-      |
-matching transformer + console preamplifier + expression
-      |
-integrated Leslie (crossover, horn, drum, inertia, Doppler, stereo radiation)
-      |
-stereo output
+upper -> T2 matching transformer ----+
+                                     +-> vibrato tablets -> scanner/direct --+
+lower + pedal -> T1 transformer -----+                                     |
+                                                                           +-> V4A sum
+percussion amplifier ------------------------------------------------------+      |
+                                                                                  v
+                                                            preamplifier + expression
+                                                                                  |
+                                                            integrated Leslie + output
 ```
 
 ## Boundaries
@@ -37,14 +39,18 @@ models. Higher-cost electromagnetic, circuit and measurement work will live in
 future analysis/laboratory crates and produce calibrated coefficients for the
 production engine.
 
-## Version 0.9.0 limitations
+The two magnetic states are independent, matching the documented T1 and T2
+paths. Percussion does not pass through either matching transformer or the
+scanner; it joins the non-vibrato and scanner-return channels at the V4A sum.
+
+## Version 0.10.0 limitations
 
 - The classic B-3 pedal contact and resistor-panel topology is present. The
   L20 pedal-filter coefficient and console matching-network constants remain
   provisional; musical pedal sustain is intentionally absent because it is a
   feature of later digital Hammond instruments, not the electromechanical B-3.
-- Scanner and percussion topology are implemented, but their electrical
-  constants are not yet calibrated against a reference console.
+- Scanner and percussion routing follows the AO-28 schematic, but their
+  electrical constants are not yet calibrated against a reference console.
 - Contact bounce, matching-transformer, console preamplifier and Leslie
   constants are provisional.
 - Leslie cabinet reflections and angle-dependent filters are present, but

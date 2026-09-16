@@ -42,14 +42,16 @@ pub enum OrganPart {
     Pedal,
 }
 
-/// One physical organ. Tonewheels and the matching transformer are shared;
-/// MIDI notes only operate the manual contacts.
+/// One physical organ. Tonewheels are shared; MIDI notes only operate the
+/// manual contacts. The two matching-transformer paths follow the AO-28
+/// console wiring: upper on T2, and lower plus pedals on T1.
 pub struct OrganEngine {
     tonewheels: TonewheelBank,
     upper: Manual,
     lower: Manual,
     pedals: Pedalboard,
-    transformer: MatchingTransformer,
+    upper_transformer: MatchingTransformer,
+    lower_pedal_transformer: MatchingTransformer,
     electronics: ConsoleElectronics,
     scanner: ScannerVibrato,
     percussion: Percussion,
@@ -74,7 +76,8 @@ impl OrganEngine {
             upper: Manual::new(sample_rate),
             lower: Manual::new(sample_rate),
             pedals: Pedalboard::new(sample_rate),
-            transformer: MatchingTransformer::new(sample_rate),
+            upper_transformer: MatchingTransformer::new(sample_rate),
+            lower_pedal_transformer: MatchingTransformer::new(sample_rate),
             electronics: ConsoleElectronics::new(sample_rate),
             scanner: ScannerVibrato::new(sample_rate),
             percussion: Percussion::new(sample_rate),
@@ -216,7 +219,9 @@ impl OrganEngine {
     }
 
     pub fn set_transformer(&mut self, drive: f32, hysteresis: f32) -> bool {
-        self.transformer.set(drive, hysteresis)
+        let upper_valid = self.upper_transformer.set(drive, hysteresis);
+        let lower_pedal_valid = self.lower_pedal_transformer.set(drive, hysteresis);
+        upper_valid && lower_pedal_valid
     }
 
     pub fn set_console(&mut self, drive: f32, bass: f32, treble: f32) -> bool {
@@ -293,16 +298,22 @@ impl OrganEngine {
         let percussion = self
             .percussion
             .process(self.upper.harmonic_sample(wheels, percussion_bus));
-        let upper = upper + percussion;
-        let scanner_input = if self.upper_scanner { upper } else { 0.0 }
-            + if self.lower_scanner { lower } else { 0.0 };
-        let direct = if self.upper_scanner { 0.0 } else { upper }
-            + if self.lower_scanner { 0.0 } else { lower }
-            + pedals;
-        let console = direct + self.scanner.process(scanner_input);
-        let transformed = self.transformer.process(console);
-        let organ = self.electronics.process(transformed, self.expression) * self.output_level;
+        let console = self.route_ao28_inputs(upper, lower, pedals, percussion);
+        let organ = self.electronics.process(console, self.expression) * self.output_level;
         self.leslie.process(organ)
+    }
+
+    /// Routes the generator buses into the AO-28 input channels. T2 receives
+    /// the upper manual, T1 receives the combined lower/pedal bus, and the
+    /// percussion amplifier joins the signal at V4A after the scanner return.
+    fn route_ao28_inputs(&mut self, upper: f32, lower: f32, pedals: f32, percussion: f32) -> f32 {
+        let upper = self.upper_transformer.process(upper);
+        let lower_pedal = self.lower_pedal_transformer.process(lower + pedals);
+        let scanner_input = if self.upper_scanner { upper } else { 0.0 }
+            + if self.lower_scanner { lower_pedal } else { 0.0 };
+        let direct = if self.upper_scanner { 0.0 } else { upper }
+            + if self.lower_scanner { 0.0 } else { lower_pedal };
+        direct + self.scanner.process(scanner_input) + percussion
     }
 
     /// Clears keyed and downstream state without rephasing the continuously
@@ -311,7 +322,8 @@ impl OrganEngine {
         self.upper.reset();
         self.lower.reset();
         self.pedals.reset();
-        self.transformer.reset();
+        self.upper_transformer.reset();
+        self.lower_pedal_transformer.reset();
         self.electronics.reset(1.0);
         self.scanner.reset();
         self.percussion.reset();
@@ -398,5 +410,48 @@ mod tests {
             energy += left * left + right * right;
         }
         assert!(energy > 0.01);
+    }
+
+    #[test]
+    fn percussion_joins_after_the_scanner_return() {
+        let mut engine = OrganEngine::new(48_000.0).expect("valid engine");
+        assert!(engine.set_transformer(0.0, 0.0));
+        engine.set_scanner_mode(ScannerMode::Vibrato3);
+        engine.set_scanner_manuals(true, false);
+
+        // A newly cleared scanner delays the upper impulse. The percussion
+        // channel reaches the V4A sum immediately and therefore remains exact.
+        let console = engine.route_ao28_inputs(0.5, 0.0, 0.0, 0.25);
+        assert_eq!(console, 0.25);
+    }
+
+    #[test]
+    fn lower_and_pedal_share_t1_before_the_vibrato_switch() {
+        let mut lower = OrganEngine::new(48_000.0).expect("valid engine");
+        let mut pedal = OrganEngine::new(48_000.0).expect("valid engine");
+        assert!(lower.set_transformer(0.8, 0.7));
+        assert!(pedal.set_transformer(0.8, 0.7));
+        lower.set_scanner_manuals(false, false);
+        pedal.set_scanner_manuals(false, false);
+
+        let from_lower = lower.route_ao28_inputs(0.0, 0.4, 0.0, 0.0);
+        let from_pedal = pedal.route_ao28_inputs(0.0, 0.0, 0.4, 0.0);
+        assert_eq!(from_lower, from_pedal);
+    }
+
+    #[test]
+    fn upper_t2_and_lower_t1_have_independent_magnetic_states() {
+        let mut combined = OrganEngine::new(48_000.0).expect("valid engine");
+        let mut upper = OrganEngine::new(48_000.0).expect("valid engine");
+        let mut lower = OrganEngine::new(48_000.0).expect("valid engine");
+        for engine in [&mut combined, &mut upper, &mut lower] {
+            assert!(engine.set_transformer(0.9, 0.8));
+            engine.set_scanner_manuals(false, false);
+        }
+
+        let both = combined.route_ao28_inputs(0.4, 0.4, 0.0, 0.0);
+        let separate = upper.route_ao28_inputs(0.4, 0.0, 0.0, 0.0)
+            + lower.route_ao28_inputs(0.0, 0.4, 0.0, 0.0);
+        assert_eq!(both, separate);
     }
 }

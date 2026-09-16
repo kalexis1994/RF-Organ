@@ -4,6 +4,12 @@
 
 - Hammond Organ Service Manual, early console models including B-3/C-3:
   https://medias.audiofanzine.com/files/hammond-service-manual-a-a-100-ba-bc-bcv-bv-b2-b3-c-cv-c2-c2-text-470145.pdf
+- Hammond B-3/C-3 service manual and AO-28 schematic (T1/T2 matching
+  transformers, vibrato channels, percussion input and V4A summing node):
+  https://device.report/m/1764f5c997292f510b1451dbaa1e3c2ac48ee76b3628eff16a05a580795ece2b
+- Hammond XK-7/XK-7D owner's manual (manufacturer description of the AO-28,
+  matching/output transformer hysteresis, expression and tone-control chain):
+  https://hammondorganco.com/wp-content/uploads/2026/03/XK7DXK7-OEM-MANUAL.pdf
 - Hammond New B-3/B-3 mk2 owner's documentation (used to distinguish later
   digital pedal-sustain behavior from the electromechanical console):
   https://www.hammond.eu/Support/OwnersManuals

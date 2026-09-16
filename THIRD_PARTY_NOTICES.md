@@ -44,3 +44,13 @@ into an independent reduced Rust model: eight harmonic contacts, four busbars,
 and the 470/47/10-ohm and 20/5/5-ohm drawbar-mixing branches shown for B-3/C-3
 consoles. The L20 filter is presently represented by a provisional bounded
 one-pole pending component measurement.
+
+## Hammond AO-28 service documentation
+
+Version 0.10.0 translates the documented B-3/C-3 console routing into an
+independent Rust signal graph. Separate magnetic states represent the T2 upper
+and T1 lower-plus-pedal matching transformers before the vibrato tablets. The
+percussion channel bypasses the matching transformers and scanner and joins
+the signal at the V4A summing stage. Component values and tube stages remain
+reduced models pending reference-console calibration; no service-manual
+artwork or third-party source code is embedded.
