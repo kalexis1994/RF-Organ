@@ -11,6 +11,13 @@ name = "rf-organ-dsp"
 version = "0.5.0"
 
 [[package]]
+name = "rf-organ-lab"
+version = "0.5.0"
+dependencies = [
+ "rf-organ-dsp",
+]
+
+[[package]]
 name = "rf-organ-plugin"
 version = "0.5.0"
 dependencies = [

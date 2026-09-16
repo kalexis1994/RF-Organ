@@ -43,3 +43,11 @@ target/rackforge-core/debug/rackforge-core.exe smoke package --preset chorale-88
 
 The RackForge development SDK is consumed from the sibling `rackforge`
 checkout. Package metadata lives under `package/`.
+
+Deterministic calibration renders are produced by the Rust-only laboratory:
+
+```text
+cargo run --release -p rf-organ-lab -- render artifacts/calibration
+```
+
+See `docs/CALIBRATION.md` for the comparison and provenance protocol.

@@ -15,21 +15,19 @@ mod scanner;
 mod tonewheel;
 mod transformer;
 
-pub use leslie::LeslieMode;
+pub use electronics::ConsoleElectronics;
+pub use leslie::{Leslie, LeslieMode};
 pub use manual::{DRAWBAR_COUNT, MANUAL_FIRST_NOTE, MANUAL_KEY_COUNT, drawbar_wheel};
 pub use pedal::{PEDAL_DRAWBAR_COUNT, PEDAL_FIRST_NOTE, PEDAL_KEY_COUNT};
 pub use percussion::{PercussionDecay, PercussionHarmonic, PercussionVolume};
-pub use scanner::ScannerMode;
+pub use scanner::{ScannerMode, ScannerVibrato};
 pub use tonewheel::{TONEWHEEL_COUNT, gear_frequency};
+pub use transformer::MatchingTransformer;
 
-use electronics::ConsoleElectronics;
-use leslie::Leslie;
 use manual::Manual;
 use pedal::Pedalboard;
 use percussion::Percussion;
-use scanner::ScannerVibrato;
 use tonewheel::TonewheelBank;
-use transformer::MatchingTransformer;
 
 pub const SAMPLE_RATE_MIN: f32 = 32_000.0;
 pub const SAMPLE_RATE_MAX: f32 = 192_000.0;
