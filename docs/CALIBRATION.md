@@ -13,21 +13,30 @@ The suite contains:
 - the 91 physical generator frequencies as CSV;
 - direct 888, percussion, scanner C3, Chorale and Tremolo phrases;
 - a complete two-manual and pedal-console phrase;
+- isolated low-C pedal captures for 16', 8' and both drawbars;
 - the integrated Leslie cabinet impulse response;
 - an end-to-end A4 frequency, RMS and peak probe;
 - fast and slow percussion envelope curves measured in 10 ms RMS windows;
 - 1 kHz scanner carrier and ±6.9 Hz sideband levels for V1–V3 and C1–C3;
 - horn and drum acceleration/braking curves sampled every 10 ms, including
   measured 63% and 90% transition times;
+- pedal harmonic levels for the eight physical contacts, plus the complete
+  key-off response through the pedal filter and console electronics;
 - a manifest recording version, sample rate and normalization policy.
 
-`measurements.csv` is the compact comparison surface. The three detailed
+`measurements.csv` is the compact comparison surface. The detailed
 tables retain the underlying curves:
 
 - `percussion-envelope.csv` records both decay registrations;
 - `scanner-sidebands.csv` records carrier level in dBFS and sidebands in dBc;
 - `leslie-rotor-response.csv` records actual and target rotor speeds during
   Tremolo acceleration and Brake deceleration.
+- `pedal-spectrum.csv` records the eight contact frequencies and levels for
+  isolated 16' and 8' registrations;
+- `pedal-release.csv` records the first 100 ms after releasing the 16' low C.
+  This end-to-end response includes the provisional L20 branch, matching
+  transformer and console coupling network; it deliberately does not pretend
+  that the measured tail belongs to one component in isolation.
 
 These values describe the current model; they are regression baselines, not
 claims about a particular historical console. A coefficient becomes calibrated
@@ -74,9 +83,14 @@ the original amplitudes. It reports:
 - correlation between 10 ms RMS envelopes;
 - model and reference mid/side stereo width and their delta.
 
+The three pedal captures use low C (MIDI 24), begin at 250 ms, release at
+3 seconds and leave all other drawbars closed. Files `07`, `08` and `09` select
+16' only, 8' only and both drawbars respectively. Match that protocol when
+recording a reference console.
+
 An RF-Organ-generated calibration directory may be used as the reference for a
 self-check without an external manifest. Comparing a directory with itself
-must yield zero deltas and envelope correlation 1.0 for all seven WAV files.
+must yield zero deltas and envelope correlation 1.0 for all ten WAV files.
 
 The generated `artifacts/` directory is intentionally ignored by Git. Curated
 measurement data should only enter the repository with clear redistribution

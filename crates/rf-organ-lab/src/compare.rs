@@ -7,13 +7,16 @@ use std::fs;
 use std::path::Path;
 
 const SAMPLE_RATE: u32 = 48_000;
-const CAPTURES: [&str; 7] = [
+const CAPTURES: [&str; 10] = [
     "01-direct-888",
     "02-third-percussion",
     "03-scanner-c3",
     "04-leslie-chorale",
     "05-leslie-tremolo",
     "06-full-console",
+    "07-pedal-16ft",
+    "08-pedal-8ft",
+    "09-pedal-16ft-8ft",
     "leslie-cabinet-impulse",
 ];
 

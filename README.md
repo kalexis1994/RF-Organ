@@ -63,7 +63,8 @@ cargo run --release -p rf-organ-lab -- compare artifacts/calibration path/to/ref
 ```
 
 The output includes scalar measurements, percussion envelopes, scanner
-sidebands and Leslie acceleration/braking curves alongside the audio renders.
+sidebands, isolated pedal spectra and key-off response, and Leslie
+acceleration/braking curves alongside the audio renders.
 The comparator aligns reference captures without resampling or normalizing
 them, then reports level, crest, envelope and stereo differences.
 See `docs/CALIBRATION.md` for the comparison and provenance protocol.

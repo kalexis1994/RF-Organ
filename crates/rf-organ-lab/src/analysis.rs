@@ -16,6 +16,8 @@ pub struct Artifacts {
     pub percussion_envelope: String,
     pub scanner_sidebands: String,
     pub leslie_rotor_response: String,
+    pub pedal_spectrum: String,
+    pub pedal_release: String,
 }
 
 #[derive(Clone, Copy)]
@@ -39,6 +41,8 @@ pub fn analyze() -> Result<Artifacts, String> {
 fn analyze_inner() -> Result<Artifacts, String> {
     let mut measurements = Vec::new();
     measurements.extend(tonewheel_probe()?);
+    let (pedal, pedal_spectrum, pedal_release) = pedal_probe()?;
+    measurements.extend(pedal);
     let (percussion, percussion_envelope) = percussion_probe()?;
     measurements.extend(percussion);
     let (scanner, scanner_sidebands) = scanner_probe();
@@ -50,7 +54,131 @@ fn analyze_inner() -> Result<Artifacts, String> {
         percussion_envelope,
         scanner_sidebands,
         leslie_rotor_response,
+        pedal_spectrum,
+        pedal_release,
     })
+}
+
+fn pedal_probe() -> Result<(Vec<Measurement>, String, String), String> {
+    const HARMONICS: [(usize, usize); 8] = [
+        (1, 0),
+        (2, 12),
+        (3, 19),
+        (4, 24),
+        (6, 31),
+        (8, 36),
+        (10, 40),
+        (12, 43),
+    ];
+    let registrations = [("pedal-16ft", [8, 0], 0), ("pedal-8ft", [0, 8], 12)];
+    let mut measurements = Vec::new();
+    let mut spectrum =
+        String::from("registration,harmonic,wheel,frequency_hz,level_dbfs,level_dbc\n");
+    for (name, drawbars, reference_wheel) in registrations {
+        let samples = render_pedal(drawbars)?;
+        let reference_frequency = f64::from(
+            gear_frequency(reference_wheel)
+                .ok_or_else(|| "missing pedal reference wheel".to_owned())?,
+        );
+        let reference = spectral_amplitude(&samples, reference_frequency);
+        measurements.push(Measurement {
+            probe: name,
+            metric: "reference-level",
+            value: decibels(reference),
+            unit: "dBFS",
+        });
+        for (harmonic, wheel) in HARMONICS {
+            let frequency = f64::from(
+                gear_frequency(wheel).ok_or_else(|| "missing pedal harmonic wheel".to_owned())?,
+            );
+            let amplitude = spectral_amplitude(&samples, frequency);
+            let relative = decibels(amplitude / reference);
+            let metric = match harmonic {
+                1 => "harmonic-1",
+                2 => "harmonic-2",
+                3 => "harmonic-3",
+                4 => "harmonic-4",
+                6 => "harmonic-6",
+                8 => "harmonic-8",
+                10 => "harmonic-10",
+                12 => "harmonic-12",
+                _ => unreachable!(),
+            };
+            measurements.push(Measurement {
+                probe: name,
+                metric,
+                value: relative,
+                unit: "dBc",
+            });
+            writeln!(
+                &mut spectrum,
+                "{name},{harmonic},{},{frequency:.9},{:.9},{relative:.9}",
+                wheel + 1,
+                decibels(amplitude)
+            )
+            .expect("string write cannot fail");
+        }
+    }
+
+    let release = render_pedal_release()?;
+    let total_energy = release.iter().map(|sample| sample * sample).sum::<f64>();
+    if total_energy <= 1.0e-30 {
+        return Err("pedal release probe produced no filter tail".to_owned());
+    }
+    let mut accumulated = 0.0;
+    let release_t999 = release
+        .iter()
+        .enumerate()
+        .find_map(|(index, sample)| {
+            accumulated += sample * sample;
+            (accumulated >= total_energy * 0.999).then_some(index as f64 / SAMPLE_RATE as f64)
+        })
+        .ok_or_else(|| "pedal release energy did not converge".to_owned())?;
+    measurements.push(Measurement {
+        probe: "pedal-16ft",
+        metric: "key-off-energy-t99.9",
+        value: release_t999,
+        unit: "s",
+    });
+    let mut release_csv = String::from("time_seconds,amplitude\n");
+    for (index, sample) in release.iter().copied().enumerate() {
+        writeln!(
+            &mut release_csv,
+            "{:.9},{sample:.9}",
+            index as f64 / SAMPLE_RATE as f64
+        )
+        .expect("string write cannot fail");
+    }
+    Ok((measurements, spectrum, release_csv))
+}
+
+fn render_pedal(drawbars: [u8; 2]) -> Result<Vec<f64>, String> {
+    let mut engine = clean_engine()?;
+    for (index, position) in drawbars.into_iter().enumerate() {
+        assert!(engine.set_manual_drawbar(OrganPart::Pedal, index, position));
+    }
+    assert!(engine.note_on_part(OrganPart::Pedal, 24, 1.0));
+    let mut samples = Vec::with_capacity(SAMPLE_RATE);
+    for frame in 0..SAMPLE_RATE * 3 / 2 {
+        let sample = f64::from(engine.next_sample()[0]);
+        if frame >= SAMPLE_RATE / 2 {
+            samples.push(sample);
+        }
+    }
+    Ok(samples)
+}
+
+fn render_pedal_release() -> Result<Vec<f64>, String> {
+    let mut engine = clean_engine()?;
+    assert!(engine.set_manual_drawbar(OrganPart::Pedal, 0, 8));
+    assert!(engine.note_on_part(OrganPart::Pedal, 24, 1.0));
+    for _ in 0..SAMPLE_RATE {
+        engine.next_sample();
+    }
+    assert!(engine.note_off_part(OrganPart::Pedal, 24, 1.0));
+    Ok((0..SAMPLE_RATE / 10)
+        .map(|_| f64::from(engine.next_sample()[0]))
+        .collect())
 }
 
 fn tonewheel_probe() -> Result<Vec<Measurement>, String> {
@@ -365,6 +493,9 @@ fn clean_engine() -> Result<OrganEngine, String> {
             assert!(engine.set_manual_drawbar(part, drawbar, 0));
         }
     }
+    for drawbar in 0..2 {
+        assert!(engine.set_manual_drawbar(OrganPart::Pedal, drawbar, 0));
+    }
     assert!(engine.set_contact_spread(0.0));
     assert!(engine.set_contact_bounce(0.0));
     assert!(engine.set_leakage(0.0));
@@ -503,6 +634,23 @@ mod tests {
         let slow = measurements[1].value;
         assert!((0.2..0.4).contains(&fast), "fast T60 was {fast}");
         assert!((1.0..1.5).contains(&slow), "slow T60 was {slow}");
+    }
+
+    #[test]
+    fn pedal_probe_separates_the_two_resistor_mixtures() {
+        let (measurements, spectrum, release) = with_analysis_stack(|| pedal_probe().unwrap());
+        let metric = |probe, name| {
+            measurements
+                .iter()
+                .find(|measurement| measurement.probe == probe && measurement.metric == name)
+                .unwrap()
+                .value
+        };
+        assert!(metric("pedal-16ft", "harmonic-1").abs() < 0.01);
+        assert!(metric("pedal-8ft", "harmonic-2").abs() < 0.01);
+        assert!(metric("pedal-16ft", "key-off-energy-t99.9") < 0.1);
+        assert_eq!(spectrum.lines().count(), 17);
+        assert_eq!(release.lines().count(), SAMPLE_RATE / 10 + 1);
     }
 
     #[test]

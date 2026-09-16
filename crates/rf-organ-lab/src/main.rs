@@ -107,6 +107,14 @@ fn render_suite(destination: &Path) -> Result<(), Box<dyn Error>> {
         destination.join("leslie-rotor-response.csv"),
         analysis.leslie_rotor_response,
     )?;
+    fs::write(
+        destination.join("pedal-spectrum.csv"),
+        analysis.pedal_spectrum,
+    )?;
+    fs::write(
+        destination.join("pedal-release.csv"),
+        analysis.pedal_release,
+    )?;
     println!("RF_ORGAN_LAB_RENDERED path={}", destination.display());
     Ok(())
 }
@@ -119,16 +127,22 @@ enum Scenario {
     Chorale,
     Tremolo,
     FullConsole,
+    Pedal16,
+    Pedal8,
+    PedalBoth,
 }
 
 impl Scenario {
-    const ALL: [Self; 6] = [
+    const ALL: [Self; 9] = [
         Self::Direct,
         Self::Percussion,
         Self::Scanner,
         Self::Chorale,
         Self::Tremolo,
         Self::FullConsole,
+        Self::Pedal16,
+        Self::Pedal8,
+        Self::PedalBoth,
     ];
 
     const fn id(self) -> &'static str {
@@ -139,7 +153,14 @@ impl Scenario {
             Self::Chorale => "04-leslie-chorale",
             Self::Tremolo => "05-leslie-tremolo",
             Self::FullConsole => "06-full-console",
+            Self::Pedal16 => "07-pedal-16ft",
+            Self::Pedal8 => "08-pedal-8ft",
+            Self::PedalBoth => "09-pedal-16ft-8ft",
         }
+    }
+
+    const fn is_pedal(self) -> bool {
+        matches!(self, Self::Pedal16 | Self::Pedal8 | Self::PedalBoth)
     }
 }
 
@@ -190,6 +211,17 @@ fn configure(engine: &mut OrganEngine, scenario: Scenario) {
             let _ = engine.set_manual_drawbar(OrganPart::Pedal, 0, 8);
             let _ = engine.set_manual_drawbar(OrganPart::Pedal, 1, 8);
         }
+        Scenario::Pedal16 | Scenario::Pedal8 | Scenario::PedalBoth => {
+            let registrations = match scenario {
+                Scenario::Pedal16 => [8, 0],
+                Scenario::Pedal8 => [0, 8],
+                Scenario::PedalBoth => [8, 8],
+                _ => unreachable!(),
+            };
+            for (index, position) in registrations.into_iter().enumerate() {
+                let _ = engine.set_manual_drawbar(OrganPart::Pedal, index, position);
+            }
+        }
     }
 }
 
@@ -198,8 +230,12 @@ fn phrase_events(engine: &mut OrganEngine, scenario: Scenario, frame: usize) {
     let on = quarter;
     let off = SAMPLE_RATE as usize * 3;
     if frame == on {
-        for note in [48, 55, 60, 64] {
-            let _ = engine.note_on_part(OrganPart::Upper, note, 0.86);
+        if scenario.is_pedal() {
+            let _ = engine.note_on_part(OrganPart::Pedal, 24, 1.0);
+        } else {
+            for note in [48, 55, 60, 64] {
+                let _ = engine.note_on_part(OrganPart::Upper, note, 0.86);
+            }
         }
         if matches!(scenario, Scenario::FullConsole) {
             for note in [48, 55, 60] {
@@ -241,7 +277,7 @@ fn frequency_table() -> String {
 
 fn manifest() -> String {
     format!(
-        "RF-Organ deterministic calibration suite\nversion={}\nsample_rate={}\nphrase_seconds={}\nnormalization=none\nformat=IEEE-float WAV stereo\nanalysis=frequency,level,percussion-envelope,scanner-sidebands,leslie-rotor-response\n",
+        "RF-Organ deterministic calibration suite\nversion={}\nsample_rate={}\nphrase_seconds={}\nnormalization=none\nformat=IEEE-float WAV stereo\nanalysis=frequency,level,pedal-spectrum,pedal-release,percussion-envelope,scanner-sidebands,leslie-rotor-response\n",
         env!("CARGO_PKG_VERSION"),
         SAMPLE_RATE,
         SECONDS
@@ -265,5 +301,14 @@ mod tests {
         for drawbar in 0..rf_organ_dsp::DRAWBAR_COUNT {
             assert!(engine.set_manual_drawbar(OrganPart::Upper, drawbar, 0));
         }
+    }
+
+    #[test]
+    fn pedal_reference_scenarios_have_stable_capture_names() {
+        assert_eq!(Scenario::Pedal16.id(), "07-pedal-16ft");
+        assert_eq!(Scenario::Pedal8.id(), "08-pedal-8ft");
+        assert_eq!(Scenario::PedalBoth.id(), "09-pedal-16ft-8ft");
+        assert!(Scenario::PedalBoth.is_pedal());
+        assert!(!Scenario::FullConsole.is_pedal());
     }
 }
