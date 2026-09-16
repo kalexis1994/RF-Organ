@@ -4,6 +4,9 @@
 
 - Hammond Organ Service Manual, early console models including B-3/C-3:
   https://medias.audiofanzine.com/files/hammond-service-manual-a-a-100-ba-bc-bcv-bv-b2-b3-c-cv-c2-c2-text-470145.pdf
+- Hammond New B-3/B-3 mk2 owner's documentation (used to distinguish later
+  digital pedal-sustain behavior from the electromechanical console):
+  https://www.hammond.eu/Support/OwnersManuals
 - Laurens Hammond, electrical musical instrument, US1956350A:
   https://patents.google.com/patent/US1956350A/en
 - Laurens Hammond and John M. Hanert, vibrato apparatus, US2560568A:
@@ -43,4 +46,3 @@
 
 Implementation provenance belongs in `THIRD_PARTY_NOTICES.md`. A paper or
 project appearing here does not imply that its source code is incorporated.
-

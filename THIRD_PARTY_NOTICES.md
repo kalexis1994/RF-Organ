@@ -36,3 +36,11 @@ the paper's WDF equations or third-party implementation code.
 
 See `docs/RESEARCH.md` for the Hammond service documentation, tonewheel,
 scanner-vibrato and Leslie papers that define the wider research baseline.
+
+## Hammond pedal-switch service documentation
+
+Version 0.9.0 translates the documented late-console 25-note pedal topology
+into an independent reduced Rust model: eight harmonic contacts, four busbars,
+and the 470/47/10-ohm and 20/5/5-ohm drawbar-mixing branches shown for B-3/C-3
+consoles. The L20 filter is presently represented by a provisional bounded
+one-pole pending component measurement.

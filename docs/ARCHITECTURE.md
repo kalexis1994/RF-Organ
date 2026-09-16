@@ -37,10 +37,12 @@ models. Higher-cost electromagnetic, circuit and measurement work will live in
 future analysis/laboratory crates and produce calibrated coefficients for the
 production engine.
 
-## Version 0.8.0 limitations
+## Version 0.9.0 limitations
 
-- Pedal keying and drawbar topology are present, but pedal sustain and console
-  matching-network constants remain provisional.
+- The classic B-3 pedal contact and resistor-panel topology is present. The
+  L20 pedal-filter coefficient and console matching-network constants remain
+  provisional; musical pedal sustain is intentionally absent because it is a
+  feature of later digital Hammond instruments, not the electromechanical B-3.
 - Scanner and percussion topology are implemented, but their electrical
   constants are not yet calibrated against a reference console.
 - Contact bounce, matching-transformer, console preamplifier and Leslie

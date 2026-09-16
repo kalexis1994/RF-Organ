@@ -196,11 +196,15 @@ impl OrganEngine {
     }
 
     pub fn set_contact_spread(&mut self, value: f32) -> bool {
-        self.upper.set_contact_spread(value) && self.lower.set_contact_spread(value)
+        self.upper.set_contact_spread(value)
+            && self.lower.set_contact_spread(value)
+            && self.pedals.set_contact_spread(value)
     }
 
     pub fn set_contact_bounce(&mut self, value: f32) -> bool {
-        self.upper.set_contact_bounce(value) && self.lower.set_contact_bounce(value)
+        self.upper.set_contact_bounce(value)
+            && self.lower.set_contact_bounce(value)
+            && self.pedals.set_contact_bounce(value)
     }
 
     pub fn set_leakage(&mut self, value: f32) -> bool {
@@ -275,7 +279,7 @@ impl OrganEngine {
         self.tonewheels.tick();
         self.upper.tick_contacts();
         self.lower.tick_contacts();
-        self.pedals.tick();
+        self.pedals.tick_contacts();
         let wheels = self.tonewheels.samples();
         let upper = self
             .upper
