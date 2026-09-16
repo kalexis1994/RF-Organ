@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-use crate::client::{Client, PROTOCOL};
+use crate::client::{Client, PROTOCOL, host_lighting};
 use js_sys::{JSON, Object};
 use serde_json::{Value, json};
 use std::{cell::RefCell, rc::Rc};
@@ -256,11 +256,29 @@ pub fn start() -> Result<(), JsValue> {
             Some("context") if message["instance"]["plugin_id"] == PLUGIN_ID => {
                 app.connected = true;
                 app.client.context(&message["instance"]);
+                if let Some(lighting) = host_lighting(&message) {
+                    let _ = app
+                        .document
+                        .document_element()
+                        .expect("document root")
+                        .set_attribute("data-lighting", lighting);
+                }
                 app.pump(true);
             }
             Some("response") => {
                 app.client.response(&message);
                 app.pump(false);
+            }
+            Some("parameter_changed") => {
+                let index = message["parameter_index"]
+                    .as_u64()
+                    .and_then(|index| usize::try_from(index).ok());
+                let value = message["value"].as_f64();
+                if let (Some(index), Some(value)) = (index, value)
+                    && app.client.parameter_changed(index, value)
+                {
+                    app.render();
+                }
             }
             _ => {}
         }

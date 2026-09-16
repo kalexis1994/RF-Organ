@@ -67,6 +67,14 @@ pub fn valid(index: usize, value: f64) -> bool {
         }
 }
 
+pub fn host_lighting(context: &Value) -> Option<&'static str> {
+    match context["host"]["lighting"].as_str() {
+        Some("day") => Some("day"),
+        Some("stage") => Some("stage"),
+        _ => None,
+    }
+}
+
 impl Client {
     pub fn context(&mut self, instance: &Value) {
         self.sounds = instance["sounds"]
@@ -102,6 +110,14 @@ impl Client {
             self.loaded = false;
             self.status = "Loading program…".into();
         }
+    }
+
+    pub fn parameter_changed(&mut self, index: usize, value: f64) -> bool {
+        if !valid(index, value) {
+            return false;
+        }
+        self.values[index] = value;
+        true
     }
 
     pub fn next(&mut self, now: f64, poll: bool) -> Option<Value> {
@@ -284,6 +300,32 @@ mod tests {
             client.next(1.0, false).unwrap()["method"],
             "plugin.select_sound"
         );
+    }
+
+    #[test]
+    fn host_updates_do_not_hide_a_local_write_in_flight() {
+        let mut client = Client::default();
+        connect(&mut client);
+        client.queue(2, 6.0);
+        let request = client.next(1.0, false).unwrap();
+        assert!(client.parameter_changed(2, 4.0));
+        assert_eq!(client.display(2), 6.0);
+        client.response(&reply(&request, json!({"value": 6.0})));
+        assert_eq!(client.display(2), 6.0);
+        assert!(!client.parameter_changed(2, 6.5));
+    }
+
+    #[test]
+    fn context_accepts_only_the_two_host_lighting_modes() {
+        assert_eq!(
+            host_lighting(&json!({"host": {"lighting": "day"}})),
+            Some("day")
+        );
+        assert_eq!(
+            host_lighting(&json!({"host": {"lighting": "stage"}})),
+            Some("stage")
+        );
+        assert_eq!(host_lighting(&json!({"host": {"lighting": "auto"}})), None);
     }
 
     #[test]
