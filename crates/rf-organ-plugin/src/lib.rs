@@ -13,10 +13,11 @@ pub use settings::{PARAMETER_COUNT, Settings, presets};
 
 pub const MAX_FRAMES: u32 = 4096;
 pub const MAX_EVENTS: usize = 256;
-pub const STATE_VERSION: u32 = 4;
+pub const STATE_VERSION: u32 = 5;
 pub const STATE_BYTES_V1: usize = 8 + 19 * 8;
 pub const STATE_BYTES_V2: usize = 8 + 24 * 8;
 pub const STATE_BYTES_V3: usize = 8 + 37 * 8;
+pub const STATE_BYTES_V4: usize = 8 + 41 * 8;
 pub const STATE_BYTES: usize = 8 + PARAMETER_COUNT * 8;
 
 #[derive(Default)]
@@ -185,7 +186,14 @@ impl Processor for RfOrganProcessor {
     }
 
     fn load_state(&mut self, state: &[u8]) -> bool {
-        if ![STATE_BYTES_V1, STATE_BYTES_V2, STATE_BYTES_V3, STATE_BYTES].contains(&state.len())
+        if ![
+            STATE_BYTES_V1,
+            STATE_BYTES_V2,
+            STATE_BYTES_V3,
+            STATE_BYTES_V4,
+            STATE_BYTES,
+        ]
+        .contains(&state.len())
             || &state[..4] != b"RFOR"
         {
             return false;
@@ -195,6 +203,7 @@ impl Processor for RfOrganProcessor {
             (1, STATE_BYTES_V1) => 19,
             (2, STATE_BYTES_V2) => 24,
             (3, STATE_BYTES_V3) => 37,
+            (4, STATE_BYTES_V4) => 41,
             (STATE_VERSION, STATE_BYTES) => PARAMETER_COUNT,
             _ => return false,
         };
@@ -383,6 +392,12 @@ mod tests {
         version_three.copy_from_slice(&current[..STATE_BYTES_V3]);
         version_three[4..8].copy_from_slice(&3_u32.to_le_bytes());
         assert!(restored.load_state(&version_three));
+        assert_eq!(restored.settings, Settings::default());
+
+        let mut version_four = [0_u8; STATE_BYTES_V4];
+        version_four.copy_from_slice(&current[..STATE_BYTES_V4]);
+        version_four[4..8].copy_from_slice(&4_u32.to_le_bytes());
+        assert!(restored.load_state(&version_four));
         assert_eq!(restored.settings, Settings::default());
     }
 

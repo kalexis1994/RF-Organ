@@ -460,6 +460,46 @@
       "kind": { "type": "float", "minimum": 0.0, "maximum": 1.0, "default": 0.55, "step": 0.001 },
       "flags": { "automatable": true, "advanced": true },
       "suggested_control": "knob"
+    },
+    {
+      "index": 41,
+      "id": "leslie-mic-distance",
+      "name": "Mic Distance",
+      "page": "leslie",
+      "order": 3,
+      "kind": { "type": "float", "minimum": 0.0, "maximum": 1.0, "default": 0.35, "step": 0.001 },
+      "flags": { "automatable": true },
+      "suggested_control": "knob"
+    },
+    {
+      "index": 42,
+      "id": "leslie-stereo-width",
+      "name": "Stereo Width",
+      "page": "leslie",
+      "order": 4,
+      "kind": { "type": "float", "minimum": 0.0, "maximum": 1.0, "default": 0.75, "step": 0.001 },
+      "flags": { "automatable": true },
+      "suggested_control": "knob"
+    },
+    {
+      "index": 43,
+      "id": "leslie-reflections",
+      "name": "Cabinet Reflections",
+      "page": "leslie",
+      "order": 5,
+      "kind": { "type": "float", "minimum": 0.0, "maximum": 1.0, "default": 0.22, "step": 0.001 },
+      "flags": { "automatable": true },
+      "suggested_control": "knob"
+    },
+    {
+      "index": 44,
+      "id": "leslie-horn-drum-balance",
+      "name": "Horn / Drum Balance",
+      "page": "leslie",
+      "order": 6,
+      "kind": { "type": "float", "minimum": -1.0, "maximum": 1.0, "default": 0.0, "step": 0.001 },
+      "flags": { "automatable": true },
+      "suggested_control": "knob"
     }
   ],
   "semantic_controls": [

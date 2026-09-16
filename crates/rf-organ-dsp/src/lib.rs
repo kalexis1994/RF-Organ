@@ -262,6 +262,17 @@ impl OrganEngine {
         self.leslie.set_acceleration(value)
     }
 
+    pub fn set_leslie_cabinet(
+        &mut self,
+        mic_distance: f32,
+        stereo_width: f32,
+        reflections: f32,
+        horn_drum_balance: f32,
+    ) -> bool {
+        self.leslie
+            .set_cabinet(mic_distance, stereo_width, reflections, horn_drum_balance)
+    }
+
     pub fn next_sample(&mut self) -> [f32; 2] {
         self.tonewheels.tick();
         self.upper.tick_contacts();

@@ -4,7 +4,7 @@ use rf_organ_dsp::{
     PercussionHarmonic, PercussionVolume, ScannerMode,
 };
 
-pub const PARAMETER_COUNT: usize = 41;
+pub const PARAMETER_COUNT: usize = 45;
 pub const DRAWBAR_FIRST: u32 = 2;
 pub const DRAWBAR_LAST: u32 = DRAWBAR_FIRST + DRAWBAR_COUNT as u32 - 1;
 pub const LOWER_DRAWBAR_FIRST: u32 = 24;
@@ -38,6 +38,10 @@ pub struct Settings {
     pub console_bass: f64,
     pub console_treble: f64,
     pub expression_character: f64,
+    pub leslie_mic_distance: f64,
+    pub leslie_stereo_width: f64,
+    pub leslie_reflections: f64,
+    pub leslie_horn_drum_balance: f64,
 }
 
 impl Default for Settings {
@@ -67,6 +71,10 @@ impl Default for Settings {
             console_bass: 0.0,
             console_treble: 0.0,
             expression_character: 0.55,
+            leslie_mic_distance: 0.35,
+            leslie_stereo_width: 0.75,
+            leslie_reflections: 0.22,
+            leslie_horn_drum_balance: 0.0,
         }
     }
 }
@@ -89,6 +97,10 @@ impl Settings {
             && bipolar(self.console_bass)
             && bipolar(self.console_treble)
             && unit(self.expression_character)
+            && unit(self.leslie_mic_distance)
+            && unit(self.leslie_stereo_width)
+            && unit(self.leslie_reflections)
+            && bipolar(self.leslie_horn_drum_balance)
     }
 
     pub fn parameter(self, index: u32) -> Option<f64> {
@@ -129,6 +141,10 @@ impl Settings {
             38 => self.console_bass,
             39 => self.console_treble,
             40 => self.expression_character,
+            41 => self.leslie_mic_distance,
+            42 => self.leslie_stereo_width,
+            43 => self.leslie_reflections,
+            44 => self.leslie_horn_drum_balance,
             _ => return None,
         })
     }
@@ -184,6 +200,10 @@ impl Settings {
             38 => self.console_bass = value,
             39 => self.console_treble = value,
             40 => self.expression_character = value,
+            41 => self.leslie_mic_distance = value,
+            42 => self.leslie_stereo_width = value,
+            43 => self.leslie_reflections = value,
+            44 => self.leslie_horn_drum_balance = value,
             _ => return None,
         }
         self.valid().then_some(self)
@@ -218,6 +238,12 @@ impl Settings {
         engine.set_leslie_mode(self.leslie_mode);
         let _ = engine.set_leslie_mix(self.leslie_mix as f32);
         let _ = engine.set_leslie_acceleration(self.leslie_acceleration as f32);
+        let _ = engine.set_leslie_cabinet(
+            self.leslie_mic_distance as f32,
+            self.leslie_stereo_width as f32,
+            self.leslie_reflections as f32,
+            self.leslie_horn_drum_balance as f32,
+        );
         engine.set_scanner_mode(self.scanner_mode);
         engine.set_scanner_manuals(self.upper_scanner, self.lower_scanner);
         engine.set_percussion_enabled(self.percussion_enabled);
@@ -244,6 +270,8 @@ pub fn presets() -> [(&'static str, &'static str, &'static str, Settings); 4] {
                 leslie_mode: LeslieMode::Chorale,
                 scanner_mode: ScannerMode::Chorus3,
                 upper_scanner: true,
+                leslie_mic_distance: 0.5,
+                leslie_stereo_width: 0.68,
                 ..straight
             },
         ),
@@ -260,6 +288,10 @@ pub fn presets() -> [(&'static str, &'static str, &'static str, Settings); 4] {
                 percussion_harmonic: PercussionHarmonic::Third,
                 percussion_volume: PercussionVolume::Normal,
                 percussion_decay: PercussionDecay::Fast,
+                leslie_mic_distance: 0.2,
+                leslie_stereo_width: 0.9,
+                leslie_reflections: 0.16,
+                leslie_horn_drum_balance: 0.12,
                 ..straight
             },
         ),
@@ -280,6 +312,10 @@ pub fn presets() -> [(&'static str, &'static str, &'static str, Settings); 4] {
                 pedal_drawbars: [8, 8],
                 upper_scanner: true,
                 lower_scanner: true,
+                leslie_mic_distance: 0.42,
+                leslie_stereo_width: 0.78,
+                leslie_reflections: 0.3,
+                leslie_horn_drum_balance: -0.08,
                 ..straight
             },
         ),

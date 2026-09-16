@@ -103,6 +103,14 @@ pub struct Leslie {
     drum: Rotor,
     horn_delay: DelayLine,
     drum_delay: DelayLine,
+    cabinet_left: DelayLine,
+    cabinet_right: DelayLine,
+    horn_tone_left: f32,
+    horn_tone_right: f32,
+    mic_distance: f32,
+    stereo_width: f32,
+    reflections: f32,
+    horn_drum_balance: f32,
 }
 
 impl Leslie {
@@ -118,6 +126,14 @@ impl Leslie {
             drum: Rotor::new(-1.0),
             horn_delay: DelayLine::new(),
             drum_delay: DelayLine::new(),
+            cabinet_left: DelayLine::new(),
+            cabinet_right: DelayLine::new(),
+            horn_tone_left: 0.0,
+            horn_tone_right: 0.0,
+            mic_distance: 0.35,
+            stereo_width: 0.75,
+            reflections: 0.22,
+            horn_drum_balance: 0.0,
         }
     }
 
@@ -150,6 +166,27 @@ impl Leslie {
         true
     }
 
+    pub fn set_cabinet(
+        &mut self,
+        mic_distance: f32,
+        stereo_width: f32,
+        reflections: f32,
+        horn_drum_balance: f32,
+    ) -> bool {
+        if !unit(mic_distance)
+            || !unit(stereo_width)
+            || !unit(reflections)
+            || !bipolar(horn_drum_balance)
+        {
+            return false;
+        }
+        self.mic_distance = mic_distance;
+        self.stereo_width = stereo_width;
+        self.reflections = reflections;
+        self.horn_drum_balance = horn_drum_balance;
+        true
+    }
+
     pub fn process(&mut self, input: f32) -> [f32; 2] {
         self.low_state += self.crossover * (input - self.low_state);
         let low = self.low_state;
@@ -160,14 +197,14 @@ impl Leslie {
         self.horn.advance(self.sample_rate);
         self.drum.advance(self.sample_rate);
 
-        let horn_base = self.sample_rate * 0.0014;
-        let horn_depth = self.sample_rate * 0.00032;
-        let drum_base = self.sample_rate * 0.0020;
-        let drum_depth = self.sample_rate * 0.00011;
-        let horn_left = self
+        let horn_base = self.sample_rate * (0.00075 + 0.0015 * self.mic_distance);
+        let horn_depth = self.sample_rate * 0.00042 * (1.0 - 0.55 * self.mic_distance);
+        let drum_base = self.sample_rate * (0.0011 + 0.0020 * self.mic_distance);
+        let drum_depth = self.sample_rate * 0.00017 * (1.0 - 0.5 * self.mic_distance);
+        let raw_horn_left = self
             .horn_delay
             .read(horn_base + horn_depth * self.horn.sine);
-        let horn_right = self
+        let raw_horn_right = self
             .horn_delay
             .read(horn_base - horn_depth * self.horn.sine);
         let drum_left = self
@@ -177,12 +214,50 @@ impl Leslie {
             .drum_delay
             .read(drum_base - drum_depth * self.drum.sine);
 
-        let horn_l_gain = 0.58 + 0.42 * self.horn.cosine;
-        let horn_r_gain = 0.58 - 0.42 * self.horn.cosine;
-        let drum_l_gain = 0.72 + 0.28 * self.drum.cosine;
-        let drum_r_gain = 0.72 - 0.28 * self.drum.cosine;
-        let wet_left = horn_left * horn_l_gain + drum_left * drum_l_gain;
-        let wet_right = horn_right * horn_r_gain + drum_right * drum_r_gain;
+        let horn_filter = one_pole(2_200.0, self.sample_rate);
+        self.horn_tone_left += horn_filter * (raw_horn_left - self.horn_tone_left);
+        self.horn_tone_right += horn_filter * (raw_horn_right - self.horn_tone_right);
+        let horn_high_left = raw_horn_left - self.horn_tone_left;
+        let horn_high_right = raw_horn_right - self.horn_tone_right;
+        let horn_facing_left = 0.5 + 0.5 * self.horn.cosine;
+        let horn_facing_right = 1.0 - horn_facing_left;
+        let horn_left = self.horn_tone_left * (0.55 + 0.35 * horn_facing_left)
+            + horn_high_left * (0.20 + 0.80 * horn_facing_left);
+        let horn_right = self.horn_tone_right * (0.55 + 0.35 * horn_facing_right)
+            + horn_high_right * (0.20 + 0.80 * horn_facing_right);
+
+        let drum_facing_left = 0.5 + 0.5 * self.drum.cosine;
+        let drum_facing_right = 1.0 - drum_facing_left;
+        let horn_gain = if self.horn_drum_balance < 0.0 {
+            1.0 + self.horn_drum_balance
+        } else {
+            1.0
+        };
+        let drum_gain = if self.horn_drum_balance > 0.0 {
+            1.0 - self.horn_drum_balance
+        } else {
+            1.0
+        };
+        let mut wet_left =
+            horn_gain * horn_left + drum_gain * drum_left * (0.66 + 0.34 * drum_facing_left);
+        let mut wet_right =
+            horn_gain * horn_right + drum_gain * drum_right * (0.66 + 0.34 * drum_facing_right);
+
+        let mid = 0.5 * (wet_left + wet_right);
+        let side = 0.5 * (wet_left - wet_right) * (0.35 + 1.3 * self.stereo_width);
+        wet_left = mid + side;
+        wet_right = mid - side;
+
+        self.cabinet_left.push(wet_left);
+        self.cabinet_right.push(wet_right);
+        let reflection_left = 0.42 * self.cabinet_left.read(self.sample_rate * 0.0037)
+            + 0.28 * self.cabinet_right.read(self.sample_rate * 0.0063)
+            - 0.18 * self.cabinet_left.read(self.sample_rate * 0.0109);
+        let reflection_right = 0.42 * self.cabinet_right.read(self.sample_rate * 0.0041)
+            + 0.28 * self.cabinet_left.read(self.sample_rate * 0.0069)
+            - 0.18 * self.cabinet_right.read(self.sample_rate * 0.0117);
+        wet_left += 0.65 * self.reflections * reflection_left;
+        wet_right += 0.65 * self.reflections * reflection_right;
         let wet = if self.mode == LeslieMode::Off {
             0.0
         } else {
@@ -198,6 +273,10 @@ impl Leslie {
         self.low_state = 0.0;
         self.horn_delay.clear();
         self.drum_delay.clear();
+        self.cabinet_left.clear();
+        self.cabinet_right.clear();
+        self.horn_tone_left = 0.0;
+        self.horn_tone_right = 0.0;
     }
 }
 
@@ -211,4 +290,49 @@ fn small_rotation(angle: f32) -> (f32, f32) {
 
 fn unit(value: f32) -> bool {
     value.is_finite() && (0.0..=1.0).contains(&value)
+}
+
+fn bipolar(value: f32) -> bool {
+    value.is_finite() && (-1.0..=1.0).contains(&value)
+}
+
+fn one_pole(frequency: f32, sample_rate: f32) -> f32 {
+    let normalized = TAU * frequency / sample_rate;
+    normalized / (1.0 + normalized)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn off_is_an_exact_bypass_while_rotors_keep_state() {
+        let mut leslie = Leslie::new(48_000.0);
+        for index in 0..1024 {
+            let input = index as f32 / 1024.0 - 0.5;
+            assert_eq!(leslie.process(input), [input, input]);
+        }
+    }
+
+    #[test]
+    fn cabinet_reflections_create_a_distinct_tail() {
+        let mut dry_cabinet = Leslie::new(48_000.0);
+        let mut live_cabinet = Leslie::new(48_000.0);
+        dry_cabinet.set_mode(LeslieMode::Brake);
+        live_cabinet.set_mode(LeslieMode::Brake);
+        assert!(dry_cabinet.set_mix(1.0));
+        assert!(live_cabinet.set_mix(1.0));
+        assert!(dry_cabinet.set_cabinet(0.35, 0.75, 0.0, 0.0));
+        assert!(live_cabinet.set_cabinet(0.35, 0.75, 1.0, 0.0));
+        let mut difference = 0.0;
+        for index in 0..2048 {
+            let input = if index == 0 { 1.0 } else { 0.0 };
+            let dry = dry_cabinet.process(input);
+            let live = live_cabinet.process(input);
+            if index > 256 {
+                difference += (dry[0] - live[0]).abs() + (dry[1] - live[1]).abs();
+            }
+        }
+        assert!(difference > 0.01);
+    }
 }

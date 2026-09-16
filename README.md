@@ -3,7 +3,7 @@
 RF-Organ is a physically informed tonewheel-organ instrument for RackForge.
 It is written in Rust and licensed under GPL-2.0-or-later.
 
-The current `0.4.0` baseline establishes the real-time architecture:
+The current `0.5.0` baseline establishes the real-time architecture:
 
 - one continuously rotating bank of 91 shared tonewheels;
 - 60 Hz gear-ratio tuning instead of ideal equal temperament;
@@ -15,7 +15,8 @@ The current `0.4.0` baseline establishes the real-time architecture:
 - a shared console preamplifier with swell-pedal slew and tonal response;
 - six scanner vibrato/chorus registrations driven by a 16-contact model;
 - single-trigger second/third-harmonic percussion with console-style switches;
-- an integrated Leslie module controlled by parameters, programs and MIDI.
+- an integrated Leslie with independent rotors, spectral directivity,
+  microphone geometry and early cabinet reflections.
 
 The sound constants are intentionally provisional. This first version is a
 testable scaffold for measurement and calibration, not a finished clone.
