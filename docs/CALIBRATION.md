@@ -16,6 +16,7 @@ The suite contains:
 - isolated low-C pedal captures for 16', 8' and both drawbars;
 - the integrated Leslie cabinet impulse response;
 - an end-to-end A4 frequency, RMS and peak probe;
+- expression gain at 80 Hz, 1 kHz and 8 kHz for five pedal positions;
 - fast and slow percussion envelope curves measured in 10 ms RMS windows;
 - 1 kHz scanner carrier and ±6.9 Hz sideband levels for V1–V3 and C1–C3;
 - horn and drum acceleration/braking curves sampled every 10 ms, including
@@ -37,6 +38,9 @@ tables retain the underlying curves:
   This end-to-end response includes the provisional L20 branch, matching
   transformer and console coupling network; it deliberately does not pretend
   that the measured tail belongs to one component in isolation.
+- `expression-response.csv` records the swell-section capacitance, provisional
+  low corner and gain at each probe frequency without drive or tone trim,
+  making the passive-network coefficients independently fit-able.
 
 These values describe the current model; they are regression baselines, not
 claims about a particular historical console. A coefficient becomes calibrated

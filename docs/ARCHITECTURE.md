@@ -43,7 +43,12 @@ The two magnetic states are independent, matching the documented T1 and T2
 paths. Percussion does not pass through either matching transformer or the
 scanner; it joins the non-vibrato and scanner-return channels at the V4A sum.
 
-## Version 0.10.0 limitations
+The console electronics place a reduced V4A stage before the capacitive swell
+network and a reduced V4B/output stage after it. The expression network exposes
+its section capacitance and low-frequency corner to the laboratory so future
+reference captures can replace provisional response coefficients.
+
+## Version 0.11.0 limitations
 
 - The classic B-3 pedal contact and resistor-panel topology is present. The
   L20 pedal-filter coefficient and console matching-network constants remain
@@ -51,7 +56,7 @@ scanner; it joins the non-vibrato and scanner-return channels at the V4A sum.
   feature of later digital Hammond instruments, not the electromechanical B-3.
 - Scanner and percussion routing follows the AO-28 schematic, but their
   electrical constants are not yet calibrated against a reference console.
-- Contact bounce, matching-transformer, console preamplifier and Leslie
-  constants are provisional.
+- Contact bounce, matching-transformer, console tube-stage, expression-network
+  and Leslie constants are provisional.
 - Leslie cabinet reflections and angle-dependent filters are present, but
   their coefficients are not yet fitted to multi-angle cabinet measurements.

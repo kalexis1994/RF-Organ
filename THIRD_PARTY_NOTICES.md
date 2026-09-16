@@ -54,3 +54,10 @@ percussion channel bypasses the matching transformers and scanner and joins
 the signal at the V4A summing stage. Component values and tube stages remain
 reduced models pending reference-console calibration; no service-manual
 artwork or third-party source code is embedded.
+
+Version 0.11.0 separates reduced pre- and post-expression nonlinear stages and
+uses the documented 60 pF-per-section expression control with R34's 15 MOhm
+value to expose a calibratable low-frequency corner. Low/mid/high attenuation
+remains a reduced model informed by Hammond's published description of
+expression as both volume and tonal control; it is not represented as a solved
+AO-28 circuit.

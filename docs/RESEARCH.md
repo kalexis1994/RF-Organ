@@ -10,6 +10,9 @@
 - Hammond XK-7/XK-7D owner's manual (manufacturer description of the AO-28,
   matching/output transformer hysteresis, expression and tone-control chain):
   https://hammondorganco.com/wp-content/uploads/2026/03/XK7DXK7-OEM-MANUAL.pdf
+- Hammond XK-5 owner's playing guide (manufacturer expression-response model,
+  including independently retained low/high-frequency bands):
+  https://hammondorganco.com/wp-content/uploads/2022/09/XK-5-Owners-Playing-Guide-Release-3-1.pdf
 - Hammond New B-3/B-3 mk2 owner's documentation (used to distinguish later
   digital pedal-sustain behavior from the electromechanical console):
   https://www.hammond.eu/Support/OwnersManuals

@@ -2,6 +2,19 @@
 
 use core::f32::consts::TAU;
 
+const EXPRESSION_SECTION_CAPACITANCE_PF: f32 = 60.0;
+const EXPRESSION_GRID_RESISTANCE_OHM: f32 = 15_000_000.0;
+const EXPRESSION_LOW_HZ: f32 =
+    1.0 / (TAU * EXPRESSION_GRID_RESISTANCE_OHM * EXPRESSION_SECTION_CAPACITANCE_PF * 1.0e-12);
+const EXPRESSION_HIGH_HZ: f32 = 4_000.0;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ConsoleElectronicsDiagnostics {
+    pub expression: f32,
+    pub section_capacitance_pf: f32,
+    pub low_corner_hz: f32,
+}
+
 /// Reduced console preamplifier and swell-pedal model. The topology is kept
 /// separate from the generator and rotary cabinet so measured coefficients can
 /// replace these provisional values without changing the instrument contract.
@@ -12,6 +25,8 @@ pub struct ConsoleElectronics {
     treble_trim: f32,
     expression_character: f32,
     expression_state: f32,
+    expression_low_state: f32,
+    expression_high_state: f32,
     bass_state: f32,
     treble_state: f32,
     dc_input: f32,
@@ -27,6 +42,8 @@ impl ConsoleElectronics {
             treble_trim: 0.0,
             expression_character: 0.55,
             expression_state: 1.0,
+            expression_low_state: 0.0,
+            expression_high_state: 0.0,
             bass_state: 0.0,
             treble_state: 0.0,
             dc_input: 0.0,
@@ -55,8 +72,6 @@ impl ConsoleElectronics {
     pub fn process(&mut self, input: f32, expression: f32) -> f32 {
         let expression_rate = 1.0 / (0.008 * self.sample_rate).max(1.0);
         self.expression_state += expression_rate * (expression - self.expression_state);
-        let expression_gain = self.expression_state
-            * (1.0 - self.expression_character * (1.0 - self.expression_state));
 
         let bass_coefficient = one_pole(310.0, self.sample_rate);
         let treble_coefficient = one_pole(2_450.0, self.sample_rate);
@@ -67,12 +82,35 @@ impl ConsoleElectronics {
         let treble_gain = trim_gain(self.treble_trim);
         let equalized = input + (bass_gain - 1.0) * self.bass_state + (treble_gain - 1.0) * high;
 
-        let driven = equalized * (1.0 + 7.0 * self.drive);
-        let bias = 0.08 * self.drive;
-        let biased = driven + bias;
-        let saturated = biased / (1.0 + biased.abs()) - bias / (1.0 + bias.abs());
-        let makeup = 1.0 / (1.0 + 3.2 * self.drive);
-        let amplified = (equalized * (1.0 - self.drive) + saturated * self.drive) * makeup;
+        // V4A drives the passive swell network. Keeping this stage before the
+        // pedal lets expression alter how strongly V4B and the output stage
+        // are driven, instead of applying a final digital volume multiplier.
+        let pre_expression = tube_stage(equalized, self.drive * 0.58, 0.08);
+
+        // Reduced three-band form of the capacitive expression network. The
+        // two expression-control sections use the documented 60 pF/section
+        // value and R34 (15 MOhm) sets a provisional low-band corner. The
+        // transfer between the moving and fixed plates, and the C17/C22/C24
+        // high shoulder, remain calibration targets.
+        let low_coefficient = one_pole(EXPRESSION_LOW_HZ, self.sample_rate);
+        let high_coefficient = one_pole(EXPRESSION_HIGH_HZ, self.sample_rate);
+        self.expression_low_state += low_coefficient * (pre_expression - self.expression_low_state);
+        self.expression_high_state +=
+            high_coefficient * (pre_expression - self.expression_high_state);
+        let low = self.expression_low_state;
+        let high = pre_expression - self.expression_high_state;
+        let mid = pre_expression - low - high;
+
+        let linear_gain = self.expression_state;
+        let mid_gain =
+            linear_gain * (1.0 - self.expression_character * (1.0 - self.expression_state));
+        let compensation = linear_gain - mid_gain;
+        let low_gain = mid_gain + 0.72 * compensation;
+        let high_gain = mid_gain + 0.48 * compensation;
+        let expressed = low * low_gain + mid * mid_gain + high * high_gain;
+
+        // V4B and the output stage follow the passive expression network.
+        let amplified = tube_stage(expressed, self.drive * 0.42, -0.05);
 
         // Coupling capacitors remove the small asymmetric-stage bias.
         let dc_coefficient = 1.0 - one_pole(18.0, self.sample_rate);
@@ -80,18 +118,35 @@ impl ConsoleElectronics {
         self.dc_input = amplified;
         self.dc_output = high_pass;
 
-        // The provisional swell network becomes slightly darker toward its
-        // heel position, while remaining exactly silent at expression zero.
-        high_pass * expression_gain * (0.78 + 0.22 * self.expression_state)
+        high_pass
+    }
+
+    pub fn diagnostics(&self) -> ConsoleElectronicsDiagnostics {
+        ConsoleElectronicsDiagnostics {
+            expression: self.expression_state,
+            section_capacitance_pf: EXPRESSION_SECTION_CAPACITANCE_PF,
+            low_corner_hz: EXPRESSION_LOW_HZ,
+        }
     }
 
     pub fn reset(&mut self, expression: f32) {
         self.expression_state = expression;
+        self.expression_low_state = 0.0;
+        self.expression_high_state = 0.0;
         self.bass_state = 0.0;
         self.treble_state = 0.0;
         self.dc_input = 0.0;
         self.dc_output = 0.0;
     }
+}
+
+fn tube_stage(input: f32, drive: f32, bias_scale: f32) -> f32 {
+    let driven = input * (1.0 + 7.0 * drive);
+    let bias = bias_scale * drive;
+    let biased = driven + bias;
+    let saturated = biased / (1.0 + biased.abs()) - bias / (1.0 + bias.abs());
+    let makeup = 1.0 / (1.0 + 3.2 * drive);
+    (input * (1.0 - drive) + saturated * drive) * makeup
 }
 
 fn one_pole(frequency: f32, sample_rate: f32) -> f32 {
@@ -140,5 +195,18 @@ mod tests {
         assert!(!electronics.set(1.1, 0.0, 0.0));
         assert!(!electronics.set(0.5, -1.1, 0.0));
         assert!(!electronics.set_expression_character(f32::NAN));
+    }
+
+    #[test]
+    fn documented_expression_section_sets_the_low_corner() {
+        let mut electronics = ConsoleElectronics::new(48_000.0);
+        electronics.reset(0.0);
+        let heel = electronics.diagnostics();
+        electronics.reset(1.0);
+        let toe = electronics.diagnostics();
+        assert_eq!(heel.section_capacitance_pf, 60.0);
+        assert_eq!(toe.section_capacitance_pf, 60.0);
+        assert_eq!(heel.low_corner_hz, toe.low_corner_hz);
+        assert!((170.0..180.0).contains(&heel.low_corner_hz));
     }
 }

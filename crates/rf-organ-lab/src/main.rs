@@ -130,6 +130,10 @@ fn render_suite(destination: &Path) -> Result<(), Box<dyn Error>> {
         destination.join("pedal-release.csv"),
         analysis.pedal_release,
     )?;
+    fs::write(
+        destination.join("expression-response.csv"),
+        analysis.expression_response,
+    )?;
     println!("RF_ORGAN_LAB_RENDERED path={}", destination.display());
     Ok(())
 }
@@ -292,7 +296,7 @@ fn frequency_table() -> String {
 
 fn manifest() -> String {
     format!(
-        "RF-Organ deterministic calibration suite\nversion={}\nsample_rate={}\nphrase_seconds={}\nnormalization=none\nformat=IEEE-float WAV stereo\nanalysis=frequency,level,pedal-spectrum,pedal-release,percussion-envelope,scanner-sidebands,leslie-rotor-response\n",
+        "RF-Organ deterministic calibration suite\nversion={}\nsample_rate={}\nphrase_seconds={}\nnormalization=none\nformat=IEEE-float WAV stereo\nanalysis=frequency,level,pedal-spectrum,pedal-release,expression-response,percussion-envelope,scanner-sidebands,leslie-rotor-response\n",
         env!("CARGO_PKG_VERSION"),
         SAMPLE_RATE,
         SECONDS

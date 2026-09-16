@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 use rf_organ_dsp::{
-    DRAWBAR_COUNT, Leslie, LeslieMode, MANUAL_FIRST_NOTE, OrganEngine, OrganPart, PercussionDecay,
-    PercussionHarmonic, PercussionVolume, ScannerMode, ScannerVibrato, drawbar_wheel,
-    gear_frequency,
+    ConsoleElectronics, DRAWBAR_COUNT, Leslie, LeslieMode, MANUAL_FIRST_NOTE, OrganEngine,
+    OrganPart, PercussionDecay, PercussionHarmonic, PercussionVolume, ScannerMode, ScannerVibrato,
+    drawbar_wheel, gear_frequency,
 };
 use std::f64::consts::TAU;
 use std::fmt::Write as _;
@@ -18,6 +18,7 @@ pub struct Artifacts {
     pub leslie_rotor_response: String,
     pub pedal_spectrum: String,
     pub pedal_release: String,
+    pub expression_response: String,
 }
 
 #[derive(Clone, Copy)]
@@ -41,6 +42,8 @@ pub fn analyze() -> Result<Artifacts, String> {
 fn analyze_inner() -> Result<Artifacts, String> {
     let mut measurements = Vec::new();
     measurements.extend(tonewheel_probe()?);
+    let (expression, expression_response) = expression_probe();
+    measurements.extend(expression);
     let (pedal, pedal_spectrum, pedal_release) = pedal_probe()?;
     measurements.extend(pedal);
     let (percussion, percussion_envelope) = percussion_probe()?;
@@ -56,7 +59,75 @@ fn analyze_inner() -> Result<Artifacts, String> {
         leslie_rotor_response,
         pedal_spectrum,
         pedal_release,
+        expression_response,
     })
+}
+
+fn expression_probe() -> (Vec<Measurement>, String) {
+    const POSITIONS: [(&str, f32); 5] = [
+        ("12.5", 0.125),
+        ("25", 0.25),
+        ("50", 0.5),
+        ("75", 0.75),
+        ("100", 1.0),
+    ];
+    const FREQUENCIES: [(&str, f64); 3] = [("low", 80.0), ("mid", 1_000.0), ("high", 8_000.0)];
+    let mut measurements = Vec::new();
+    let mut csv =
+        String::from("position,section_capacitance_pf,low_corner_hz,frequency_hz,gain_db\n");
+    for (position_name, position) in POSITIONS {
+        for (band, frequency) in FREQUENCIES {
+            let (gain_db, diagnostics) = expression_gain(position, frequency);
+            let probe = match position_name {
+                "12.5" => "expression-12.5",
+                "25" => "expression-25",
+                "50" => "expression-50",
+                "75" => "expression-75",
+                "100" => "expression-100",
+                _ => unreachable!(),
+            };
+            let metric = match band {
+                "low" => "low-gain",
+                "mid" => "mid-gain",
+                "high" => "high-gain",
+                _ => unreachable!(),
+            };
+            measurements.push(Measurement {
+                probe,
+                metric,
+                value: gain_db,
+                unit: "dB",
+            });
+            writeln!(
+                &mut csv,
+                "{position:.3},{:.6},{:.6},{frequency:.3},{gain_db:.6}",
+                diagnostics.section_capacitance_pf, diagnostics.low_corner_hz
+            )
+            .expect("string write cannot fail");
+        }
+    }
+    (measurements, csv)
+}
+
+fn expression_gain(
+    position: f32,
+    frequency: f64,
+) -> (f64, rf_organ_dsp::ConsoleElectronicsDiagnostics) {
+    const AMPLITUDE: f64 = 0.25;
+    const SETTLE: usize = SAMPLE_RATE / 4;
+    let mut electronics = ConsoleElectronics::new(SAMPLE_RATE as f32);
+    assert!(electronics.set(0.0, 0.0, 0.0));
+    assert!(electronics.set_expression_character(0.55));
+    let mut samples = Vec::with_capacity(SAMPLE_RATE);
+    for frame in 0..SETTLE + SAMPLE_RATE {
+        let input = (TAU * frequency * frame as f64 / SAMPLE_RATE as f64).sin() * AMPLITUDE;
+        let output = electronics.process(input as f32, position);
+        if frame >= SETTLE {
+            samples.push(f64::from(output));
+        }
+    }
+    let gain = spectral_amplitude(&samples, frequency) / AMPLITUDE;
+    (decibels(gain), electronics.diagnostics())
 }
 
 fn pedal_probe() -> Result<(Vec<Measurement>, String, String), String> {
@@ -675,5 +746,21 @@ mod tests {
                 .iter()
                 .all(|measurement| measurement.value.is_finite())
         );
+    }
+
+    #[test]
+    fn expression_probe_preserves_spectral_shoulders() {
+        let (measurements, csv) = with_analysis_stack(expression_probe);
+        let gain = |probe, metric| {
+            measurements
+                .iter()
+                .find(|measurement| measurement.probe == probe && measurement.metric == metric)
+                .unwrap()
+                .value
+        };
+        assert!(gain("expression-25", "low-gain") > gain("expression-25", "mid-gain"));
+        assert!(gain("expression-25", "high-gain") > gain("expression-25", "mid-gain"));
+        assert!(gain("expression-100", "mid-gain").abs() < 0.05);
+        assert_eq!(csv.lines().count(), 16);
     }
 }

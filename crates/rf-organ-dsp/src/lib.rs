@@ -15,7 +15,7 @@ mod scanner;
 mod tonewheel;
 mod transformer;
 
-pub use electronics::ConsoleElectronics;
+pub use electronics::{ConsoleElectronics, ConsoleElectronicsDiagnostics};
 pub use leslie::{Leslie, LeslieDiagnostics, LeslieMode};
 pub use manual::{DRAWBAR_COUNT, MANUAL_FIRST_NOTE, MANUAL_KEY_COUNT, drawbar_wheel};
 pub use pedal::{PEDAL_DRAWBAR_COUNT, PEDAL_FIRST_NOTE, PEDAL_KEY_COUNT};
