@@ -7,9 +7,9 @@ MIDI / automation
       |
 91 continuously rotating tonewheels
       |
-61 keys x 9 physical contacts
+upper + lower manuals and pedal contacts
       |
-drawbar buses + foldback + leakage
+independent drawbar buses + foldback + leakage
       |
 shared matching transformer
       |
@@ -39,10 +39,10 @@ models. Higher-cost electromagnetic, circuit and measurement work will live in
 future analysis/laboratory crates and produce calibrated coefficients for the
 production engine.
 
-## Version 0.2.0 limitations
+## Version 0.3.0 limitations
 
-- Upper manual only; lower manual and pedalboard are reserved for the next
-  structural milestone.
+- Pedal keying and drawbar topology are present, but pedal sustain and console
+  matching-network constants remain provisional.
 - Scanner and percussion topology are implemented, but their electrical
   constants are not yet calibrated against a reference console.
 - Contact bounce, matching-transformer and Leslie constants are provisional.

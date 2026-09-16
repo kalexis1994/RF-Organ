@@ -8,6 +8,7 @@
 
 mod leslie;
 mod manual;
+mod pedal;
 mod percussion;
 mod scanner;
 mod tonewheel;
@@ -15,12 +16,14 @@ mod transformer;
 
 pub use leslie::LeslieMode;
 pub use manual::{DRAWBAR_COUNT, MANUAL_FIRST_NOTE, MANUAL_KEY_COUNT, drawbar_wheel};
+pub use pedal::{PEDAL_DRAWBAR_COUNT, PEDAL_FIRST_NOTE, PEDAL_KEY_COUNT};
 pub use percussion::{PercussionDecay, PercussionHarmonic, PercussionVolume};
 pub use scanner::ScannerMode;
 pub use tonewheel::{TONEWHEEL_COUNT, gear_frequency};
 
 use leslie::Leslie;
 use manual::Manual;
+use pedal::Pedalboard;
 use percussion::Percussion;
 use scanner::ScannerVibrato;
 use tonewheel::TonewheelBank;
@@ -32,11 +35,20 @@ pub const SAMPLE_RATE_MAX: f32 = 192_000.0;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ModelError(pub &'static str);
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OrganPart {
+    Upper,
+    Lower,
+    Pedal,
+}
+
 /// One physical organ. Tonewheels and the matching transformer are shared;
 /// MIDI notes only operate the manual contacts.
 pub struct OrganEngine {
     tonewheels: TonewheelBank,
     upper: Manual,
+    lower: Manual,
+    pedals: Pedalboard,
     transformer: MatchingTransformer,
     scanner: ScannerVibrato,
     percussion: Percussion,
@@ -45,6 +57,8 @@ pub struct OrganEngine {
     expression: f32,
     leakage: f32,
     held_notes: u8,
+    upper_scanner: bool,
+    lower_scanner: bool,
 }
 
 impl OrganEngine {
@@ -57,6 +71,8 @@ impl OrganEngine {
         Ok(Self {
             tonewheels: TonewheelBank::new(sample_rate),
             upper: Manual::new(sample_rate),
+            lower: Manual::new(sample_rate),
+            pedals: Pedalboard::new(sample_rate),
             transformer: MatchingTransformer::new(sample_rate),
             scanner: ScannerVibrato::new(sample_rate),
             percussion: Percussion::new(sample_rate),
@@ -65,10 +81,22 @@ impl OrganEngine {
             expression: 1.0,
             leakage: 0.025,
             held_notes: 0,
+            upper_scanner: true,
+            lower_scanner: false,
         })
     }
 
     pub fn note_on(&mut self, note: u8, velocity: f32) -> bool {
+        self.note_on_part(OrganPart::Upper, note, velocity)
+    }
+
+    pub fn note_on_part(&mut self, part: OrganPart, note: u8, velocity: f32) -> bool {
+        if part == OrganPart::Lower {
+            return self.lower.note_on(note, velocity);
+        }
+        if part == OrganPart::Pedal {
+            return self.pedals.note_on(note, velocity);
+        }
         let Some(was_active) = self.upper.is_active(note) else {
             return false;
         };
@@ -85,6 +113,16 @@ impl OrganEngine {
     }
 
     pub fn note_off(&mut self, note: u8, velocity: f32) -> bool {
+        self.note_off_part(OrganPart::Upper, note, velocity)
+    }
+
+    pub fn note_off_part(&mut self, part: OrganPart, note: u8, velocity: f32) -> bool {
+        if part == OrganPart::Lower {
+            return self.lower.note_off(note, velocity);
+        }
+        if part == OrganPart::Pedal {
+            return self.pedals.note_off(note, velocity);
+        }
         let Some(was_active) = self.upper.is_active(note) else {
             return false;
         };
@@ -99,7 +137,20 @@ impl OrganEngine {
 
     pub fn all_notes_off(&mut self) {
         self.upper.reset();
+        self.lower.reset();
+        self.pedals.reset();
         self.held_notes = 0;
+    }
+
+    pub fn all_notes_off_part(&mut self, part: OrganPart) {
+        match part {
+            OrganPart::Upper => {
+                self.upper.reset();
+                self.held_notes = 0;
+            }
+            OrganPart::Lower => self.lower.reset(),
+            OrganPart::Pedal => self.pedals.reset(),
+        }
     }
 
     pub fn set_drawbar(&mut self, index: usize, position: u8) -> bool {
@@ -108,6 +159,22 @@ impl OrganEngine {
 
     pub fn drawbar(&self, index: usize) -> Option<u8> {
         self.upper.drawbar(index)
+    }
+
+    pub fn set_manual_drawbar(&mut self, part: OrganPart, index: usize, position: u8) -> bool {
+        match part {
+            OrganPart::Upper => self.upper.set_drawbar(index, position),
+            OrganPart::Lower => self.lower.set_drawbar(index, position),
+            OrganPart::Pedal => self.pedals.set_drawbar(index, position),
+        }
+    }
+
+    pub fn manual_drawbar(&self, part: OrganPart, index: usize) -> Option<u8> {
+        match part {
+            OrganPart::Upper => self.upper.drawbar(index),
+            OrganPart::Lower => self.lower.drawbar(index),
+            OrganPart::Pedal => self.pedals.drawbar(index),
+        }
     }
 
     pub fn set_output_level(&mut self, value: f32) -> bool {
@@ -127,11 +194,11 @@ impl OrganEngine {
     }
 
     pub fn set_contact_spread(&mut self, value: f32) -> bool {
-        self.upper.set_contact_spread(value)
+        self.upper.set_contact_spread(value) && self.lower.set_contact_spread(value)
     }
 
     pub fn set_contact_bounce(&mut self, value: f32) -> bool {
-        self.upper.set_contact_bounce(value)
+        self.upper.set_contact_bounce(value) && self.lower.set_contact_bounce(value)
     }
 
     pub fn set_leakage(&mut self, value: f32) -> bool {
@@ -148,6 +215,11 @@ impl OrganEngine {
 
     pub fn set_scanner_mode(&mut self, mode: ScannerMode) {
         self.scanner.set_mode(mode);
+    }
+
+    pub fn set_scanner_manuals(&mut self, upper: bool, lower: bool) {
+        self.upper_scanner = upper;
+        self.lower_scanner = lower;
     }
 
     pub fn set_percussion_enabled(&mut self, enabled: bool) {
@@ -181,10 +253,14 @@ impl OrganEngine {
     pub fn next_sample(&mut self) -> [f32; 2] {
         self.tonewheels.tick();
         self.upper.tick_contacts();
+        self.lower.tick_contacts();
+        self.pedals.tick();
         let wheels = self.tonewheels.samples();
-        let buses = self
+        let upper = self
             .upper
             .sample(wheels, self.leakage, self.percussion.enabled());
+        let lower = self.lower.sample(wheels, self.leakage, false);
+        let pedals = self.pedals.sample(wheels);
         let percussion_bus = match self.percussion.harmonic() {
             PercussionHarmonic::Second => 3,
             PercussionHarmonic::Third => 4,
@@ -192,8 +268,14 @@ impl OrganEngine {
         let percussion = self
             .percussion
             .process(self.upper.harmonic_sample(wheels, percussion_bus));
-        let transformed = self.transformer.process(buses + percussion);
-        let organ = self.scanner.process(transformed) * self.expression * self.output_level;
+        let upper = upper + percussion;
+        let scanner_input = if self.upper_scanner { upper } else { 0.0 }
+            + if self.lower_scanner { lower } else { 0.0 };
+        let direct = if self.upper_scanner { 0.0 } else { upper }
+            + if self.lower_scanner { 0.0 } else { lower }
+            + pedals;
+        let console = direct + self.scanner.process(scanner_input);
+        let organ = self.transformer.process(console) * self.expression * self.output_level;
         self.leslie.process(organ)
     }
 
@@ -201,6 +283,8 @@ impl OrganEngine {
     /// rotating generator.
     pub fn reset(&mut self) {
         self.upper.reset();
+        self.lower.reset();
+        self.pedals.reset();
         self.transformer.reset();
         self.scanner.reset();
         self.percussion.reset();
@@ -271,5 +355,21 @@ mod tests {
             energy += left * left + right * right;
         }
         assert!(energy > 0.001);
+    }
+
+    #[test]
+    fn lower_manual_and_pedals_share_the_generator() {
+        let mut engine = OrganEngine::new(48_000.0).expect("valid engine");
+        for drawbar in 0..DRAWBAR_COUNT {
+            assert!(engine.set_manual_drawbar(OrganPart::Upper, drawbar, 0));
+        }
+        assert!(engine.note_on_part(OrganPart::Lower, 60, 0.8));
+        assert!(engine.note_on_part(OrganPart::Pedal, 24, 1.0));
+        let mut energy = 0.0;
+        for _ in 0..4096 {
+            let [left, right] = engine.next_sample();
+            energy += left * left + right * right;
+        }
+        assert!(energy > 0.01);
     }
 }

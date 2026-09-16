@@ -1,12 +1,16 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 use rf_organ_dsp::{
-    DRAWBAR_COUNT, LeslieMode, OrganEngine, PercussionDecay, PercussionHarmonic, PercussionVolume,
-    ScannerMode,
+    DRAWBAR_COUNT, LeslieMode, OrganEngine, OrganPart, PEDAL_DRAWBAR_COUNT, PercussionDecay,
+    PercussionHarmonic, PercussionVolume, ScannerMode,
 };
 
-pub const PARAMETER_COUNT: usize = 24;
+pub const PARAMETER_COUNT: usize = 37;
 pub const DRAWBAR_FIRST: u32 = 2;
 pub const DRAWBAR_LAST: u32 = DRAWBAR_FIRST + DRAWBAR_COUNT as u32 - 1;
+pub const LOWER_DRAWBAR_FIRST: u32 = 24;
+pub const LOWER_DRAWBAR_LAST: u32 = LOWER_DRAWBAR_FIRST + DRAWBAR_COUNT as u32 - 1;
+pub const PEDAL_DRAWBAR_FIRST: u32 = 33;
+pub const PEDAL_DRAWBAR_LAST: u32 = PEDAL_DRAWBAR_FIRST + PEDAL_DRAWBAR_COUNT as u32 - 1;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Settings {
@@ -26,6 +30,10 @@ pub struct Settings {
     pub percussion_harmonic: PercussionHarmonic,
     pub percussion_volume: PercussionVolume,
     pub percussion_decay: PercussionDecay,
+    pub lower_drawbars: [u8; DRAWBAR_COUNT],
+    pub pedal_drawbars: [u8; PEDAL_DRAWBAR_COUNT],
+    pub upper_scanner: bool,
+    pub lower_scanner: bool,
 }
 
 impl Default for Settings {
@@ -47,6 +55,10 @@ impl Default for Settings {
             percussion_harmonic: PercussionHarmonic::Third,
             percussion_volume: PercussionVolume::Normal,
             percussion_decay: PercussionDecay::Fast,
+            lower_drawbars: [8, 8, 8, 0, 0, 0, 0, 0, 0],
+            pedal_drawbars: [8, 0],
+            upper_scanner: true,
+            lower_scanner: false,
         }
     }
 }
@@ -56,6 +68,8 @@ impl Settings {
         finite_range(self.output_level, 0.0, 1.5)
             && unit(self.expression)
             && self.drawbars.iter().all(|position| *position <= 8)
+            && self.lower_drawbars.iter().all(|position| *position <= 8)
+            && self.pedal_drawbars.iter().all(|position| *position <= 8)
             && unit(self.contact_spread)
             && unit(self.contact_bounce)
             && unit(self.leakage)
@@ -91,6 +105,14 @@ impl Settings {
             21 => f64::from(self.percussion_harmonic as u8),
             22 => f64::from(self.percussion_volume as u8),
             23 => f64::from(self.percussion_decay as u8),
+            LOWER_DRAWBAR_FIRST..=LOWER_DRAWBAR_LAST => {
+                f64::from(self.lower_drawbars[(index - LOWER_DRAWBAR_FIRST) as usize])
+            }
+            PEDAL_DRAWBAR_FIRST..=PEDAL_DRAWBAR_LAST => {
+                f64::from(self.pedal_drawbars[(index - PEDAL_DRAWBAR_FIRST) as usize])
+            }
+            35 => bool_value(self.upper_scanner),
+            36 => bool_value(self.lower_scanner),
             _ => return None,
         })
     }
@@ -130,6 +152,18 @@ impl Settings {
             23 if value.fract() == 0.0 => {
                 self.percussion_decay = PercussionDecay::from_index(value as u8)?;
             }
+            LOWER_DRAWBAR_FIRST..=LOWER_DRAWBAR_LAST
+                if value.fract() == 0.0 && (0.0..=8.0).contains(&value) =>
+            {
+                self.lower_drawbars[(index - LOWER_DRAWBAR_FIRST) as usize] = value as u8;
+            }
+            PEDAL_DRAWBAR_FIRST..=PEDAL_DRAWBAR_LAST
+                if value.fract() == 0.0 && (0.0..=8.0).contains(&value) =>
+            {
+                self.pedal_drawbars[(index - PEDAL_DRAWBAR_FIRST) as usize] = value as u8;
+            }
+            35 if value == 0.0 || value == 1.0 => self.upper_scanner = value == 1.0,
+            36 if value == 0.0 || value == 1.0 => self.lower_scanner = value == 1.0,
             _ => return None,
         }
         self.valid().then_some(self)
@@ -140,7 +174,13 @@ impl Settings {
         let _ = engine.set_output_level(self.output_level as f32);
         let _ = engine.set_expression(self.expression as f32);
         for (index, position) in self.drawbars.into_iter().enumerate() {
-            let _ = engine.set_drawbar(index, position);
+            let _ = engine.set_manual_drawbar(OrganPart::Upper, index, position);
+        }
+        for (index, position) in self.lower_drawbars.into_iter().enumerate() {
+            let _ = engine.set_manual_drawbar(OrganPart::Lower, index, position);
+        }
+        for (index, position) in self.pedal_drawbars.into_iter().enumerate() {
+            let _ = engine.set_manual_drawbar(OrganPart::Pedal, index, position);
         }
         let _ = engine.set_contact_spread(self.contact_spread as f32);
         let _ = engine.set_contact_bounce(self.contact_bounce as f32);
@@ -153,6 +193,7 @@ impl Settings {
         let _ = engine.set_leslie_mix(self.leslie_mix as f32);
         let _ = engine.set_leslie_acceleration(self.leslie_acceleration as f32);
         engine.set_scanner_mode(self.scanner_mode);
+        engine.set_scanner_manuals(self.upper_scanner, self.lower_scanner);
         engine.set_percussion_enabled(self.percussion_enabled);
         engine.set_percussion_harmonic(self.percussion_harmonic);
         engine.set_percussion_volume(self.percussion_volume);
@@ -176,6 +217,7 @@ pub fn presets() -> [(&'static str, &'static str, &'static str, Settings); 4] {
             Settings {
                 leslie_mode: LeslieMode::Chorale,
                 scanner_mode: ScannerMode::Chorus3,
+                upper_scanner: true,
                 ..straight
             },
         ),
@@ -204,6 +246,10 @@ pub fn presets() -> [(&'static str, &'static str, &'static str, Settings); 4] {
                 transformer_drive: 0.62,
                 leakage: 0.28,
                 scanner_mode: ScannerMode::Chorus3,
+                lower_drawbars: [8, 8, 8, 8, 6, 0, 0, 0, 0],
+                pedal_drawbars: [8, 8],
+                upper_scanner: true,
+                lower_scanner: true,
                 ..straight
             },
         ),
@@ -216,6 +262,10 @@ fn unit(value: f64) -> bool {
 
 fn finite_range(value: f64, minimum: f64, maximum: f64) -> bool {
     value.is_finite() && (minimum..=maximum).contains(&value)
+}
+
+fn bool_value(value: bool) -> f64 {
+    if value { 1.0 } else { 0.0 }
 }
 
 #[cfg(test)]

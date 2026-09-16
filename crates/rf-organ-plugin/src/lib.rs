@@ -8,13 +8,14 @@ use rackforge_plugin_sdk::{
     MIDI2_KIND_NOTE_OFF, MIDI2_KIND_NOTE_ON, MidiEvent, MidiEvent2, ParameterEvent, Processor,
     export_processor,
 };
-use rf_organ_dsp::{LeslieMode, OrganEngine};
+use rf_organ_dsp::{LeslieMode, OrganEngine, OrganPart};
 pub use settings::{PARAMETER_COUNT, Settings, presets};
 
 pub const MAX_FRAMES: u32 = 4096;
 pub const MAX_EVENTS: usize = 256;
-pub const STATE_VERSION: u32 = 2;
+pub const STATE_VERSION: u32 = 3;
 pub const STATE_BYTES_V1: usize = 8 + 19 * 8;
+pub const STATE_BYTES_V2: usize = 8 + 24 * 8;
 pub const STATE_BYTES: usize = 8 + PARAMETER_COUNT * 8;
 
 #[derive(Default)]
@@ -38,19 +39,21 @@ impl RfOrganProcessor {
     }
 
     fn midi1(&mut self, event: &MidiEvent) {
-        if event.data[0] & 0x0f != 0 {
-            return;
-        }
         let Some(engine) = &mut self.engine else {
             return;
         };
         let [status, index, value] = event.data;
+        let part = part_from_channel(status & 0x0f);
         match status & 0xf0 {
             0x90 if value != 0 => {
-                let _ = engine.note_on(index, f32::from(value) / 127.0);
+                if let Some(part) = part {
+                    let _ = engine.note_on_part(part, index, f32::from(value) / 127.0);
+                }
             }
             0x80 | 0x90 => {
-                let _ = engine.note_off(index, f32::from(value) / 127.0);
+                if let Some(part) = part {
+                    let _ = engine.note_off_part(part, index, f32::from(value) / 127.0);
+                }
             }
             0xb0 => match index {
                 1 => engine.set_leslie_mode(if value < 64 {
@@ -61,7 +64,11 @@ impl RfOrganProcessor {
                 11 => {
                     let _ = engine.set_expression(f32::from(value) / 127.0);
                 }
-                120 | 123 => engine.all_notes_off(),
+                120 | 123 => {
+                    if let Some(part) = part {
+                        engine.all_notes_off_part(part);
+                    }
+                }
                 _ => {}
             },
             _ => {}
@@ -69,12 +76,10 @@ impl RfOrganProcessor {
     }
 
     fn midi2(&mut self, event: &MidiEvent2) {
-        if event.channel != 0 {
-            return;
-        }
         let Some(engine) = &mut self.engine else {
             return;
         };
+        let part = part_from_channel(event.channel);
         match event.kind {
             MIDI2_KIND_NOTE_ON => {
                 let velocity = if event.flags & MIDI2_FLAG_ORIGIN_7BIT != 0 {
@@ -82,10 +87,18 @@ impl RfOrganProcessor {
                 } else {
                     event.value.max(1) as f32 / 65_535.0
                 };
-                let _ = engine.note_on(event.index, velocity);
+                if let Some(part) = part {
+                    let _ = engine.note_on_part(part, event.index, velocity);
+                }
             }
             MIDI2_KIND_NOTE_OFF => {
-                let _ = engine.note_off(event.index, event.value.min(65_535) as f32 / 65_535.0);
+                if let Some(part) = part {
+                    let _ = engine.note_off_part(
+                        part,
+                        event.index,
+                        event.value.min(65_535) as f32 / 65_535.0,
+                    );
+                }
             }
             MIDI2_KIND_CONTROL_CHANGE => {
                 let value = if event.flags & MIDI2_FLAG_ORIGIN_7BIT != 0 {
@@ -102,7 +115,11 @@ impl RfOrganProcessor {
                     11 => {
                         let _ = engine.set_expression(value);
                     }
-                    120 | 123 => engine.all_notes_off(),
+                    120 | 123 => {
+                        if let Some(part) = part {
+                            engine.all_notes_off_part(part);
+                        }
+                    }
                     _ => {}
                 }
             }
@@ -167,12 +184,15 @@ impl Processor for RfOrganProcessor {
     }
 
     fn load_state(&mut self, state: &[u8]) -> bool {
-        if ![STATE_BYTES_V1, STATE_BYTES].contains(&state.len()) || &state[..4] != b"RFOR" {
+        if ![STATE_BYTES_V1, STATE_BYTES_V2, STATE_BYTES].contains(&state.len())
+            || &state[..4] != b"RFOR"
+        {
             return false;
         }
         let version = u32::from_le_bytes(state[4..8].try_into().expect("validated state"));
         let fields = match (version, state.len()) {
             (1, STATE_BYTES_V1) => 19,
+            (2, STATE_BYTES_V2) => 24,
             (STATE_VERSION, STATE_BYTES) => PARAMETER_COUNT,
             _ => return false,
         };
@@ -309,6 +329,15 @@ fn valid_midi1(event: &MidiEvent) -> bool {
     !matches!(event.data[0] & 0xf0, 0x80 | 0x90 | 0xb0) || event.length == 3
 }
 
+fn part_from_channel(channel: u8) -> Option<OrganPart> {
+    match channel {
+        0 => Some(OrganPart::Upper),
+        1 => Some(OrganPart::Lower),
+        2 => Some(OrganPart::Pedal),
+        _ => None,
+    }
+}
+
 export_processor!(RfOrganProcessor,
     max_frames = 4096, max_input_channels = 0, max_output_channels = 2,
     max_midi_events = 256, max_parameter_events = 256, max_transfer_bytes = 1024,
@@ -331,7 +360,7 @@ mod tests {
     }
 
     #[test]
-    fn version_one_state_migrates_with_new_controls_at_defaults() {
+    fn legacy_states_migrate_with_new_controls_at_defaults() {
         let source = RfOrganProcessor::default();
         let mut current = [0_u8; STATE_BYTES];
         assert_eq!(source.save_state(&mut current), Some(STATE_BYTES));
@@ -340,6 +369,12 @@ mod tests {
         legacy[4..8].copy_from_slice(&1_u32.to_le_bytes());
         let mut restored = RfOrganProcessor::default();
         assert!(restored.load_state(&legacy));
+        assert_eq!(restored.settings, Settings::default());
+
+        let mut version_two = [0_u8; STATE_BYTES_V2];
+        version_two.copy_from_slice(&current[..STATE_BYTES_V2]);
+        version_two[4..8].copy_from_slice(&2_u32.to_le_bytes());
+        assert!(restored.load_state(&version_two));
         assert_eq!(restored.settings, Settings::default());
     }
 
@@ -365,5 +400,26 @@ mod tests {
         let mut output = [1.0_f32; 128];
         processor.process(&[], &mut output, &[], &[], 65, 0, 2);
         assert!(output.iter().all(|sample| *sample == 0.0));
+    }
+
+    #[test]
+    fn midi_channels_route_to_lower_manual_and_pedals() {
+        let mut processor = RfOrganProcessor::default();
+        assert!(processor.prepare(48_000.0, 256, 0, 2));
+        let midi = [
+            MidiEvent {
+                frame: 0,
+                data: [0x91, 60, 100],
+                length: 3,
+            },
+            MidiEvent {
+                frame: 0,
+                data: [0x92, 24, 127],
+                length: 3,
+            },
+        ];
+        let mut output = [0.0_f32; 512];
+        processor.process(&[], &mut output, &midi, &[], 256, 0, 2);
+        assert!(output.iter().any(|sample| sample.abs() > 1.0e-6));
     }
 }
