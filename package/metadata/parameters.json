@@ -1,0 +1,213 @@
+{
+  "schema_version": 2,
+  "pages": [
+    { "id": "organ", "name": "Organ", "order": 0 },
+    { "id": "generator", "name": "Generator", "order": 1 },
+    { "id": "leslie", "name": "Rotary Speaker", "order": 2 }
+  ],
+  "parameters": [
+    {
+      "index": 0,
+      "id": "output-level",
+      "name": "Output Level",
+      "page": "organ",
+      "order": 0,
+      "kind": { "type": "float", "minimum": 0.0, "maximum": 1.5, "default": 0.72, "step": 0.01, "unit": "x" },
+      "flags": { "automatable": true },
+      "suggested_control": "knob"
+    },
+    {
+      "index": 1,
+      "id": "expression",
+      "name": "Expression",
+      "page": "organ",
+      "order": 1,
+      "kind": { "type": "float", "minimum": 0.0, "maximum": 1.0, "default": 1.0, "step": 0.001 },
+      "flags": { "automatable": true, "modulatable": true },
+      "suggested_control": "knob"
+    },
+    {
+      "index": 2,
+      "id": "drawbar-16",
+      "name": "16'",
+      "page": "organ",
+      "order": 2,
+      "kind": { "type": "integer", "minimum": 0, "maximum": 8, "default": 8, "step": 1 },
+      "flags": { "automatable": true },
+      "suggested_control": "knob"
+    },
+    {
+      "index": 3,
+      "id": "drawbar-5-1-3",
+      "name": "5 1/3'",
+      "page": "organ",
+      "order": 3,
+      "kind": { "type": "integer", "minimum": 0, "maximum": 8, "default": 8, "step": 1 },
+      "flags": { "automatable": true },
+      "suggested_control": "knob"
+    },
+    {
+      "index": 4,
+      "id": "drawbar-8",
+      "name": "8'",
+      "page": "organ",
+      "order": 4,
+      "kind": { "type": "integer", "minimum": 0, "maximum": 8, "default": 8, "step": 1 },
+      "flags": { "automatable": true },
+      "suggested_control": "knob"
+    },
+    {
+      "index": 5,
+      "id": "drawbar-4",
+      "name": "4'",
+      "page": "organ",
+      "order": 5,
+      "kind": { "type": "integer", "minimum": 0, "maximum": 8, "default": 0, "step": 1 },
+      "flags": { "automatable": true },
+      "suggested_control": "knob"
+    },
+    {
+      "index": 6,
+      "id": "drawbar-2-2-3",
+      "name": "2 2/3'",
+      "page": "organ",
+      "order": 6,
+      "kind": { "type": "integer", "minimum": 0, "maximum": 8, "default": 0, "step": 1 },
+      "flags": { "automatable": true },
+      "suggested_control": "knob"
+    },
+    {
+      "index": 7,
+      "id": "drawbar-2",
+      "name": "2'",
+      "page": "organ",
+      "order": 7,
+      "kind": { "type": "integer", "minimum": 0, "maximum": 8, "default": 0, "step": 1 },
+      "flags": { "automatable": true },
+      "suggested_control": "knob"
+    },
+    {
+      "index": 8,
+      "id": "drawbar-1-3-5",
+      "name": "1 3/5'",
+      "page": "organ",
+      "order": 8,
+      "kind": { "type": "integer", "minimum": 0, "maximum": 8, "default": 0, "step": 1 },
+      "flags": { "automatable": true },
+      "suggested_control": "knob"
+    },
+    {
+      "index": 9,
+      "id": "drawbar-1-1-3",
+      "name": "1 1/3'",
+      "page": "organ",
+      "order": 9,
+      "kind": { "type": "integer", "minimum": 0, "maximum": 8, "default": 0, "step": 1 },
+      "flags": { "automatable": true },
+      "suggested_control": "knob"
+    },
+    {
+      "index": 10,
+      "id": "drawbar-1",
+      "name": "1'",
+      "page": "organ",
+      "order": 10,
+      "kind": { "type": "integer", "minimum": 0, "maximum": 8, "default": 0, "step": 1 },
+      "flags": { "automatable": true },
+      "suggested_control": "knob"
+    },
+    {
+      "index": 11,
+      "id": "contact-spread",
+      "name": "Contact Spread",
+      "page": "generator",
+      "order": 0,
+      "kind": { "type": "float", "minimum": 0.0, "maximum": 1.0, "default": 0.55, "step": 0.001 },
+      "flags": { "automatable": true },
+      "suggested_control": "knob"
+    },
+    {
+      "index": 12,
+      "id": "contact-bounce",
+      "name": "Contact Bounce",
+      "page": "generator",
+      "order": 1,
+      "kind": { "type": "float", "minimum": 0.0, "maximum": 1.0, "default": 0.45, "step": 0.001 },
+      "flags": { "automatable": true },
+      "suggested_control": "knob"
+    },
+    {
+      "index": 13,
+      "id": "leakage",
+      "name": "Generator Leakage",
+      "page": "generator",
+      "order": 2,
+      "kind": { "type": "float", "minimum": 0.0, "maximum": 1.0, "default": 0.2, "step": 0.001 },
+      "flags": { "automatable": true },
+      "suggested_control": "knob"
+    },
+    {
+      "index": 14,
+      "id": "transformer-drive",
+      "name": "Transformer Drive",
+      "page": "generator",
+      "order": 3,
+      "kind": { "type": "float", "minimum": 0.0, "maximum": 1.0, "default": 0.38, "step": 0.001 },
+      "flags": { "automatable": true },
+      "suggested_control": "knob"
+    },
+    {
+      "index": 15,
+      "id": "transformer-memory",
+      "name": "Transformer Memory",
+      "page": "generator",
+      "order": 4,
+      "kind": { "type": "float", "minimum": 0.0, "maximum": 1.0, "default": 0.32, "step": 0.001 },
+      "flags": { "automatable": true },
+      "suggested_control": "knob"
+    },
+    {
+      "index": 16,
+      "id": "leslie-mode",
+      "name": "Rotary Mode",
+      "page": "leslie",
+      "order": 0,
+      "kind": {
+        "type": "enum",
+        "default": 0,
+        "choices": [
+          { "value": 0, "name": "Off" },
+          { "value": 1, "name": "Brake" },
+          { "value": 2, "name": "Chorale" },
+          { "value": 3, "name": "Tremolo" }
+        ]
+      },
+      "flags": { "automatable": true },
+      "suggested_control": "list"
+    },
+    {
+      "index": 17,
+      "id": "leslie-mix",
+      "name": "Rotary Mix",
+      "page": "leslie",
+      "order": 1,
+      "kind": { "type": "float", "minimum": 0.0, "maximum": 1.0, "default": 0.82, "step": 0.001 },
+      "flags": { "automatable": true },
+      "suggested_control": "knob"
+    },
+    {
+      "index": 18,
+      "id": "leslie-acceleration",
+      "name": "Rotor Inertia",
+      "page": "leslie",
+      "order": 2,
+      "kind": { "type": "float", "minimum": 0.0, "maximum": 1.0, "default": 0.5, "step": 0.001 },
+      "flags": { "automatable": true },
+      "suggested_control": "knob"
+    }
+  ],
+  "semantic_controls": [
+    { "role": "plugin.output.level", "parameter_index": 0 },
+    { "role": "performance.expression", "parameter_index": 1 }
+  ]
+}
