@@ -66,5 +66,7 @@ The output includes scalar measurements, percussion envelopes, scanner
 sidebands, isolated pedal spectra and key-off response, and Leslie
 acceleration/braking curves alongside the audio renders.
 The comparator aligns reference captures without resampling or normalizing
-them, then reports level, crest, envelope and stereo differences.
+them, then reports level, crest, envelope and stereo differences. Isolated
+pedal captures additionally produce per-harmonic errors and provisional
+resistor-bus/L20 fitting candidates.
 See `docs/CALIBRATION.md` for the comparison and provenance protocol.

@@ -83,6 +83,19 @@ the original amplitudes. It reports:
 - correlation between 10 ms RMS envelopes;
 - model and reference mid/side stereo width and their delta.
 
+When isolated pedal captures are present, comparison also writes:
+
+- `pedal-spectrum-comparison.csv`, with model/reference dBc and error for all
+  eight physical harmonics;
+- `pedal-fit-candidates.csv`, with relative gain multipliers for each resistor
+  bus and a provisional L20 effective-cutoff starting point.
+
+Bus candidates are normalized to an unaffected anchor inside the same
+registration, so recording gain cancels out. They are fitting aids rather than
+replacement resistor values. The L20 candidate uses the noise-corrected
+end-to-end key-off response and must be reviewed jointly with the matching
+transformer and console coupling network.
+
 The three pedal captures use low C (MIDI 24), begin at 250 ms, release at
 3 seconds and leave all other drawbars closed. Files `07`, `08` and `09` select
 16' only, 8' only and both drawbars respectively. Match that protocol when

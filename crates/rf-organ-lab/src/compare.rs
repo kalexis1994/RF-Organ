@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 use crate::wav::{self, Audio};
+use rf_organ_dsp::gear_frequency;
 use std::collections::BTreeMap;
+use std::f64::consts::TAU;
 use std::fmt::Write as _;
 use std::fs;
 use std::path::Path;
@@ -19,6 +21,22 @@ const CAPTURES: [&str; 10] = [
     "09-pedal-16ft-8ft",
     "leslie-cabinet-impulse",
 ];
+const PEDAL_HARMONICS: [(usize, usize); 8] = [
+    (1, 0),
+    (2, 12),
+    (3, 19),
+    (4, 24),
+    (6, 31),
+    (8, 36),
+    (10, 40),
+    (12, 43),
+];
+
+pub struct Reports {
+    pub capture_comparison: String,
+    pub pedal_spectrum_comparison: String,
+    pub pedal_fit_candidates: String,
+}
 
 #[derive(Clone, Copy, Debug)]
 struct Comparison {
@@ -35,7 +53,7 @@ struct Comparison {
     stereo_width_delta_db: f64,
 }
 
-pub fn compare_directories(model: &Path, reference: &Path) -> Result<String, String> {
+pub fn compare_directories(model: &Path, reference: &Path) -> Result<Reports, String> {
     validate_reference_directory(reference)?;
     let mut report = String::from(
         "capture,common_seconds,reference_minus_model_onset_ms,model_rms_dbfs,reference_rms_dbfs,model_minus_reference_level_db,model_minus_reference_peak_db,model_minus_reference_crest_db,envelope_correlation,model_stereo_width_db,reference_stereo_width_db,model_minus_reference_stereo_width_db\n",
@@ -80,7 +98,203 @@ pub fn compare_directories(model: &Path, reference: &Path) -> Result<String, Str
             reference.display()
         ));
     }
-    Ok(report)
+    let (pedal_spectrum_comparison, pedal_fit_candidates) =
+        compare_pedal_captures(model, reference)?;
+    Ok(Reports {
+        capture_comparison: report,
+        pedal_spectrum_comparison,
+        pedal_fit_candidates,
+    })
+}
+
+fn compare_pedal_captures(model: &Path, reference: &Path) -> Result<(String, String), String> {
+    let registrations = [("07-pedal-16ft", 0, 3), ("08-pedal-8ft", 1, 2)];
+    let mut spectrum = String::from(
+        "capture,harmonic,wheel,frequency_hz,model_dbc,reference_dbc,reference_minus_model_db\n",
+    );
+    let mut fit = String::from(
+        "parameter,capture,bus,harmonics,documented_resistance_ohm,current_value,candidate_value,unit,reference_minus_model_db,qualification\n",
+    );
+    for (capture, reference_harmonic, anchor_bus) in registrations {
+        let reference_path = reference.join(format!("{capture}.wav"));
+        if !reference_path.is_file() {
+            continue;
+        }
+        let model_path = model.join(format!("{capture}.wav"));
+        if !model_path.is_file() {
+            return Err(format!(
+                "model capture is missing: {}",
+                model_path.display()
+            ));
+        }
+        let model_audio = read_audio(&model_path)?;
+        let reference_audio = read_audio(&reference_path)?;
+        let model_levels = pedal_spectrum(&model_audio, reference_harmonic)?;
+        let reference_levels = pedal_spectrum(&reference_audio, reference_harmonic)?;
+        for (index, (harmonic, wheel)) in PEDAL_HARMONICS.into_iter().enumerate() {
+            let frequency =
+                gear_frequency(wheel).ok_or_else(|| "missing pedal wheel".to_owned())?;
+            writeln!(
+                &mut spectrum,
+                "{capture},{harmonic},{},{frequency:.9},{:.9},{:.9},{:.9}",
+                wheel + 1,
+                model_levels[index],
+                reference_levels[index],
+                reference_levels[index] - model_levels[index]
+            )
+            .expect("string write cannot fail");
+        }
+        write_bus_candidates(
+            &mut fit,
+            capture,
+            &model_levels,
+            &reference_levels,
+            anchor_bus,
+        );
+
+        if capture == "07-pedal-16ft" {
+            let model_t999 = key_off_energy_t999(&model_audio)?;
+            let reference_t999 = key_off_energy_t999(&reference_audio)?;
+            let multiplier = model_t999 / reference_t999;
+            writeln!(
+                &mut fit,
+                "l20-effective-cutoff,{capture},3,1+3,,700.000000,{:.6},Hz,,joint-end-to-end-starting-point",
+                700.0 * multiplier
+            )
+            .expect("string write cannot fail");
+        }
+    }
+    Ok((spectrum, fit))
+}
+
+fn pedal_spectrum(audio: &Audio, reference_harmonic: usize) -> Result<[f64; 8], String> {
+    if audio.sample_rate != SAMPLE_RATE {
+        return Err(format!(
+            "pedal captures must be {SAMPLE_RATE} Hz; got {}",
+            audio.sample_rate
+        ));
+    }
+    let onset = onset(audio)?;
+    let start = onset + SAMPLE_RATE as usize / 2;
+    let end = start + SAMPLE_RATE as usize;
+    let frames = audio
+        .frames
+        .get(start..end)
+        .ok_or_else(|| "pedal capture needs one steady second after its attack".to_owned())?;
+    let amplitudes = PEDAL_HARMONICS.map(|(_, wheel)| {
+        spectral_amplitude(
+            frames,
+            f64::from(gear_frequency(wheel).expect("bounded pedal wheel")),
+        )
+    });
+    let reference = amplitudes[reference_harmonic];
+    if reference <= 1.0e-12 {
+        return Err("pedal reference harmonic is below the analysis floor".to_owned());
+    }
+    Ok(amplitudes.map(|amplitude| decibels(amplitude / reference)))
+}
+
+fn write_bus_candidates(
+    fit: &mut String,
+    capture: &str,
+    model: &[f64; 8],
+    reference: &[f64; 8],
+    anchor_bus: usize,
+) {
+    let (prefix, candidates): (&str, &[(usize, &str, f64)]) = if capture == "07-pedal-16ft" {
+        (
+            "sixteen",
+            &[(0, "10+12", 470.0), (1, "6+8", 47.0), (2, "2+4", 10.0)],
+        )
+    } else {
+        ("eight", &[(0, "10+12", 20.0), (1, "6+8", 5.0)])
+    };
+    let anchor_delta = bus_level(reference, anchor_bus) - bus_level(model, anchor_bus);
+    for (bus, harmonics, resistance) in candidates {
+        let delta = bus_level(reference, *bus) - bus_level(model, *bus) - anchor_delta;
+        let multiplier = 10.0_f64.powf(delta / 20.0);
+        writeln!(
+            fit,
+            "{prefix}-bus-{bus}-gain,{capture},{bus},{harmonics},{resistance:.6},1.000000,{multiplier:.6},multiplier,{delta:.6},relative-to-anchor-bus-{anchor_bus}"
+        )
+        .expect("string write cannot fail");
+    }
+}
+
+fn bus_level(levels: &[f64; 8], bus: usize) -> f64 {
+    let indices = match bus {
+        0 => [6, 7],
+        1 => [4, 5],
+        2 => [1, 3],
+        3 => [0, 2],
+        _ => unreachable!(),
+    };
+    let power = indices
+        .into_iter()
+        .map(|index| 10.0_f64.powf(levels[index] / 10.0))
+        .sum::<f64>()
+        / 2.0;
+    10.0 * power.max(1.0e-30).log10()
+}
+
+fn spectral_amplitude(frames: &[[f64; 2]], frequency: f64) -> f64 {
+    let count = frames.len();
+    let mut real = [0.0; 2];
+    let mut imaginary = [0.0; 2];
+    let mut weight_sum = 0.0;
+    for (index, frame) in frames.iter().enumerate() {
+        let weight = 0.5 - 0.5 * (TAU * index as f64 / (count - 1) as f64).cos();
+        let phase = TAU * frequency * index as f64 / f64::from(SAMPLE_RATE);
+        for channel in 0..2 {
+            real[channel] += frame[channel] * weight * phase.cos();
+            imaginary[channel] -= frame[channel] * weight * phase.sin();
+        }
+        weight_sum += weight;
+    }
+    let amplitudes =
+        [0, 1].map(|channel| 2.0 * real[channel].hypot(imaginary[channel]) / weight_sum);
+    ((amplitudes[0] * amplitudes[0] + amplitudes[1] * amplitudes[1]) * 0.5).sqrt()
+}
+
+fn key_off_energy_t999(audio: &Audio) -> Result<f64, String> {
+    let onset = onset(audio)?;
+    let release = onset + (2.75 * f64::from(SAMPLE_RATE)) as usize;
+    let tail_frames = SAMPLE_RATE as usize / 10;
+    let tail = audio
+        .frames
+        .get(release..release + tail_frames)
+        .ok_or_else(|| "pedal capture needs 100 ms after key-off".to_owned())?;
+    let noise_frames = onset.min(SAMPLE_RATE as usize / 10);
+    let noise_power = if noise_frames == 0 {
+        0.0
+    } else {
+        frame_power(&audio.frames[..noise_frames])
+    };
+    let corrected = tail
+        .iter()
+        .map(|frame| (0.5 * (frame[0] * frame[0] + frame[1] * frame[1]) - noise_power).max(0.0))
+        .collect::<Vec<_>>();
+    let total = corrected.iter().sum::<f64>();
+    if total <= 1.0e-30 {
+        return Err("pedal key-off response is below its corrected noise floor".to_owned());
+    }
+    let mut accumulated = 0.0;
+    corrected
+        .iter()
+        .enumerate()
+        .find_map(|(index, energy)| {
+            accumulated += energy;
+            (accumulated >= total * 0.999).then_some(index as f64 / f64::from(SAMPLE_RATE))
+        })
+        .ok_or_else(|| "pedal key-off energy did not converge".to_owned())
+}
+
+fn frame_power(frames: &[[f64; 2]]) -> f64 {
+    frames
+        .iter()
+        .map(|frame| 0.5 * (frame[0] * frame[0] + frame[1] * frame[1]))
+        .sum::<f64>()
+        / frames.len() as f64
 }
 
 fn validate_reference_directory(reference: &Path) -> Result<(), String> {
@@ -322,6 +536,23 @@ mod tests {
         assert!(
             validate_reference_manifest(&valid.replace("rights=private measurement\n", ""))
                 .is_err()
+        );
+    }
+
+    #[test]
+    fn pedal_bus_candidate_is_relative_to_its_anchor() {
+        let model = [0.0; 8];
+        let mut reference = model;
+        reference[6] = 6.020_599_913;
+        reference[7] = 6.020_599_913;
+        let mut csv = String::new();
+        write_bus_candidates(&mut csv, "07-pedal-16ft", &model, &reference, 3);
+        let first = csv.lines().next().unwrap();
+        assert!(first.contains(",2.000000,multiplier,6.020600,"));
+        assert!(
+            csv.lines()
+                .skip(1)
+                .all(|line| line.contains(",1.000000,multiplier,0.000000,"))
         );
     }
 }

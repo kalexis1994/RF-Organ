@@ -62,8 +62,19 @@ const fn usage() -> &'static str {
 
 fn compare_suite(model: &Path, reference: &Path, destination: &Path) -> Result<(), Box<dyn Error>> {
     fs::create_dir_all(destination)?;
-    let report = compare::compare_directories(model, reference)?;
-    fs::write(destination.join("capture-comparison.csv"), report)?;
+    let reports = compare::compare_directories(model, reference)?;
+    fs::write(
+        destination.join("capture-comparison.csv"),
+        reports.capture_comparison,
+    )?;
+    fs::write(
+        destination.join("pedal-spectrum-comparison.csv"),
+        reports.pedal_spectrum_comparison,
+    )?;
+    fs::write(
+        destination.join("pedal-fit-candidates.csv"),
+        reports.pedal_fit_candidates,
+    )?;
     println!(
         "RF_ORGAN_LAB_COMPARED model={} reference={} path={}",
         model.display(),
