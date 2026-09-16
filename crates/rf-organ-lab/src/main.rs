@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+mod analysis;
+
 use rf_organ_dsp::{
     Leslie, LeslieMode, OrganEngine, OrganPart, PercussionDecay, PercussionHarmonic,
     PercussionVolume, ScannerMode, TONEWHEEL_COUNT, gear_frequency,
@@ -53,6 +55,20 @@ fn render_suite(destination: &Path) -> Result<(), Box<dyn Error>> {
         encode_wav_f32(&impulse, 2, SAMPLE_RATE)?,
     )?;
     fs::write(destination.join("manifest.txt"), manifest())?;
+    let analysis = analysis::analyze()?;
+    fs::write(destination.join("measurements.csv"), analysis.measurements)?;
+    fs::write(
+        destination.join("percussion-envelope.csv"),
+        analysis.percussion_envelope,
+    )?;
+    fs::write(
+        destination.join("scanner-sidebands.csv"),
+        analysis.scanner_sidebands,
+    )?;
+    fs::write(
+        destination.join("leslie-rotor-response.csv"),
+        analysis.leslie_rotor_response,
+    )?;
     println!("RF_ORGAN_LAB_RENDERED path={}", destination.display());
     Ok(())
 }
@@ -187,7 +203,7 @@ fn frequency_table() -> String {
 
 fn manifest() -> String {
     format!(
-        "RF-Organ deterministic calibration suite\nversion={}\nsample_rate={}\nphrase_seconds={}\nnormalization=none\nformat=IEEE-float WAV stereo\n",
+        "RF-Organ deterministic calibration suite\nversion={}\nsample_rate={}\nphrase_seconds={}\nnormalization=none\nformat=IEEE-float WAV stereo\nanalysis=frequency,level,percussion-envelope,scanner-sidebands,leslie-rotor-response\n",
         env!("CARGO_PKG_VERSION"),
         SAMPLE_RATE,
         SECONDS

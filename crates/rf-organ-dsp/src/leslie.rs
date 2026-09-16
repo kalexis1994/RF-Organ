@@ -13,6 +13,14 @@ pub enum LeslieMode {
     Tremolo = 3,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct LeslieDiagnostics {
+    pub horn_speed_hz: f32,
+    pub horn_target_hz: f32,
+    pub drum_speed_hz: f32,
+    pub drum_target_hz: f32,
+}
+
 impl LeslieMode {
     pub const fn from_index(index: u8) -> Option<Self> {
         match index {
@@ -269,6 +277,16 @@ impl Leslie {
         ]
     }
 
+    /// Read-only mechanical state for deterministic calibration tools.
+    pub const fn diagnostics(&self) -> LeslieDiagnostics {
+        LeslieDiagnostics {
+            horn_speed_hz: self.horn.speed_hz,
+            horn_target_hz: self.horn.target_hz,
+            drum_speed_hz: self.drum.speed_hz,
+            drum_target_hz: self.drum.target_hz,
+        }
+    }
+
     pub fn reset(&mut self) {
         self.low_state = 0.0;
         self.horn_delay.clear();
@@ -334,5 +352,21 @@ mod tests {
             }
         }
         assert!(difference > 0.01);
+    }
+
+    #[test]
+    fn diagnostics_report_rotor_targets_and_motion() {
+        let mut leslie = Leslie::new(48_000.0);
+        leslie.set_mode(LeslieMode::Tremolo);
+        let initial = leslie.diagnostics();
+        assert_eq!(initial.horn_target_hz, 6.8);
+        assert_eq!(initial.drum_target_hz, 5.6);
+        assert_eq!(initial.horn_speed_hz, 0.0);
+        for _ in 0..48_000 {
+            leslie.process(0.0);
+        }
+        let moving = leslie.diagnostics();
+        assert!(moving.horn_speed_hz > moving.drum_speed_hz);
+        assert!(moving.horn_speed_hz < moving.horn_target_hz);
     }
 }
