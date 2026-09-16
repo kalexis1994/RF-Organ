@@ -45,6 +45,39 @@ measured carrier, and rotor transition times in seconds. When a model change is
 intentional, compare both the scalar summary and the associated curve before
 accepting a new baseline.
 
+## Comparing reference captures
+
+Reference WAV files use the same names as the generated scenarios. A directory
+may contain only the scenarios available from a session; at least one must be
+present. Copy `docs/REFERENCE_CAPTURE_TEMPLATE.txt` to
+`reference-manifest.txt` in that directory and complete every required field.
+Private measurements may say so in `rights`; they do not need to be committed
+or redistributed.
+
+Accepted captures are mono or stereo 48 kHz WAV files using PCM 16/24/32-bit
+or IEEE float32 samples. The comparator intentionally rejects other sample
+rates instead of silently resampling them, and rejects non-finite float data.
+
+```text
+cargo run --release -p rf-organ-lab -- compare \
+  artifacts/calibration \
+  path/to/reference-captures \
+  artifacts/comparison
+```
+
+`capture-comparison.csv` aligns each pair at its first transient while keeping
+the original amplitudes. It reports:
+
+- reference-minus-model onset offset;
+- absolute model and reference RMS levels;
+- model-minus-reference level, peak and crest-factor deltas;
+- correlation between 10 ms RMS envelopes;
+- model and reference mid/side stereo width and their delta.
+
+An RF-Organ-generated calibration directory may be used as the reference for a
+self-check without an external manifest. Comparing a directory with itself
+must yield zero deltas and envelope correlation 1.0 for all seven WAV files.
+
 The generated `artifacts/` directory is intentionally ignored by Git. Curated
 measurement data should only enter the repository with clear redistribution
 rights and provenance in `THIRD_PARTY_NOTICES.md`.

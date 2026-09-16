@@ -1,0 +1,9 @@
+RF-Organ reference capture
+capture_id=replace-with-a-stable-session-id
+source=replace-with-owner-or-public-source
+rights=replace-with-redistribution-or-private-use-status
+console=replace-with-model-serial-and-maintenance-notes
+signal_chain=replace-with-cabinet-microphones-placement-preamps-and-converters
+sample_rate=48000
+normalization=none
+notes=replace-with-room-temperature-registration-and-other-relevant-context

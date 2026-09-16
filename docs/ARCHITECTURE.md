@@ -37,7 +37,7 @@ models. Higher-cost electromagnetic, circuit and measurement work will live in
 future analysis/laboratory crates and produce calibrated coefficients for the
 production engine.
 
-## Version 0.7.0 limitations
+## Version 0.8.0 limitations
 
 - Pedal keying and drawbar topology are present, but pedal sustain and console
   matching-network constants remain provisional.

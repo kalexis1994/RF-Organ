@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 mod analysis;
+mod compare;
+mod wav;
 
 use rf_organ_dsp::{
     Leslie, LeslieMode, OrganEngine, OrganPart, PercussionDecay, PercussionHarmonic,
@@ -25,14 +27,50 @@ fn main() {
 fn run() -> Result<(), Box<dyn Error>> {
     let mut arguments = env::args_os().skip(1);
     let command = arguments.next();
-    let destination = arguments.next();
-    if command.as_deref() != Some("render".as_ref())
-        || destination.is_none()
-        || arguments.next().is_some()
-    {
-        return Err("usage: rf-organ-lab render OUTPUT_DIRECTORY".into());
+    match command.as_deref().and_then(|command| command.to_str()) {
+        Some("render") => {
+            let destination = arguments.next().ok_or("render requires OUTPUT_DIRECTORY")?;
+            if arguments.next().is_some() {
+                return Err(usage().into());
+            }
+            render_suite(&PathBuf::from(destination))
+        }
+        Some("compare") => {
+            let model = arguments.next().ok_or("compare requires MODEL_DIRECTORY")?;
+            let reference = arguments
+                .next()
+                .ok_or("compare requires REFERENCE_DIRECTORY")?;
+            let destination = arguments
+                .next()
+                .ok_or("compare requires OUTPUT_DIRECTORY")?;
+            if arguments.next().is_some() {
+                return Err(usage().into());
+            }
+            compare_suite(
+                &PathBuf::from(model),
+                &PathBuf::from(reference),
+                &PathBuf::from(destination),
+            )
+        }
+        _ => Err(usage().into()),
     }
-    render_suite(&PathBuf::from(destination.expect("validated destination")))
+}
+
+const fn usage() -> &'static str {
+    "usage:\n  rf-organ-lab render OUTPUT_DIRECTORY\n  rf-organ-lab compare MODEL_DIRECTORY REFERENCE_DIRECTORY OUTPUT_DIRECTORY"
+}
+
+fn compare_suite(model: &Path, reference: &Path, destination: &Path) -> Result<(), Box<dyn Error>> {
+    fs::create_dir_all(destination)?;
+    let report = compare::compare_directories(model, reference)?;
+    fs::write(destination.join("capture-comparison.csv"), report)?;
+    println!(
+        "RF_ORGAN_LAB_COMPARED model={} reference={} path={}",
+        model.display(),
+        reference.display(),
+        destination.display()
+    );
+    Ok(())
 }
 
 fn render_suite(destination: &Path) -> Result<(), Box<dyn Error>> {
@@ -46,13 +84,13 @@ fn render_suite(destination: &Path) -> Result<(), Box<dyn Error>> {
         let samples = render_phrase(scenario)?;
         fs::write(
             destination.join(format!("{}.wav", scenario.id())),
-            encode_wav_f32(&samples, 2, SAMPLE_RATE)?,
+            wav::encode_f32(&samples, 2, SAMPLE_RATE)?,
         )?;
     }
     let impulse = render_leslie_impulse();
     fs::write(
         destination.join("leslie-cabinet-impulse.wav"),
-        encode_wav_f32(&impulse, 2, SAMPLE_RATE)?,
+        wav::encode_f32(&impulse, 2, SAMPLE_RATE)?,
     )?;
     fs::write(destination.join("manifest.txt"), manifest())?;
     let analysis = analysis::analyze()?;
@@ -210,56 +248,9 @@ fn manifest() -> String {
     )
 }
 
-fn encode_wav_f32(
-    samples: &[f32],
-    channels: u16,
-    sample_rate: u32,
-) -> Result<Vec<u8>, &'static str> {
-    if channels == 0 || !samples.len().is_multiple_of(usize::from(channels)) {
-        return Err("sample data must contain complete nonzero-channel frames");
-    }
-    let data_bytes = u32::try_from(samples.len().checked_mul(4).ok_or("WAV data too large")?)
-        .map_err(|_| "WAV data too large")?;
-    let riff_size = 36_u32.checked_add(data_bytes).ok_or("WAV data too large")?;
-    let byte_rate = sample_rate
-        .checked_mul(u32::from(channels))
-        .and_then(|value| value.checked_mul(4))
-        .ok_or("WAV rate too large")?;
-    let block_align = channels
-        .checked_mul(4)
-        .ok_or("WAV channel count too large")?;
-    let mut bytes = Vec::with_capacity(riff_size as usize + 8);
-    bytes.extend_from_slice(b"RIFF");
-    bytes.extend_from_slice(&riff_size.to_le_bytes());
-    bytes.extend_from_slice(b"WAVEfmt ");
-    bytes.extend_from_slice(&16_u32.to_le_bytes());
-    bytes.extend_from_slice(&3_u16.to_le_bytes());
-    bytes.extend_from_slice(&channels.to_le_bytes());
-    bytes.extend_from_slice(&sample_rate.to_le_bytes());
-    bytes.extend_from_slice(&byte_rate.to_le_bytes());
-    bytes.extend_from_slice(&block_align.to_le_bytes());
-    bytes.extend_from_slice(&32_u16.to_le_bytes());
-    bytes.extend_from_slice(b"data");
-    bytes.extend_from_slice(&data_bytes.to_le_bytes());
-    for sample in samples {
-        bytes.extend_from_slice(&sample.to_le_bytes());
-    }
-    Ok(bytes)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn wav_encoder_writes_a_complete_float_header() {
-        let wav = encode_wav_f32(&[0.0, 0.0, 0.5, -0.5], 2, 48_000).expect("valid WAV");
-        assert_eq!(&wav[..4], b"RIFF");
-        assert_eq!(&wav[8..16], b"WAVEfmt ");
-        assert_eq!(u16::from_le_bytes(wav[20..22].try_into().unwrap()), 3);
-        assert_eq!(u32::from_le_bytes(wav[40..44].try_into().unwrap()), 16);
-        assert_eq!(wav.len(), 60);
-    }
 
     #[test]
     fn frequency_csv_contains_all_physical_wheels() {
