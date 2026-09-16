@@ -36,6 +36,30 @@ pub struct Reports {
     pub capture_comparison: String,
     pub pedal_spectrum_comparison: String,
     pub pedal_fit_candidates: String,
+    pub reference_quality: String,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum QualityStatus {
+    Pass,
+    Warning,
+    Fail,
+}
+
+impl QualityStatus {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Pass => "pass",
+            Self::Warning => "warning",
+            Self::Fail => "fail",
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct CaptureQuality {
+    status: QualityStatus,
+    qualification: &'static str,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -55,6 +79,7 @@ struct Comparison {
 
 pub fn compare_directories(model: &Path, reference: &Path) -> Result<Reports, String> {
     validate_reference_directory(reference)?;
+    let (reference_quality, quality) = analyze_reference_quality(reference)?;
     let mut report = String::from(
         "capture,common_seconds,reference_minus_model_onset_ms,model_rms_dbfs,reference_rms_dbfs,model_minus_reference_level_db,model_minus_reference_peak_db,model_minus_reference_crest_db,envelope_correlation,model_stereo_width_db,reference_stereo_width_db,model_minus_reference_stereo_width_db\n",
     );
@@ -99,15 +124,20 @@ pub fn compare_directories(model: &Path, reference: &Path) -> Result<Reports, St
         ));
     }
     let (pedal_spectrum_comparison, pedal_fit_candidates) =
-        compare_pedal_captures(model, reference)?;
+        compare_pedal_captures(model, reference, &quality)?;
     Ok(Reports {
         capture_comparison: report,
         pedal_spectrum_comparison,
         pedal_fit_candidates,
+        reference_quality,
     })
 }
 
-fn compare_pedal_captures(model: &Path, reference: &Path) -> Result<(String, String), String> {
+fn compare_pedal_captures(
+    model: &Path,
+    reference: &Path,
+    quality: &BTreeMap<String, CaptureQuality>,
+) -> Result<(String, String), String> {
     let registrations = [("07-pedal-16ft", 0, 3), ("08-pedal-8ft", 1, 2)];
     let mut spectrum = String::from(
         "capture,harmonic,wheel,frequency_hz,model_dbc,reference_dbc,reference_minus_model_db\n",
@@ -144,22 +174,29 @@ fn compare_pedal_captures(model: &Path, reference: &Path) -> Result<(String, Str
             )
             .expect("string write cannot fail");
         }
-        write_bus_candidates(
-            &mut fit,
-            capture,
-            &model_levels,
-            &reference_levels,
-            anchor_bus,
-        );
+        let capture_quality = quality
+            .get(capture)
+            .ok_or_else(|| format!("missing quality result for {capture}"))?;
+        if capture_quality.status != QualityStatus::Fail {
+            write_bus_candidates(
+                &mut fit,
+                capture,
+                &model_levels,
+                &reference_levels,
+                anchor_bus,
+                capture_quality.qualification,
+            );
+        }
 
-        if capture == "07-pedal-16ft" {
+        if capture == "07-pedal-16ft" && capture_quality.status != QualityStatus::Fail {
             let model_t999 = key_off_energy_t999(&model_audio)?;
             let reference_t999 = key_off_energy_t999(&reference_audio)?;
             let multiplier = model_t999 / reference_t999;
             writeln!(
                 &mut fit,
-                "l20-effective-cutoff,{capture},3,1+3,,700.000000,{:.6},Hz,,joint-end-to-end-starting-point",
-                700.0 * multiplier
+                "l20-effective-cutoff,{capture},3,1+3,,700.000000,{:.6},Hz,,joint-end-to-end-starting-point-{}",
+                700.0 * multiplier,
+                capture_quality.qualification
             )
             .expect("string write cannot fail");
         }
@@ -200,6 +237,7 @@ fn write_bus_candidates(
     model: &[f64; 8],
     reference: &[f64; 8],
     anchor_bus: usize,
+    qualification: &str,
 ) {
     let (prefix, candidates): (&str, &[(usize, &str, f64)]) = if capture == "07-pedal-16ft" {
         (
@@ -215,10 +253,352 @@ fn write_bus_candidates(
         let multiplier = 10.0_f64.powf(delta / 20.0);
         writeln!(
             fit,
-            "{prefix}-bus-{bus}-gain,{capture},{bus},{harmonics},{resistance:.6},1.000000,{multiplier:.6},multiplier,{delta:.6},relative-to-anchor-bus-{anchor_bus}"
+            "{prefix}-bus-{bus}-gain,{capture},{bus},{harmonics},{resistance:.6},1.000000,{multiplier:.6},multiplier,{delta:.6},relative-to-anchor-bus-{anchor_bus}-{qualification}"
         )
         .expect("string write cannot fail");
     }
+}
+
+fn analyze_reference_quality(
+    reference: &Path,
+) -> Result<(String, BTreeMap<String, CaptureQuality>), String> {
+    let mut csv = String::from(
+        "capture,status,duration_seconds,peak_dbfs,clipped_samples,noise_dbfs,steady_dbfs,snr_db,onset_seconds,onset_error_ms,key_off_seconds,key_off_error_ms,early_tuning_cents,late_tuning_cents,drift_cents,issues\n",
+    );
+    let mut results = BTreeMap::new();
+    for capture in CAPTURES {
+        let path = reference.join(format!("{capture}.wav"));
+        if !path.is_file() {
+            continue;
+        }
+        let audio = read_audio(&path)?;
+        let measured = capture_quality(capture, &audio)?;
+        writeln!(
+            &mut csv,
+            "{capture},{},{:.9},{:.6},{},{:.6},{:.6},{:.6},{:.9},{:.6},{},{},{},{},{},{}",
+            measured.status.label(),
+            measured.duration_seconds,
+            measured.peak_dbfs,
+            measured.clipped_samples,
+            measured.noise_dbfs,
+            measured.steady_dbfs,
+            measured.snr_db,
+            measured.onset_seconds,
+            measured.onset_error_ms,
+            optional(measured.key_off_seconds, 9),
+            optional(measured.key_off_error_ms, 6),
+            optional(measured.early_tuning_cents, 6),
+            optional(measured.late_tuning_cents, 6),
+            optional(measured.drift_cents, 6),
+            measured.issues
+        )
+        .expect("string write cannot fail");
+        results.insert(
+            capture.to_owned(),
+            CaptureQuality {
+                status: measured.status,
+                qualification: match measured.status {
+                    QualityStatus::Pass => "quality-pass",
+                    QualityStatus::Warning => "quality-warning",
+                    QualityStatus::Fail => "quality-fail",
+                },
+            },
+        );
+    }
+    Ok((csv, results))
+}
+
+struct QualityMeasurement {
+    status: QualityStatus,
+    duration_seconds: f64,
+    peak_dbfs: f64,
+    clipped_samples: usize,
+    noise_dbfs: f64,
+    steady_dbfs: f64,
+    snr_db: f64,
+    onset_seconds: f64,
+    onset_error_ms: f64,
+    key_off_seconds: Option<f64>,
+    key_off_error_ms: Option<f64>,
+    early_tuning_cents: Option<f64>,
+    late_tuning_cents: Option<f64>,
+    drift_cents: Option<f64>,
+    issues: String,
+}
+
+fn capture_quality(capture: &str, audio: &Audio) -> Result<QualityMeasurement, String> {
+    if audio.sample_rate != SAMPLE_RATE {
+        return Err(format!(
+            "quality analysis requires {SAMPLE_RATE} Hz; got {} for {capture}",
+            audio.sample_rate
+        ));
+    }
+    let onset = onset(audio)?;
+    let duration_seconds = audio.frames.len() as f64 / f64::from(SAMPLE_RATE);
+    let peak_value = peak(&audio.frames);
+    let clipped_samples = audio
+        .frames
+        .iter()
+        .flat_map(|frame| frame.iter())
+        .filter(|sample| sample.abs() >= 0.999_9)
+        .count();
+    let noise_end = onset.min(SAMPLE_RATE as usize / 10);
+    let noise = if noise_end == 0 {
+        0.0
+    } else {
+        rms(&audio.frames[..noise_end])
+    };
+    let impulse = capture == "leslie-cabinet-impulse";
+    let steady_start = if impulse {
+        onset
+    } else {
+        onset + SAMPLE_RATE as usize / 2
+    };
+    let steady_end = if impulse {
+        audio.frames.len()
+    } else {
+        steady_start + SAMPLE_RATE as usize
+    };
+    let steady = audio
+        .frames
+        .get(steady_start..steady_end)
+        .map(rms)
+        .ok_or_else(|| format!("{capture} needs one steady second after onset"))?;
+    let snr_db = decibels(steady / noise.max(1.0e-15));
+    let onset_seconds = onset as f64 / f64::from(SAMPLE_RATE);
+    let expected_onset = if impulse { 0.0 } else { 0.25 };
+    let onset_error_ms = (onset_seconds - expected_onset) * 1_000.0;
+    let timed = !impulse;
+    let key_off = timed.then(|| detect_key_off(audio, onset)).transpose()?;
+    let key_off_seconds = key_off.map(|frame| frame as f64 / f64::from(SAMPLE_RATE));
+    let key_off_error_ms = key_off_seconds.map(|time| (time - 3.0) * 1_000.0);
+
+    let tuning_target = match capture {
+        "07-pedal-16ft" | "09-pedal-16ft-8ft" => gear_frequency(0).map(f64::from),
+        "08-pedal-8ft" => gear_frequency(12).map(f64::from),
+        _ => None,
+    };
+    let (early_tuning_cents, late_tuning_cents, drift_cents) = if let Some(target) = tuning_target {
+        let window = SAMPLE_RATE as usize / 2;
+        let early_start = onset + SAMPLE_RATE as usize / 2;
+        let off = key_off.ok_or_else(|| format!("{capture} has no key-off for tuning analysis"))?;
+        let late_start = off
+            .checked_sub(window + SAMPLE_RATE as usize / 4)
+            .ok_or_else(|| format!("{capture} is too short for late tuning analysis"))?;
+        let early = estimate_frequency(
+            audio
+                .frames
+                .get(early_start..early_start + window)
+                .ok_or_else(|| format!("{capture} has no early tuning window"))?,
+            target,
+        );
+        let late = estimate_frequency(
+            audio
+                .frames
+                .get(late_start..late_start + window)
+                .ok_or_else(|| format!("{capture} has no late tuning window"))?,
+            target,
+        );
+        let early_cents = 1_200.0 * (early / target).log2();
+        let late_cents = 1_200.0 * (late / target).log2();
+        (
+            Some(early_cents),
+            Some(late_cents),
+            Some(late_cents - early_cents),
+        )
+    } else {
+        (None, None, None)
+    };
+
+    let mut status = QualityStatus::Pass;
+    let mut issues = Vec::new();
+    quality_gate(
+        &mut status,
+        &mut issues,
+        duration_seconds < if impulse { 0.45 } else { 3.2 },
+        QualityStatus::Fail,
+        "short-duration",
+    );
+    quality_gate(
+        &mut status,
+        &mut issues,
+        clipped_samples > 0,
+        QualityStatus::Fail,
+        "clipping",
+    );
+    quality_gate(
+        &mut status,
+        &mut issues,
+        snr_db < 20.0,
+        QualityStatus::Fail,
+        "snr-below-20db",
+    );
+    quality_gate(
+        &mut status,
+        &mut issues,
+        (20.0..40.0).contains(&snr_db),
+        QualityStatus::Warning,
+        "snr-below-40db",
+    );
+    timing_gate(&mut status, &mut issues, onset_error_ms, "onset");
+    if let Some(error) = key_off_error_ms {
+        timing_gate(&mut status, &mut issues, error, "key-off");
+    }
+    if let (Some(absolute), Some(drift)) = (early_tuning_cents, drift_cents) {
+        quality_gate(
+            &mut status,
+            &mut issues,
+            absolute.abs() > 50.0 || drift.abs() > 5.0,
+            QualityStatus::Fail,
+            "unstable-tuning",
+        );
+        quality_gate(
+            &mut status,
+            &mut issues,
+            absolute.abs() > 10.0 || drift.abs() > 1.0,
+            QualityStatus::Warning,
+            "tuning-warning",
+        );
+    }
+    Ok(QualityMeasurement {
+        status,
+        duration_seconds,
+        peak_dbfs: decibels(peak_value),
+        clipped_samples,
+        noise_dbfs: decibels(noise),
+        steady_dbfs: decibels(steady),
+        snr_db,
+        onset_seconds,
+        onset_error_ms,
+        key_off_seconds,
+        key_off_error_ms,
+        early_tuning_cents,
+        late_tuning_cents,
+        drift_cents,
+        issues: if issues.is_empty() {
+            "none".to_owned()
+        } else {
+            issues.join("|")
+        },
+    })
+}
+
+fn quality_gate(
+    status: &mut QualityStatus,
+    issues: &mut Vec<&'static str>,
+    condition: bool,
+    severity: QualityStatus,
+    issue: &'static str,
+) {
+    if condition {
+        *status = (*status).max(severity);
+        issues.push(issue);
+    }
+}
+
+fn timing_gate(
+    status: &mut QualityStatus,
+    issues: &mut Vec<&'static str>,
+    error_ms: f64,
+    name: &'static str,
+) {
+    let (fail, warning) = match name {
+        "onset" => ("onset-outside-100ms", "onset-outside-20ms"),
+        "key-off" => ("key-off-outside-100ms", "key-off-outside-20ms"),
+        _ => unreachable!(),
+    };
+    quality_gate(
+        status,
+        issues,
+        error_ms.abs() > 100.0,
+        QualityStatus::Fail,
+        fail,
+    );
+    quality_gate(
+        status,
+        issues,
+        error_ms.abs() > 20.0,
+        QualityStatus::Warning,
+        warning,
+    );
+}
+
+fn detect_key_off(audio: &Audio, onset: usize) -> Result<usize, String> {
+    let window = SAMPLE_RATE as usize / 20;
+    let step = SAMPLE_RATE as usize / 200;
+    let expected = onset + (2.75 * f64::from(SAMPLE_RATE)) as usize;
+    let search_radius = SAMPLE_RATE as usize / 10;
+    let baseline_start = expected.saturating_sub(SAMPLE_RATE as usize / 2);
+    let baseline_end = expected.saturating_sub(search_radius);
+    let baseline = audio
+        .frames
+        .get(baseline_start..baseline_end)
+        .map(frame_power)
+        .filter(|power| *power > 1.0e-30)
+        .ok_or_else(|| "capture has no stable pre-release level".to_owned())?;
+    let threshold = baseline * 0.5;
+    let half_window = window / 2;
+    let start = expected.saturating_sub(search_radius).max(half_window);
+    let end = (expected + search_radius).min(audio.frames.len().saturating_sub(half_window));
+    let mut previous: Option<(usize, f64)> = None;
+    for center in (start..end).step_by(step) {
+        let power = frame_power(&audio.frames[center - half_window..center + half_window]);
+        if let Some((previous_center, previous_power)) = previous
+            && previous_power > threshold
+            && power <= threshold
+        {
+            let fraction = (previous_power - threshold) / (previous_power - power);
+            return Ok(
+                previous_center + (fraction * (center - previous_center) as f64).round() as usize
+            );
+        }
+        previous = Some((center, power));
+    }
+    Err("capture has no key-off energy crossing near the protocol time".to_owned())
+}
+
+fn estimate_frequency(frames: &[[f64; 2]], expected: f64) -> f64 {
+    let half = frames.len() / 2;
+    let first = complex_projection(&frames[..half], expected, 0);
+    let second = complex_projection(&frames[half..half * 2], expected, half);
+    let channel = if magnitude(first[0]) + magnitude(second[0])
+        >= magnitude(first[1]) + magnitude(second[1])
+    {
+        0
+    } else {
+        1
+    };
+    let first_phase = first[channel].1.atan2(first[channel].0);
+    let second_phase = second[channel].1.atan2(second[channel].0);
+    let phase_advance =
+        (second_phase - first_phase + std::f64::consts::PI).rem_euclid(TAU) - std::f64::consts::PI;
+    let separation = half as f64 / f64::from(SAMPLE_RATE);
+    expected + phase_advance / (TAU * separation)
+}
+
+fn complex_projection(
+    frames: &[[f64; 2]],
+    frequency: f64,
+    sample_offset: usize,
+) -> [(f64, f64); 2] {
+    let mut result = [(0.0, 0.0); 2];
+    for (index, frame) in frames.iter().enumerate() {
+        let weight = 0.5 - 0.5 * (TAU * index as f64 / (frames.len() - 1) as f64).cos();
+        let phase = TAU * frequency * (sample_offset + index) as f64 / f64::from(SAMPLE_RATE);
+        for channel in 0..2 {
+            result[channel].0 += frame[channel] * weight * phase.cos();
+            result[channel].1 -= frame[channel] * weight * phase.sin();
+        }
+    }
+    result
+}
+
+fn magnitude(value: (f64, f64)) -> f64 {
+    value.0.hypot(value.1)
+}
+
+fn optional(value: Option<f64>, precision: usize) -> String {
+    value.map_or_else(String::new, |value| format!("{value:.precision$}"))
 }
 
 fn bus_level(levels: &[f64; 8], bus: usize) -> f64 {
@@ -258,7 +638,7 @@ fn spectral_amplitude(frames: &[[f64; 2]], frequency: f64) -> f64 {
 
 fn key_off_energy_t999(audio: &Audio) -> Result<f64, String> {
     let onset = onset(audio)?;
-    let release = onset + (2.75 * f64::from(SAMPLE_RATE)) as usize;
+    let release = detect_key_off(audio, onset)?;
     let tail_frames = SAMPLE_RATE as usize / 10;
     let tail = audio
         .frames
@@ -546,7 +926,14 @@ mod tests {
         reference[6] = 6.020_599_913;
         reference[7] = 6.020_599_913;
         let mut csv = String::new();
-        write_bus_candidates(&mut csv, "07-pedal-16ft", &model, &reference, 3);
+        write_bus_candidates(
+            &mut csv,
+            "07-pedal-16ft",
+            &model,
+            &reference,
+            3,
+            "quality-pass",
+        );
         let first = csv.lines().next().unwrap();
         assert!(first.contains(",2.000000,multiplier,6.020600,"));
         assert!(
@@ -554,5 +941,31 @@ mod tests {
                 .skip(1)
                 .all(|line| line.contains(",1.000000,multiplier,0.000000,"))
         );
+    }
+
+    #[test]
+    fn capture_quality_accepts_the_reference_protocol() {
+        let mut frames = vec![[0.0, 0.0]; SAMPLE_RATE as usize * 4];
+        for (index, frame) in frames.iter_mut().enumerate() {
+            if (SAMPLE_RATE as usize / 4..SAMPLE_RATE as usize * 3).contains(&index) {
+                let sample =
+                    0.25 * (TAU * 32.692_306_5 * index as f64 / f64::from(SAMPLE_RATE)).sin();
+                *frame = [sample, sample];
+            }
+        }
+        let mut audio = Audio {
+            sample_rate: SAMPLE_RATE,
+            frames,
+        };
+        let quality = capture_quality("07-pedal-16ft", &audio).unwrap();
+        assert_eq!(quality.status, QualityStatus::Pass);
+        assert!(quality.onset_error_ms.abs() < 1.0);
+        assert!(quality.key_off_error_ms.unwrap().abs() < 6.0);
+        assert!(quality.drift_cents.unwrap().abs() < 0.1);
+
+        audio.frames[SAMPLE_RATE as usize] = [1.0, 1.0];
+        let rejected = capture_quality("07-pedal-16ft", &audio).unwrap();
+        assert_eq!(rejected.status, QualityStatus::Fail);
+        assert!(rejected.issues.contains("clipping"));
     }
 }

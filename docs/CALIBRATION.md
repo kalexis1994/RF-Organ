@@ -96,6 +96,19 @@ replacement resistor values. The L20 candidate uses the noise-corrected
 end-to-end key-off response and must be reviewed jointly with the matching
 transformer and console coupling network.
 
+Every comparison writes `reference-quality.csv`. It checks capture duration,
+clipped samples, pre-onset noise and steady-state SNR, note-on/note-off timing,
+and early/late tuning drift for the isolated pedal registrations. A failing
+pedal capture remains visible in the comparison reports but is barred from
+`pedal-fit-candidates.csv`; warnings remain eligible and are tagged in each
+candidate row.
+
+The current gates fail captures below 3.2 seconds, with any sample at or above
+0.9999 full scale, SNR below 20 dB, event timing more than 100 ms from the
+protocol, tuning more than 50 cents away, or pedal drift above 5 cents.
+Warnings begin at 40 dB SNR, 20 ms event error, 10 cents absolute tuning or
+1 cent drift.
+
 The three pedal captures use low C (MIDI 24), begin at 250 ms, release at
 3 seconds and leave all other drawbars closed. Files `07`, `08` and `09` select
 16' only, 8' only and both drawbars respectively. Match that protocol when

@@ -68,5 +68,6 @@ acceleration/braking curves alongside the audio renders.
 The comparator aligns reference captures without resampling or normalizing
 them, then reports level, crest, envelope and stereo differences. Isolated
 pedal captures additionally produce per-harmonic errors and provisional
-resistor-bus/L20 fitting candidates.
+resistor-bus/L20 fitting candidates. A capture-quality gate prevents clipped,
+mistimed, noisy or unstable pedal recordings from producing coefficients.
 See `docs/CALIBRATION.md` for the comparison and provenance protocol.

@@ -75,6 +75,10 @@ fn compare_suite(model: &Path, reference: &Path, destination: &Path) -> Result<(
         destination.join("pedal-fit-candidates.csv"),
         reports.pedal_fit_candidates,
     )?;
+    fs::write(
+        destination.join("reference-quality.csv"),
+        reports.reference_quality,
+    )?;
     println!(
         "RF_ORGAN_LAB_COMPARED model={} reference={} path={}",
         model.display(),
