@@ -78,11 +78,14 @@ ladder nodes the nine terminals reach; the vibrato/chorus tablet shorts or
 restores the 22 kΩ source resistor, and the chorus character follows from that
 rather than from mixing a dry copy.
 
-The ladder is linear and its coefficients never change while audio runs, so it
-is discretised once per switch position with the trapezoidal rule. Each sample
-is one banded matrix-vector product: neighbouring sections occupy neighbouring
-state indices, and entries below a documented threshold are dropped, which a
-test checks against the dense transition over a full second.
+The ladder is linear and its coefficients never change while audio runs, so
+each switch position is discretised once with the trapezoidal rule. Interleaving
+the states section by section makes it tridiagonal — a capacitor sees the
+currents either side of it, an inductor the voltages either side of it, and
+nothing reaches further — so a sample is three multiplications per row for the
+explicit half and a forward and back sweep for the implicit one. That solve is
+exact rather than truncated, and a test holds it against the dense transition
+for a second of impulse response at every supported sample rate.
 
 ## Percussion and keying
 
@@ -155,7 +158,7 @@ slow speed takes a tenth of the time braking from fast does, and the drum takes
 several times longer than the horn either way. A mode switch waits briefly
 before the rotor responds, as a relay and a clutch do.
 
-## Version 0.21.0 limitations
+## Version 0.23.0 limitations
 
 - The classic B-3 pedal contact and resistor-panel topology is present. The
   L20 pedal-filter coefficient and console matching-network constants remain
@@ -203,7 +206,6 @@ before the rotor responds, as a relay and a clutch do.
 - Leslie cabinet reflections and angle-dependent filters are present, but
   their coefficients are not yet fitted to multi-angle cabinet measurements.
 - The engine is measured as sample-rate invariant from 32 to 192 kHz. A fully
-  engaged console runs about 19x real time at 48 kHz and 4.3x at 192 kHz on the
-  development machine. The largest remaining costs are the generator, which is
-  inherent, and the vibrato ladder, for which an exact banded solve would be
-  cheaper than the banded transition it uses today.
+  engaged console runs about 16x real time at 48 kHz and 4.1x at 192 kHz on the
+  development machine. What remains is mostly the generator itself, which is
+  inherent: 91 wheels turn whether or not anyone is playing.

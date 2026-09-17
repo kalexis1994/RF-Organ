@@ -97,18 +97,23 @@ fn insertion_gain(driven: bool) -> f64 {
     load / (SOURCE_OHM + load)
 }
 
-/// Relative size below which a transition entry is dropped. One sample is
-/// shorter than the time the ladder needs to pass a signal from one section to
-/// the next, so the transition matrix is strongly banded and the far entries
-/// are numerical dust. A test compares the banded stepper against the dense
-/// one over a full second.
-const BAND_THRESHOLD: f64 = 1.0e-5;
-
 /// One switch position, discretised.
+///
+/// Interleaving the states section by section makes the ladder tridiagonal: a
+/// capacitor sees the currents either side of it and an inductor sees the
+/// voltages either side of it, and nothing reaches further. So instead of a
+/// transition matrix, each sample applies the explicit half of the trapezoidal
+/// step and then solves the implicit half directly, which is both exact and
+/// cheaper than the banded matrix it replaces.
 struct Ladder {
-    transition: [[f32; STATES]; STATES],
-    /// First and last column worth visiting in each row.
-    span: [(u8, u8); STATES],
+    /// Sub-, main- and super-diagonal of `I + (h/2)F`, applied to the state.
+    explicit: [[f32; 3]; STATES],
+    /// Factors of `I - (h/2)F`, ready for a forward and a back sweep: the
+    /// multiplier below the diagonal, the reciprocal of the pivot, and the
+    /// eliminated super-diagonal.
+    lower: [f32; STATES],
+    inverse_pivot: [f32; STATES],
+    upper: [f32; STATES],
     input: [f32; STATES],
     states: usize,
     /// True when the source resistor is shorted and node 1 is the input.
@@ -123,48 +128,14 @@ struct Ladder {
 impl Ladder {
     fn build(sample_rate: f64, driven: bool) -> Self {
         let states = if driven { STATES - 1 } else { STATES };
-        let scale = IMPEDANCE_OHM;
-        let mut derivative = [[0.0_f64; STATES]; STATES];
-        let mut source = [0.0_f64; STATES];
-
-        // Capacitor rows: C dv/dt = i_in - i_out - v/R_load.
-        for node in 1..=SECTIONS {
-            let Some(row) = voltage_index(node, driven) else {
-                continue;
-            };
-            let capacitance = CAPACITANCE_F[node - 1];
-            if node >= 2 {
-                derivative[row][current_index(node - 1, driven)] += 1.0 / (scale * capacitance);
-            }
-            derivative[row][current_index(node, driven)] -= 1.0 / (scale * capacitance);
-            derivative[row][row] -= divider_load(node) / capacitance;
-            if !driven && node == 1 {
-                derivative[row][row] -= 1.0 / (SOURCE_OHM * capacitance);
-                source[row] += 1.0 / (SOURCE_OHM * capacitance);
-            }
-        }
-
-        // Inductor rows: L di/dt = v_left - v_right, with the last section
-        // seeing the termination resistor instead of a capacitor node.
-        for section in 1..=SECTIONS {
-            let row = current_index(section, driven);
-            match voltage_index(section, driven) {
-                Some(left) => derivative[row][left] += scale / INDUCTANCE_H,
-                None => source[row] += scale / INDUCTANCE_H,
-            }
-            if section < SECTIONS {
-                let right = voltage_index(section + 1, driven).expect("interior node is a state");
-                derivative[row][right] -= scale / INDUCTANCE_H;
-            } else {
-                derivative[row][current_index(SECTIONS, driven)] -= TERMINATION_OHM / INDUCTANCE_H;
-            }
-        }
-
-        let (transition, input) = trapezoidal(&derivative, &source, states, 1.0 / sample_rate);
-        let span = band(&transition, states);
+        let (derivative, source) = assemble(driven);
+        let (explicit, lower, inverse_pivot, upper, input) =
+            factor(&derivative, &source, states, 1.0 / sample_rate);
         Self {
-            transition,
-            span,
+            explicit,
+            lower,
+            inverse_pivot,
+            upper,
             input,
             states,
             driven,
@@ -173,18 +144,35 @@ impl Ladder {
     }
 
     fn step(&self, state: &mut [f32; STATES], excitation: f32) {
-        let mut next = [0.0_f32; STATES];
-        for (row, slot) in next.iter_mut().enumerate().take(self.states) {
-            let (first, last) = self.span[row];
-            let band = usize::from(first)..=usize::from(last);
-            let mut sum = self.input[row] * excitation;
-            for (coefficient, value) in self.transition[row][band.clone()].iter().zip(&state[band])
-            {
-                sum += coefficient * value;
+        // The explicit half of the step, plus the excitation.
+        let mut rhs = [0.0_f32; STATES];
+        for (row, slot) in rhs.iter_mut().enumerate().take(self.states) {
+            let [below, middle, above] = self.explicit[row];
+            let mut sum = self.input[row] * excitation + middle * state[row];
+            if row > 0 {
+                sum += below * state[row - 1];
+            }
+            if row + 1 < self.states {
+                sum += above * state[row + 1];
             }
             *slot = sum;
         }
-        *state = next;
+
+        // Forward sweep, then back substitution, over the factors of the
+        // implicit half.
+        let mut solved = [0.0_f32; STATES];
+        let mut previous = 0.0;
+        for row in 0..self.states {
+            let value = (rhs[row] - self.lower[row] * previous) * self.inverse_pivot[row];
+            solved[row] = value;
+            previous = value;
+        }
+        let mut next = 0.0;
+        for row in (0..self.states).rev() {
+            let value = solved[row] - self.upper[row] * next;
+            state[row] = value;
+            next = value;
+        }
     }
 
     /// Voltage at a schematic node, one-based. Node 19 is algebraic: it only
@@ -223,34 +211,126 @@ const fn voltage_index(node: usize, driven: bool) -> Option<usize> {
     }
 }
 
-/// Columns of each row that carry more than `BAND_THRESHOLD` of that row's
-/// largest entry. Rows that are entirely negligible collapse to a single
-/// column, which the stepper still visits; an empty range would need a branch
-/// in the inner loop for no gain.
-fn band(transition: &[[f32; STATES]; STATES], states: usize) -> [(u8, u8); STATES] {
-    let mut span = [(0_u8, 0_u8); STATES];
-    for (row, entry) in span.iter_mut().enumerate().take(states) {
-        let largest = transition[row]
-            .iter()
-            .take(states)
-            .fold(0.0_f32, |largest, value| largest.max(value.abs()));
-        let floor = largest * BAND_THRESHOLD as f32;
-        let mut first = row;
-        let mut last = row;
-        for (column, value) in transition[row].iter().enumerate().take(states) {
-            if value.abs() > floor {
-                first = first.min(column);
-                last = last.max(column);
+/// Writes the ladder's own equations: a capacitor row is its two neighbouring
+/// currents and whatever the node leaks through, an inductor row is the
+/// voltage either side of it, and the last inductor sees the termination
+/// resistor instead of a node.
+fn assemble(driven: bool) -> ([[f64; STATES]; STATES], [f64; STATES]) {
+    let scale = IMPEDANCE_OHM;
+    let mut derivative = [[0.0_f64; STATES]; STATES];
+    let mut source = [0.0_f64; STATES];
+
+    for node in 1..=SECTIONS {
+        let Some(row) = voltage_index(node, driven) else {
+            continue;
+        };
+        let capacitance = CAPACITANCE_F[node - 1];
+        if node >= 2 {
+            derivative[row][current_index(node - 1, driven)] += 1.0 / (scale * capacitance);
+        }
+        derivative[row][current_index(node, driven)] -= 1.0 / (scale * capacitance);
+        derivative[row][row] -= divider_load(node) / capacitance;
+        if !driven && node == 1 {
+            derivative[row][row] -= 1.0 / (SOURCE_OHM * capacitance);
+            source[row] += 1.0 / (SOURCE_OHM * capacitance);
+        }
+    }
+
+    for section in 1..=SECTIONS {
+        let row = current_index(section, driven);
+        match voltage_index(section, driven) {
+            Some(left) => derivative[row][left] += scale / INDUCTANCE_H,
+            None => source[row] += scale / INDUCTANCE_H,
+        }
+        if section < SECTIONS {
+            let right = voltage_index(section + 1, driven).expect("interior node is a state");
+            derivative[row][right] -= scale / INDUCTANCE_H;
+        } else {
+            derivative[row][current_index(SECTIONS, driven)] -= TERMINATION_OHM / INDUCTANCE_H;
+        }
+    }
+    (derivative, source)
+}
+
+/// Splits the trapezoidal step into the explicit half and the factors of the
+/// implicit half.
+///
+/// `dx/dt = F x + g u` becomes `(I - hF/2) x[n] = (I + hF/2) x[n-1] + hg/2 (u[n] + u[n-1])`.
+/// Both matrices are tridiagonal here, so the left-hand side factors once into
+/// the sweeps a Thomas solve needs and the right-hand side is three
+/// multiplications per row.
+type Tridiagonal = (
+    [[f32; 3]; STATES],
+    [f32; STATES],
+    [f32; STATES],
+    [f32; STATES],
+    [f32; STATES],
+);
+
+fn factor(
+    derivative: &[[f64; STATES]; STATES],
+    source: &[f64; STATES],
+    states: usize,
+    step_seconds: f64,
+) -> Tridiagonal {
+    let half = 0.5 * step_seconds;
+    let mut explicit = [[0.0_f32; 3]; STATES];
+    let mut lower = [0.0_f32; STATES];
+    let mut inverse_pivot = [0.0_f32; STATES];
+    let mut upper = [0.0_f32; STATES];
+    let mut input = [0.0_f32; STATES];
+
+    // Pull the three diagonals out, and check while doing it that the ladder
+    // really does not reach further than its neighbours.
+    let mut below = [0.0_f64; STATES];
+    let mut middle = [0.0_f64; STATES];
+    let mut above = [0.0_f64; STATES];
+    for (row, equation) in derivative.iter().enumerate().take(states) {
+        for (column, value) in equation.iter().copied().enumerate().take(states) {
+            match column as isize - row as isize {
+                -1 => below[row] = value,
+                0 => middle[row] = value,
+                1 => above[row] = value,
+                _ => debug_assert!(
+                    value == 0.0,
+                    "the ladder is not tridiagonal in this ordering"
+                ),
             }
         }
-        *entry = (first as u8, last as u8);
+        explicit[row] = [
+            (half * below[row]) as f32,
+            (1.0 + half * middle[row]) as f32,
+            (half * above[row]) as f32,
+        ];
+        input[row] = (half * source[row]) as f32;
     }
-    span
+
+    // Thomas factorisation of I - hF/2, which the step then reuses every
+    // sample. The ladder's own couplings keep the pivots far from zero at
+    // every supported sample rate; a degenerate one would leave its row
+    // untouched rather than divide by zero.
+    let mut eliminated = 0.0_f64;
+    for row in 0..states {
+        let sub = -half * below[row];
+        let pivot = 1.0 - half * middle[row] - sub * eliminated;
+        let reciprocal = if pivot == 0.0 || !pivot.is_finite() {
+            0.0
+        } else {
+            1.0 / pivot
+        };
+        eliminated = -half * above[row] * reciprocal;
+        lower[row] = sub as f32;
+        inverse_pivot[row] = reciprocal as f32;
+        upper[row] = eliminated as f32;
+    }
+    (explicit, lower, inverse_pivot, upper, input)
 }
 
 /// Discretises `dx/dt = F x + g u` with the trapezoidal rule, returning the
 /// transition matrix and the input vector for the averaged excitation
-/// `u[n] + u[n-1]`.
+/// `u[n] + u[n-1]`. The engine solves the same step directly; this dense form
+/// is what the tests hold that solve against.
+#[cfg(test)]
 fn trapezoidal(
     derivative: &[[f64; STATES]; STATES],
     source: &[f64; STATES],
@@ -284,9 +364,9 @@ fn trapezoidal(
     (transition, input)
 }
 
-/// In-place Gauss-Jordan elimination with partial pivoting. The ladder is
-/// diagonally dominant after current scaling, so a pivot cannot vanish; a
-/// degenerate one would leave the row untouched rather than divide by zero.
+/// In-place Gauss-Jordan elimination with partial pivoting, for the dense
+/// reference the tests use.
+#[cfg(test)]
 fn gauss_jordan(
     system: &mut [[f64; STATES]; STATES],
     augmented: &mut [[f64; STATES + 1]; STATES],
@@ -484,56 +564,65 @@ mod tests {
     }
 
     /// Only the chorus position loses level, and only because of Rc.
-    /// The banded stepper must not drift away from the dense one it stands in
-    /// for, over long enough to matter musically.
+    /// The step solves the same equation the dense transition describes, so a
+    /// second of impulse response has to come out the same however it is
+    /// worked out. This is the check that the exact solve replaced an
+    /// approximation with an equivalent, not with something close.
     #[test]
-    fn banding_the_transition_changes_nothing_audible() {
-        for chorus in [false, true] {
-            let ladder = Ladder::build(48_000.0, !chorus);
-            let mut banded = [0.0_f32; STATES];
-            let mut dense = [0.0_f32; STATES];
-            let mut worst = 0.0_f32;
-            let mut energy = 0.0_f32;
-            for frame in 0..48_000 {
-                let excitation = if frame == 0 { 1.0 } else { 0.0 };
-                ladder.step(&mut banded, excitation);
-                dense_step(&ladder, &mut dense, excitation);
-                for (left, right) in banded.iter().zip(&dense) {
-                    worst = worst.max((left - right).abs());
-                    energy = energy.max(right.abs());
+    fn the_direct_solve_matches_the_dense_transition() {
+        for rate in [32_000.0, 48_000.0, 96_000.0, 192_000.0] {
+            for driven in [true, false] {
+                let ladder = Ladder::build(rate, driven);
+                let (derivative, source) = assemble(driven);
+                let (transition, input) =
+                    trapezoidal(&derivative, &source, ladder.states, 1.0 / rate);
+
+                let mut solved = [0.0_f32; STATES];
+                let mut dense = [0.0_f32; STATES];
+                let mut worst = 0.0_f32;
+                let mut peak = 0.0_f32;
+                for frame in 0..rate as usize {
+                    let excitation = if frame == 0 { 1.0 } else { 0.0 };
+                    ladder.step(&mut solved, excitation);
+
+                    let mut next = [0.0_f32; STATES];
+                    for (row, slot) in next.iter_mut().enumerate().take(ladder.states) {
+                        let mut sum = input[row] * excitation;
+                        for (column, value) in dense.iter().enumerate().take(ladder.states) {
+                            sum += transition[row][column] * value;
+                        }
+                        *slot = sum;
+                    }
+                    dense = next;
+
+                    for (left, right) in solved.iter().zip(&dense) {
+                        worst = worst.max((left - right).abs());
+                        peak = peak.max(right.abs());
+                    }
+                }
+                assert!(
+                    worst < peak * 1.0e-4,
+                    "{rate} Hz driven={driven}: {worst} against a peak of {peak}"
+                );
+            }
+        }
+    }
+
+    /// Interleaving the states is what makes the ladder tridiagonal, and the
+    /// solve depends on it: nothing may reach past a neighbour.
+    #[test]
+    fn the_ladder_only_couples_neighbouring_states() {
+        for driven in [true, false] {
+            let states = if driven { STATES - 1 } else { STATES };
+            let (derivative, _) = assemble(driven);
+            for (row, equation) in derivative.iter().enumerate().take(states) {
+                for (column, value) in equation.iter().copied().enumerate().take(states) {
+                    if row.abs_diff(column) > 1 {
+                        assert_eq!(value, 0.0, "driven={driven} couples {row} to {column}");
+                    }
                 }
             }
-            assert!(
-                worst < energy * 1.0e-4,
-                "chorus={chorus} worst={worst} peak={energy}"
-            );
         }
-    }
-
-    fn dense_step(ladder: &Ladder, state: &mut [f32; STATES], excitation: f32) {
-        let mut next = [0.0_f32; STATES];
-        for (row, slot) in next.iter_mut().enumerate().take(ladder.states) {
-            let mut sum = ladder.input[row] * excitation;
-            for (column, value) in state.iter().enumerate().take(ladder.states) {
-                sum += ladder.transition[row][column] * value;
-            }
-            *slot = sum;
-        }
-        *state = next;
-    }
-
-    /// How wide the band actually is, which is what the optimisation is worth.
-    #[test]
-    fn the_transition_is_narrowly_banded() {
-        let ladder = Ladder::build(48_000.0, true);
-        let widest = ladder
-            .span
-            .iter()
-            .take(ladder.states)
-            .map(|(first, last)| usize::from(*last) - usize::from(*first) + 1)
-            .max()
-            .expect("states");
-        assert!(widest <= 20, "band covers {widest} of {STATES} columns");
     }
 
     #[test]

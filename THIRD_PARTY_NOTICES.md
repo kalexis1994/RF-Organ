@@ -42,8 +42,9 @@ tables are Hammond service-manual data, tabulated in Table 1 and Table 2 of the
 DAFx-2016 paper and used here as data, not as code.
 
 The discretisation is our own and deliberately different from the paper's: the
-ladder is linear, so RF-Organ solves it once with the trapezoidal rule into a
-fixed state transition rather than building a wave-digital tree. No WDF
+ladder is linear and, with its states interleaved section by section,
+tridiagonal, so RF-Organ applies the trapezoidal rule and solves the resulting
+system directly each sample rather than building a wave-digital tree. No WDF
 adaptor, scattering equation or third-party implementation code is reproduced.
 The insertion-loss make-up that keeps the chorus position usable is a
 provisional stand-in for the AO-28 vibrato amplifier, derived from the

@@ -369,6 +369,12 @@ it. Idle fell to 612 ns per sample and the fully engaged console went from
 7.4x to 19.1x real time at 48 kHz, and from 1.8x to 4.3x at 192 kHz, with the
 whole calibration suite rendering byte for byte identically.
 
+Solving the vibrato ladder directly rather than through a truncated transition
+later took it from 359 to 230 ns per sample at 48 kHz, and from 510 to 224 at
+192 kHz, where the cost of an exact solve does not grow with the rate. The
+scanner's measured sidebands moved by a thousandth of a decibel, which is what
+replacing an approximation with the thing it approximated should look like.
+
 Those numbers describe one machine and one build; they are a regression signal,
 not a specification.
 
