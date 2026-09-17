@@ -82,6 +82,25 @@ switch can be delayed by up to a second before the rotor responds; and a time
 means the time to cross the whole speed range, so a shorter move takes
 proportionally less and the rate is what stays constant.
 
+Version 0.29.0 adds the woofer and the capsules, both from the microphone page
+of the same manual. The woofer's sound is described there as dry and
+unmodulated, as not leaving the cabinet directly, and as being picked up by the
+drum's microphone primarily and the horn's slightly; its level is one of three
+the manual gives in decibels from silence to unity. How much less the horn's
+pair hears is not a number it publishes, so the quarter RF-Organ uses is
+provisional, as is where the level sits by default. The two capsules are given
+only as characters - a dynamic one that "enhances the sense of perspective" and
+a condenser one that is "natural" - with no response and no model named. The
+part of that which is not taste is in the geometry: a pressure-gradient capsule
+lifts the bass as it nears a source, by an amount the distance and the pattern
+decide, so RF-Organ derives it rather than choosing it, and bounds it because a
+real capsule rolls off underneath. The presence and the top that separate the
+two characters are provisional, and the laboratory reports what they come to.
+
+Two of the three microphone volumes that manual documents are not modelled as
+separate decibel controls: the horn's and the drum's are a single bipolar
+balance between them.
+
 Version 0.28.0 adds the supply the motors run from. This one is not from a
 Hammond document: the speeds are, and the rest is how an alternating-current
 motor works, which is that its shaft turns at the supply's frequency over its

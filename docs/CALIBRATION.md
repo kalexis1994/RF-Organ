@@ -393,6 +393,29 @@ with the angle set to the same value and photograph or mark where the horn
 ends up. What matters is the spread across repetitions, not the absolute
 angle, since zero here means the mouth facing the microphones.
 
+## Woofer and capsule protocol
+
+The `sweep-depth-`, `proximity-` and `capsule-` rows of `measurements.csv`
+separate what the woofer does from what the capsules do.
+
+A 200 Hz tone through a cabinet at tremolo sweeps 13.7 dB with the woofer
+silent and 5.1 dB with it fully open. That direction is the whole point: the
+woofer's bass never enters a rotor, so adding it adds a steady sound to a
+moving one and the sweep gets shallower. A model that deepened it would have
+the woofer inside the drum.
+
+Moving the pair from 150 cm to 15 cm raises a 50 Hz tone by 13.3 dB with an
+omnidirectional capsule and 2.5 dB more than that with a figure of eight. The
+first figure is geometry - a stopped mouth ends up almost against the capsule -
+and the second is the proximity effect, which is why it is derived from the
+distance and the pattern rather than dialled in. It is bounded, and that bound
+is provisional: a real capsule rolls off below its proximity rise and this one
+simply stops rising.
+
+A dynamic capsule reads 2.0 dB below a condenser at 10 kHz and 0.8 dB above it
+at 4 kHz. Both numbers are provisional and describe no particular microphone.
+To measure this properly you would need to know which two Hammond modelled.
+
 ## Supply protocol
 
 The `fifty-hertz-` and `supply-ratio` rows of `measurements.csv` settle the

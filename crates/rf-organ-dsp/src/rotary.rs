@@ -84,6 +84,78 @@ impl MainsFrequency {
 /// The supply the quoted speeds belong to.
 const RATED_MAINS_HZ: f32 = 60.0;
 
+/// What the cabinet's microphones are.
+///
+/// Hammond offers two and describes them by what they do rather than by any
+/// response: a dynamic one "enhances the sense of perspective", a condenser
+/// one has a "natural" character. The part of that difference which is not a
+/// matter of taste is in [`MicrophonePath`]: a directional capsule lifts the
+/// bass as it approaches a source, and how much it lifts follows from the
+/// distance and the pattern. What is left over - a presence lift and a top
+/// that gives out earlier - is the character of a particular capsule, and no
+/// capsule is named, so those two numbers are provisional.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[repr(u8)]
+pub enum MicrophoneType {
+    Dynamic = 0,
+    #[default]
+    Condenser = 1,
+}
+
+impl MicrophoneType {
+    pub const fn from_index(index: u8) -> Option<Self> {
+        match index {
+            0 => Some(Self::Dynamic),
+            1 => Some(Self::Condenser),
+            _ => None,
+        }
+    }
+}
+
+/// The presence a dynamic capsule adds and the top it gives up, both
+/// provisional.
+const DYNAMIC_PRESENCE_HZ: f32 = 3_000.0;
+const DYNAMIC_PRESENCE_LIFT: f32 = 0.4;
+const DYNAMIC_TOP_HZ: f32 = 11_000.0;
+/// The most bass a capsule may gain by being close, which stands in for the
+/// roll-off every real capsule has under it.
+const PROXIMITY_MAX_LIFT: f32 = 0.8;
+
+/// How loud the unmodulated bass may be.
+///
+/// Hammond gives the three microphone volumes as decibels from silence to
+/// unity. Where the woofer's own sound sits among them is not a number it
+/// publishes, so the default here is provisional.
+pub const SUB_LEVEL_RANGE_DB: (f32, f32) = (-76.0, 0.0);
+pub const SUB_LEVEL_SILENT_DB: f32 = -80.0;
+pub const SUB_LEVEL_DEFAULT_DB: f32 = -9.0;
+/// The woofer's sound reaches the drum's pair of microphones and, less of it,
+/// the horn's. Hammond says which one hears it and which one barely does, not
+/// by how much, so the ratio is provisional.
+const SUB_INTO_DRUM: f32 = 1.0;
+const SUB_INTO_HORN: f32 = 0.25;
+
+/// Decibels to a gain, with the bottom of the range meaning silence.
+fn from_decibels(decibels: f32) -> f32 {
+    if decibels <= SUB_LEVEL_SILENT_DB {
+        return 0.0;
+    }
+    // exp10(db / 20) without a library: 10^x is e^(x ln 10).
+    exp_approx(decibels * (core::f32::consts::LN_10 / 20.0))
+}
+
+/// e to the power of a modest negative number, by squaring a short series.
+/// The levels this serves change only when somebody moves a control.
+fn exp_approx(power: f32) -> f32 {
+    let halvings = 8;
+    let mut term = power / (1 << halvings) as f32;
+    term = 1.0 + term * (1.0 + 0.5 * term * (1.0 + term / 3.0));
+    for _ in 0..halvings {
+        term *= term;
+    }
+    term
+}
+
 /// Where a rotor is asked to come to rest. Hammond documents the setting as
 /// 0 to 359 degrees or "Rnd", which stops it at a random angle. Zero is the
 /// mouth pointing at the microphones.
@@ -229,6 +301,9 @@ impl Placement {
 struct MicrophonePath {
     delay_samples: f32,
     gain: f32,
+    /// Metres from the mouth to the capsule, which is what decides how much
+    /// bass a directional capsule lifts.
+    length: f32,
     /// How squarely the mouth faces this microphone: 1 when it points
     /// straight at it, 0 when it points away.
     facing: f32,
@@ -253,6 +328,7 @@ fn microphone_path(
     MicrophonePath {
         delay_samples: squared * inverse * samples_per_metre,
         gain: place.distance * inverse * ((1.0 - pattern) + pattern * incidence),
+        length: squared * inverse,
         // The mouth radiates outward along the radius, so how far off axis
         // the microphone lies is the angle between that radius and the line
         // to it.
@@ -591,6 +667,22 @@ pub struct Rotary {
     reflections: f32,
     horn_drum_balance: f32,
     mains: MainsFrequency,
+    capsule: MicrophoneType,
+    sub_gain: f32,
+    /// Where the woofer's own sound reaches each of the four microphones. It
+    /// does not turn with anything, so these do not change until a stand
+    /// moves.
+    sub_paths: [(f32, f32); 4],
+    /// One capsule's worth of filtering per output channel: the bass a
+    /// directional capsule lifts as it nears the cabinet, and what a dynamic
+    /// one does to the top.
+    proximity: [f32; 2],
+    proximity_coefficient: f32,
+    proximity_lift: f32,
+    presence_coefficient: f32,
+    top_coefficient: f32,
+    presence: [f32; 2],
+    top: [f32; 2],
     /// Drawn on only when a rotor is asked to stop at a random angle, so a
     /// render with fixed angles stays bit-identical run to run.
     entropy: u32,
@@ -599,7 +691,7 @@ pub struct Rotary {
 impl Rotary {
     pub fn new(sample_rate: f32) -> Self {
         let x = TAU * 800.0 / sample_rate;
-        Self {
+        let mut cabinet = Self {
             sample_rate,
             mode: RotaryMode::Off,
             mix: 0.82,
@@ -637,8 +729,38 @@ impl Rotary {
             reflections: 0.22,
             horn_drum_balance: 0.0,
             mains: MainsFrequency::Sixty,
+            capsule: MicrophoneType::Condenser,
+            sub_gain: from_decibels(SUB_LEVEL_DEFAULT_DB),
+            sub_paths: [(1.0, 1.0); 4],
+            proximity: [0.0; 2],
+            proximity_coefficient: 0.0,
+            proximity_lift: 0.0,
+            presence_coefficient: one_pole(DYNAMIC_PRESENCE_HZ, sample_rate),
+            top_coefficient: one_pole(DYNAMIC_TOP_HZ, sample_rate),
+            presence: [0.0; 2],
+            top: [0.0; 2],
             entropy: 0x9e37_79b9,
+        };
+        cabinet.settle_fixed_paths();
+        cabinet
+    }
+
+    /// Which capsule the pair is, and how loud the woofer's own unmodulated
+    /// bass is under them. Hammond gives that level in decibels, from unity
+    /// down to silence.
+    pub fn set_microphone_type(&mut self, capsule: MicrophoneType) {
+        self.capsule = capsule;
+    }
+
+    pub fn set_sub_level(&mut self, decibels: f32) -> bool {
+        if !decibels.is_finite()
+            || decibels > SUB_LEVEL_RANGE_DB.1
+            || decibels < SUB_LEVEL_SILENT_DB
+        {
+            return false;
         }
+        self.sub_gain = from_decibels(decibels);
+        true
     }
 
     /// Which supply the cabinet's motors are running from. Changing it while
@@ -768,7 +890,32 @@ impl Rotary {
         }
         self.places = stands(array.distance_m, array.spacing_m, array.offset_m);
         self.pattern = array.pattern;
+        self.settle_fixed_paths();
         true
+    }
+
+    /// Recomputes everything that does not turn: the woofer's paths to the
+    /// four microphones, and the bass a directional capsule lifts at this
+    /// distance.
+    fn settle_fixed_paths(&mut self) {
+        let samples_per_metre = self.sample_rate / SOUND_SPEED_M_PER_S;
+        for (slot, place) in self.sub_paths.iter_mut().zip(self.places) {
+            // The woofer sits on the axis and stays there, so its path is a
+            // rotor's path with no radius to swing on.
+            let path = microphone_path(place, 0.0, 0.0, 1.0, samples_per_metre, self.pattern);
+            *slot = (path.delay_samples, path.gain);
+        }
+        // A pressure-gradient capsule hears the difference between two points
+        // in the air, and near a source that difference grows toward the
+        // bottom: below roughly the speed of sound over the circumference of
+        // the distance, the response rises. An omnidirectional capsule reads
+        // pressure alone and does none of this, which is why the pattern is
+        // in it.
+        let path = microphone_path(self.places[0], 0.0, 0.0, 1.0, samples_per_metre, 0.0);
+        let corner = SOUND_SPEED_M_PER_S / (TAU * path.length.max(0.05));
+        let x = TAU * corner / self.sample_rate;
+        self.proximity_coefficient = x / (1.0 + x);
+        self.proximity_lift = PROXIMITY_MAX_LIFT * self.pattern;
     }
 
     /// The radius each rotor's mouth turns at, in metres. This is the one
@@ -866,6 +1013,44 @@ impl Rotary {
             horn_gain * horn_right + drum_gain * drum_right * (0.66 + 0.34 * drum_facing_right);
         // Where the microphones meet, so does the image: no width, no stereo.
 
+        // The woofer's own sound never enters a rotor. It leaves the cabinet
+        // unmodulated and arrives at the microphones that happen to be there,
+        // mostly at the drum's pair and a little at the horn's.
+        if self.sub_gain > 0.0 {
+            let pickup = |paths: [(f32, f32); 4], line: &DelayLine| {
+                let horn = SUB_INTO_HORN;
+                let drum = SUB_INTO_DRUM;
+                (
+                    drum * line.read(paths[2].0) * paths[2].1
+                        + horn * line.read(paths[0].0) * paths[0].1,
+                    drum * line.read(paths[3].0) * paths[3].1
+                        + horn * line.read(paths[1].0) * paths[1].1,
+                )
+            };
+            let (sub_left, sub_right) = pickup(self.sub_paths, &self.drum_delay);
+            wet_left += self.sub_gain * sub_left;
+            wet_right += self.sub_gain * sub_right;
+        }
+
+        // What the capsules make of all that.
+        let capsule = self.capsule;
+        let lift = self.proximity_lift;
+        let coefficient = self.proximity_coefficient;
+        for (channel, value) in [&mut wet_left, &mut wet_right].into_iter().enumerate() {
+            let bass = &mut self.proximity[channel];
+            *bass += coefficient * (*value - *bass);
+            let mut voiced = *value + lift * *bass;
+            if capsule == MicrophoneType::Dynamic {
+                let presence = &mut self.presence[channel];
+                *presence += self.presence_coefficient * (voiced - *presence);
+                voiced += DYNAMIC_PRESENCE_LIFT * (voiced - *presence);
+                let top = &mut self.top[channel];
+                *top += self.top_coefficient * (voiced - *top);
+                voiced = *top;
+            }
+            *value = voiced;
+        }
+
         self.cabinet_left.push(wet_left);
         self.cabinet_right.push(wet_right);
         let reflection_left = 0.42 * self.cabinet_left.read(self.sample_rate * 0.0037)
@@ -923,6 +1108,9 @@ impl Rotary {
         self.cabinet_right.clear();
         self.horn_tone_left = 0.0;
         self.horn_tone_right = 0.0;
+        self.proximity = [0.0; 2];
+        self.presence = [0.0; 2];
+        self.top = [0.0; 2];
     }
 }
 
@@ -1019,6 +1207,104 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// Decibels to a gain, against the values a table would give.
+    #[test]
+    fn levels_convert_the_way_decibels_do() {
+        for (decibels, gain) in [
+            (0.0_f32, 1.0_f32),
+            (-6.0, 0.501_187_2),
+            (-20.0, 0.1),
+            (-40.0, 0.01),
+            (SUB_LEVEL_RANGE_DB.0, 1.584_893_2e-4),
+        ] {
+            let found = from_decibels(decibels);
+            assert!(
+                (found - gain).abs() < 1.0e-4 * gain,
+                "{decibels} dB gave {found} against {gain}"
+            );
+        }
+        assert_eq!(from_decibels(SUB_LEVEL_SILENT_DB), 0.0);
+        assert_eq!(from_decibels(-200.0), 0.0);
+    }
+
+    /// The woofer's own sound is not in a rotor, so turning one does not
+    /// change it: raising it flattens what the cabinet does to a bass note
+    /// rather than deepening it.
+    #[test]
+    fn the_woofer_arrives_unmodulated() {
+        let rate = 48_000.0_f32;
+        let swing = |decibels: f32| {
+            let mut rotary = Rotary::new(rate);
+            assert!(rotary.set_mix(1.0));
+            assert!(rotary.set_cabinet(0.0, 0.0));
+            assert!(rotary.set_sub_level(decibels));
+            rotary.set_mode(RotaryMode::Tremolo);
+            for index in 0..(rate as usize * 12) {
+                rotary.process((index as f32 * 0.03).sin());
+            }
+            let (mut quietest, mut loudest) = (f32::MAX, 0.0_f32);
+            let mut envelope = 0.0_f32;
+            for index in 0..(rate as usize) {
+                // 200 Hz, which the crossover sends to the drum and which the
+                // woofer is also putting out on its own.
+                let tone = (index as f32 * TAU * 200.0 / rate).sin();
+                let [left, _] = rotary.process(tone);
+                envelope += 0.002 * (left.abs() - envelope);
+                if index > rate as usize / 4 {
+                    quietest = quietest.min(envelope);
+                    loudest = loudest.max(envelope);
+                }
+            }
+            loudest / quietest.max(1.0e-9)
+        };
+        let alone = swing(SUB_LEVEL_SILENT_DB);
+        let with_woofer = swing(0.0);
+        assert!(
+            with_woofer < alone,
+            "the woofer deepened the sweep: {with_woofer} against {alone}"
+        );
+    }
+
+    /// A directional capsule gains bass as it nears what it is pointed at,
+    /// and an omnidirectional one does not, which is the part of the
+    /// microphone choice that is physics rather than taste.
+    #[test]
+    fn closing_in_lifts_the_bass_of_a_directional_capsule() {
+        let bass = |distance_m: f32, pattern: f32| {
+            let mut rotary = Rotary::new(48_000.0);
+            assert!(rotary.set_mix(1.0));
+            assert!(rotary.set_cabinet(0.0, 0.0));
+            assert!(rotary.set_sub_level(SUB_LEVEL_SILENT_DB));
+            assert!(rotary.set_microphones(MicrophoneArray {
+                distance_m,
+                spacing_m: 0.0,
+                offset_m: 0.0,
+                pattern,
+            }));
+            rotary.set_mode(RotaryMode::Brake);
+            let mut sum = 0.0_f32;
+            for index in 0..48_000 {
+                let tone = (index as f32 * TAU * 50.0 / 48_000.0).sin();
+                let [left, _] = rotary.process(tone);
+                if index > 24_000 {
+                    sum += left * left;
+                }
+            }
+            sum
+        };
+        let near = bass(0.15, 1.0);
+        let far = bass(1.5, 1.0);
+        assert!(near > far, "near {near} against far {far}");
+        let omni_near = bass(0.15, 0.0);
+        let omni_far = bass(1.5, 0.0);
+        assert!(
+            (near / far) > 1.2 * (omni_near / omni_far),
+            "the pattern made no difference: {} against {}",
+            near / far,
+            omni_near / omni_far
+        );
     }
 
     /// A cabinet on fifty cycles turns at five sixths of every speed it is

@@ -638,6 +638,33 @@
       },
       "flags": { "automatable": true },
       "suggested_control": "list"
+    },
+    {
+      "index": 58,
+      "id": "rotary-sub-level",
+      "name": "Sub Bass Level",
+      "page": "rotary",
+      "order": 12,
+      "kind": { "type": "float", "minimum": -80.0, "maximum": 0.0, "default": -9.0, "step": 0.5, "unit": "dB" },
+      "flags": { "automatable": true },
+      "suggested_control": "knob"
+    },
+    {
+      "index": 59,
+      "id": "rotary-microphone-type",
+      "name": "Mic Type",
+      "page": "rotary",
+      "order": 13,
+      "kind": {
+        "type": "enum",
+        "default": 1,
+        "choices": [
+          { "value": 0, "name": "Dynamic" },
+          { "value": 1, "name": "Condenser" }
+        ]
+      },
+      "flags": { "automatable": true },
+      "suggested_control": "list"
     }
   ],
   "semantic_controls": [

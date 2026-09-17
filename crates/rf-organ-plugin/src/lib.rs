@@ -13,7 +13,7 @@ pub use settings::{PARAMETER_COUNT, Settings, presets};
 
 pub const MAX_FRAMES: u32 = 4096;
 pub const MAX_EVENTS: usize = 256;
-pub const STATE_VERSION: u32 = 9;
+pub const STATE_VERSION: u32 = 10;
 pub const STATE_BYTES_V1: usize = 8 + 19 * 8;
 pub const STATE_BYTES_V2: usize = 8 + 24 * 8;
 pub const STATE_BYTES_V3: usize = 8 + 37 * 8;
@@ -22,6 +22,7 @@ pub const STATE_BYTES_V5: usize = 8 + 45 * 8;
 pub const STATE_BYTES_V6: usize = 8 + 51 * 8;
 pub const STATE_BYTES_V7: usize = 8 + 55 * 8;
 pub const STATE_BYTES_V8: usize = 8 + 57 * 8;
+pub const STATE_BYTES_V9: usize = 8 + 58 * 8;
 pub const STATE_BYTES: usize = 8 + PARAMETER_COUNT * 8;
 
 #[derive(Default)]
@@ -211,6 +212,7 @@ impl Processor for RfOrganProcessor {
             STATE_BYTES_V6,
             STATE_BYTES_V7,
             STATE_BYTES_V8,
+            STATE_BYTES_V9,
             STATE_BYTES,
         ]
         .contains(&state.len())
@@ -228,6 +230,7 @@ impl Processor for RfOrganProcessor {
             (6, STATE_BYTES_V6) => 51,
             (7, STATE_BYTES_V7) => 55,
             (8, STATE_BYTES_V8) => 57,
+            (9, STATE_BYTES_V9) => 58,
             (STATE_VERSION, STATE_BYTES) => PARAMETER_COUNT,
             _ => return false,
         };

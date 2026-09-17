@@ -166,7 +166,7 @@ microphones, so moving them back zooms out instead of pushing them off the
 edge. The parameter table the surface validates against is the engine's, not a
 copy of it; a range that moves in the DSP moves there too.
 
-## Version 0.28.0 limitations
+## Version 0.29.0 limitations
 
 - The classic B-3 pedal contact and resistor-panel topology is present. The
   L20 pedal-filter coefficient and console matching-network constants remain
@@ -197,6 +197,21 @@ copy of it; a range that moves in the DSP moves there too.
   range; before 0.21.0 the horn ramped in 0.35 s, which is under the 0.8 s
   floor a cabinet can manage. Placement and stop angle are no longer
   abstractions: both are in the units Hammond specifies them in.
+- The woofer's own bass does not enter a rotor. It reaches the four
+  microphones along paths that do not turn, mostly the drum's pair and a
+  quarter as much the horn's, so raising it makes the cabinet's sweep
+  shallower rather than deeper: 13.7 dB of it becomes 5.1 dB with the woofer
+  fully open. How much less the horn's pair hears, and where the level sits by
+  default, are provisional.
+- The two capsules differ in two ways that are not the same kind of thing. A
+  directional capsule lifts the bass as it nears a source, at a corner the
+  distance sets and by an amount the pattern scales, which is derived and
+  bounded rather than chosen - the bound stands in for the roll-off a real
+  capsule has underneath it. The presence and the top that tell a dynamic
+  capsule from a condenser are provisional, because no capsule is named
+  anywhere we can cite.
+- Of the three microphone volumes Hammond documents, the horn's and the drum's
+  are a bipolar balance here rather than two independent decibel controls.
 - The rotors are belted to alternating-current motors, so the supply sets
   every speed they reach: on 50 Hz the cabinet turns at five sixths of its
   rated speeds and reaches them sooner, because the belt ramps at the rate it

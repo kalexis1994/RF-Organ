@@ -4,9 +4,9 @@ use crate::captures::{C_NOTE, CHARACTER, F_NOTE, Level, note_frequency};
 use crate::signal::{decay_time, decibels, peak, rms, zero_crossing_frequency};
 use rf_organ_dsp::{
     ConsoleElectronics, DRAWBAR_COUNT, MANUAL_FIRST_NOTE, MANUAL_KEY_COUNT, MainsFrequency,
-    MatchingTransformer, MicrophoneArray, OrganEngine, OrganPart, PercussionDecay,
-    PercussionHarmonic, PercussionVolume, Rotary, RotaryGeometry, RotaryMode, ScannerMode,
-    ScannerVibrato, StopAngle, TransformerUnit, compartment_companions, drawbar_wheel,
+    MatchingTransformer, MicrophoneArray, MicrophoneType, OrganEngine, OrganPart, PercussionDecay,
+    PercussionHarmonic, PercussionVolume, Rotary, RotaryGeometry, RotaryMode, SUB_LEVEL_SILENT_DB,
+    ScannerMode, ScannerVibrato, StopAngle, TransformerUnit, compartment_companions, drawbar_wheel,
     gear_frequency,
 };
 use std::f64::consts::{PI, TAU};
@@ -86,6 +86,7 @@ fn analyze_inner() -> Result<Artifacts, String> {
     let (stop, rotary_stop_angle) = rotary_stop_probe();
     measurements.extend(stop);
     measurements.extend(rotary_supply_probe());
+    measurements.extend(rotary_capsule_probe());
     Ok(Artifacts {
         measurements: measurement_csv(&measurements),
         percussion_envelope,
@@ -1488,9 +1489,12 @@ fn rotary_doppler_probe() -> (Vec<Measurement>, String) {
         let mut rotary = Rotary::new(SAMPLE_RATE as f32);
         assert!(rotary.set_mix(1.0));
         assert!(rotary.set_acceleration(0.5));
-        // One rotor at a time, with the room switched off: this probe is about
-        // the path to the microphones, not about the cabinet's walls.
+        // One rotor at a time, with the room switched off and the woofer
+        // silent: this probe is about the path from one mouth to the
+        // microphones, and the woofer's own bass arrives unmodulated, which
+        // would dilute the very deviation being measured.
         assert!(rotary.set_cabinet(0.0, balance));
+        assert!(rotary.set_sub_level(SUB_LEVEL_SILENT_DB));
         assert!(rotary.set_microphones(MicrophoneArray::default()));
         rotary.set_mode(RotaryMode::Tremolo);
 
@@ -1792,6 +1796,112 @@ fn rotary_supply_probe() -> Vec<Measurement> {
             metric: "supply-ratio",
             value: exported_drum / rated_drum,
             unit: "ratio",
+        },
+    ]
+}
+
+/// The woofer and the capsules.
+///
+/// Two things are being separated here. The woofer's bass leaves the cabinet
+/// without passing through a rotor, so raising it has to make the cabinet's
+/// sweep shallower rather than deeper - it is adding a steady sound to a
+/// moving one. And a directional capsule gains bass as it nears what it is
+/// pointed at, by an amount the distance and the pattern decide, which is why
+/// that part of the microphone choice belongs to the geometry and not to the
+/// capsule's character.
+fn rotary_capsule_probe() -> Vec<Measurement> {
+    let sweep_depth = |sub_db: f32| {
+        let mut rotary = Rotary::new(SAMPLE_RATE as f32);
+        assert!(rotary.set_mix(1.0));
+        assert!(rotary.set_cabinet(0.0, 0.0));
+        assert!(rotary.set_sub_level(sub_db));
+        rotary.set_mode(RotaryMode::Tremolo);
+        let tone = |index: usize| ((index as f64 * TAU * 200.0 / SAMPLE_RATE as f64).sin()) as f32;
+        for index in 0..SAMPLE_RATE * 12 {
+            rotary.process(tone(index));
+        }
+        let (mut quietest, mut loudest, mut envelope) = (f64::MAX, 0.0_f64, 0.0_f64);
+        for index in 0..SAMPLE_RATE {
+            let [left, _] = rotary.process(tone(index));
+            envelope += 0.002 * (f64::from(left.abs()) - envelope);
+            if index > SAMPLE_RATE / 4 {
+                quietest = quietest.min(envelope);
+                loudest = loudest.max(envelope);
+            }
+        }
+        decibels(loudest) - decibels(quietest)
+    };
+
+    let band = |frequency: f64, distance_m: f32, pattern: f32, capsule| {
+        let mut rotary = Rotary::new(SAMPLE_RATE as f32);
+        assert!(rotary.set_mix(1.0));
+        assert!(rotary.set_cabinet(0.0, 0.0));
+        assert!(rotary.set_sub_level(SUB_LEVEL_SILENT_DB));
+        rotary.set_microphone_type(capsule);
+        assert!(rotary.set_microphones(MicrophoneArray {
+            distance_m,
+            spacing_m: 0.0,
+            offset_m: 0.0,
+            pattern,
+        }));
+        rotary.set_mode(RotaryMode::Brake);
+        let mut energy = 0.0_f64;
+        for index in 0..SAMPLE_RATE {
+            let tone = ((index as f64 * TAU * frequency / SAMPLE_RATE as f64).sin()) as f32;
+            let [left, _] = rotary.process(tone);
+            if index > SAMPLE_RATE / 2 {
+                energy += f64::from(left) * f64::from(left);
+            }
+        }
+        decibels(energy.sqrt())
+    };
+
+    // How much closer in gains, against how much of that is just being nearer.
+    let lift = |pattern: f32| {
+        band(50.0, 0.15, pattern, MicrophoneType::Condenser)
+            - band(50.0, 1.5, pattern, MicrophoneType::Condenser)
+    };
+    let directional = lift(1.0);
+    let omnidirectional = lift(0.0);
+
+    vec![
+        Measurement {
+            probe: "rotary-cabinet",
+            metric: "sweep-depth-woofer-silent",
+            value: sweep_depth(SUB_LEVEL_SILENT_DB),
+            unit: "dB",
+        },
+        Measurement {
+            probe: "rotary-cabinet",
+            metric: "sweep-depth-woofer-open",
+            value: sweep_depth(0.0),
+            unit: "dB",
+        },
+        Measurement {
+            probe: "rotary-cabinet",
+            metric: "proximity-lift-directional",
+            value: directional - omnidirectional,
+            unit: "dB",
+        },
+        Measurement {
+            probe: "rotary-cabinet",
+            metric: "closing-in-omnidirectional",
+            value: omnidirectional,
+            unit: "dB",
+        },
+        Measurement {
+            probe: "rotary-cabinet",
+            metric: "capsule-top",
+            value: band(10_000.0, 0.35, 0.5, MicrophoneType::Dynamic)
+                - band(10_000.0, 0.35, 0.5, MicrophoneType::Condenser),
+            unit: "dB",
+        },
+        Measurement {
+            probe: "rotary-cabinet",
+            metric: "capsule-presence",
+            value: band(4_000.0, 0.35, 0.5, MicrophoneType::Dynamic)
+                - band(4_000.0, 0.35, 0.5, MicrophoneType::Condenser),
+            unit: "dB",
         },
     ]
 }
