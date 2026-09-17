@@ -81,6 +81,7 @@ input:disabled, select:disabled { opacity: .45; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .advanced summary { cursor: pointer; color: var(--gold); font-weight: 800; }
 .advanced-grid { margin-top: 18px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+.advanced .note { margin: 10px 0 0; font-size: .78rem; line-height: 1.5; opacity: .72; }
 
 @media (max-width: 900px) {
   header { grid-template-columns: 1fr 1fr; }

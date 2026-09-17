@@ -13,11 +13,12 @@ pub use settings::{PARAMETER_COUNT, Settings, presets};
 
 pub const MAX_FRAMES: u32 = 4096;
 pub const MAX_EVENTS: usize = 256;
-pub const STATE_VERSION: u32 = 5;
+pub const STATE_VERSION: u32 = 6;
 pub const STATE_BYTES_V1: usize = 8 + 19 * 8;
 pub const STATE_BYTES_V2: usize = 8 + 24 * 8;
 pub const STATE_BYTES_V3: usize = 8 + 37 * 8;
 pub const STATE_BYTES_V4: usize = 8 + 41 * 8;
+pub const STATE_BYTES_V5: usize = 8 + 45 * 8;
 pub const STATE_BYTES: usize = 8 + PARAMETER_COUNT * 8;
 
 #[derive(Default)]
@@ -191,6 +192,7 @@ impl Processor for RfOrganProcessor {
             STATE_BYTES_V2,
             STATE_BYTES_V3,
             STATE_BYTES_V4,
+            STATE_BYTES_V5,
             STATE_BYTES,
         ]
         .contains(&state.len())
@@ -204,6 +206,7 @@ impl Processor for RfOrganProcessor {
             (2, STATE_BYTES_V2) => 24,
             (3, STATE_BYTES_V3) => 37,
             (4, STATE_BYTES_V4) => 41,
+            (5, STATE_BYTES_V5) => 45,
             (STATE_VERSION, STATE_BYTES) => PARAMETER_COUNT,
             _ => return false,
         };
@@ -399,6 +402,13 @@ mod tests {
         version_four[4..8].copy_from_slice(&4_u32.to_le_bytes());
         assert!(restored.load_state(&version_four));
         assert_eq!(restored.settings, Settings::default());
+
+        let mut version_five = [0_u8; STATE_BYTES_V5];
+        version_five.copy_from_slice(&current[..STATE_BYTES_V5]);
+        version_five[4..8].copy_from_slice(&5_u32.to_le_bytes());
+        assert!(restored.load_state(&version_five));
+        assert_eq!(restored.settings, Settings::default());
+        assert_eq!(restored.settings.transformer_trims, [[0.0; 2]; 3]);
     }
 
     #[test]

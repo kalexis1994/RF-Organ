@@ -14,12 +14,18 @@ The suite contains:
 - direct 888, percussion, scanner C3, Chorale and Tremolo phrases;
 - a complete two-manual and pedal-console phrase;
 - isolated low-C pedal captures for 16', 8' and both drawbars;
+- an eighteen-file two-manual transformer grid: C, F and the C+F dyad at three
+  documented drawbar levels, for the combined T2+T3 and T1+T3 paths;
+- a nine-file T3 injection grid at three documented injection levels;
 - the integrated Leslie cabinet impulse response;
 - an end-to-end A4 frequency, RMS and peak probe;
 - expression gain at 80 Hz, 1 kHz and 8 kHz for five pedal positions;
 - AO-28 tone-control response at 100 Hz, 1 kHz and 10 kHz across ±9 dB;
-- direct two-tone transformer difference-product levels across five magnetic
-  settings;
+- direct two-tone transformer difference and third-order product levels across
+  five magnetic settings;
+- per-unit transformer calibration: the effective drive and memory coefficients
+  T1, T2 and T3 receive from the shared character control plus their own trim,
+  and the product levels each one produces at three signal levels;
 - fast and slow percussion envelope curves measured in 10 ms RMS windows;
 - 1 kHz scanner carrier and ±6.9 Hz sideband levels for V1–V3 and C1–C3;
 - horn and drum acceleration/braking curves sampled every 10 ms, including
@@ -47,7 +53,30 @@ tables retain the underlying curves:
 - `tone-control-response.csv` records gain relative to neutral at three
   frequencies for five control positions, isolating the post-V4B shelf.
 - `transformer-intermodulation.csv` drives the reduced magnetic model with
-  523.3 Hz and 698.5 Hz and reports their 175.2 Hz difference product.
+  523.3 Hz and 698.5 Hz and reports both their 175.2 Hz difference product and
+  their 348.1 Hz third-order product.
+- `transformer-calibration.csv` records, for each of T1, T2 and T3 and for
+  three drive trims, the effective coefficients that unit receives, the
+  coefficients the other two keep, and the products measured at the three
+  documented levels.
+
+## What the two intermodulation products mean
+
+The reduced magnetic model is an odd nonlinearity: a linear input stage, a
+symmetric saturation and a linear mix. An odd system produces no genuine
+second-order product, so the model's own 175.2 Hz difference product is a
+floor, not a signal. At C5/F5 the reading in that bin is dominated by window
+leakage from the real fifth-order product at 3f_C - 2f_F = 172.9 Hz: doubling
+the analysis window drops the 175.2 Hz reading by about 20 dB while 172.9 Hz
+and 348.1 Hz stay put.
+
+Fitting therefore uses the third-order product at 2f_C - f_F = 348.1 Hz, which
+the model does produce (about -33 dBc at the baseline character) and which
+grows monotonically with drive. The difference product is still reported for
+both model and reference, because a real transformer with asymmetric hysteresis
+does produce one: a reference capture whose difference product sits far above
+the model's floor is evidence that the reduced model is missing the asymmetry,
+not evidence of a mis-set coefficient.
 
 These values describe the current model; they are regression baselines, not
 claims about a particular historical console. A coefficient becomes calibrated
@@ -101,12 +130,41 @@ When isolated pedal captures are present, comparison also writes:
 - `pedal-fit-candidates.csv`, with relative gain multipliers for each resistor
   bus and a provisional L20 effective-cutoff starting point.
 
-When either transformer dyad is present, its complete single-C, single-F and
-C+F triplet is required. `transformer-intermodulation-comparison.csv` subtracts
-the two single-note noise/leakage powers from the dyad difference product and
-reports model/reference dBFS, dBc and error. Upper captures measure T2+T3;
-lower captures measure T1+T3. A separate T3 coefficient cannot be inferred
-from these two combined paths alone.
+When a transformer dyad is present, its complete single-C, single-F and C+F
+triplet is required at that level. `transformer-intermodulation-comparison.csv`
+subtracts the two single-note powers from the dyad in each measured bin and
+reports model/reference dBFS, dBc and error for both the difference and the
+third-order product. Upper captures measure T2+T3, lower captures measure
+T1+T3, and the injection captures measure T3 alone.
+
+`transformer-fit-candidates.csv` turns those measurements into coefficients.
+For each path it searches the drive trim whose model prediction best matches
+the reference across the available levels, and reports the candidate trim, the
+effective drive it implies, the RMS and worst residual, and a self-check: how
+far the short fitting probe lands from the model's own four-second captures at
+zero trim, which bounds how much of a residual belongs to the probe rather than
+to the reference.
+
+The order is deliberate. T3 is fitted first, and only from injection captures.
+T2 and T1 are then fitted from the upper and lower captures with T3 held at
+that value. Without an injection triplet the manual paths stay
+`underdetermined-requires-t3-injection` and no number is produced: two combined
+paths cannot separate three transformers. Only the drive trim is searched; the
+memory coefficient barely moves these products and stays where the character
+control puts it until a measurement that separates it exists.
+
+A synthetic reference set with known coefficients validates the chain:
+
+```text
+cargo run --release -p rf-organ-lab -- render artifacts/synthetic \
+  --transformer-drive-trims 0.10,-0.15,0.20
+cargo run --release -p rf-organ-lab -- compare \
+  artifacts/calibration artifacts/synthetic artifacts/fit-check
+```
+
+recovers T1 = 0.100, T2 = -0.150 and T3 = 0.200 with residuals below 0.01 dB.
+The flag exists for exactly this check; the calibration render uses no trim,
+and the value used is recorded in `manifest.txt`.
 
 Bus candidates are normalized to an unaffected anchor inside the same
 registration, so recording gain cancels out. They are fitting aids rather than
@@ -134,23 +192,47 @@ recording a reference console.
 
 ## Transformer reference protocol
 
-Files `10` through `15` use only the 8' drawbar and MIDI C5/F5 (72/77). Record
-single C, single F and the C+F dyad first on the upper manual, then repeat the
-triplet on the lower manual. Begin at 250 ms, release at 3 seconds, capture four
-seconds total, use full expression, Normal volume, maximum-bandwidth AO-28 tone,
-and disable percussion, vibrato and Leslie rotation. Preserve recording gain
-across all six files and do not normalize them.
+Files `10` through `27` use only the 8' drawbar and MIDI C5/F5 (72/77). Each
+triplet is single C, single F and the C+F dyad. Record the three triplets of
+the upper manual first, then the three of the lower manual. The three levels
+are 8' drawbar positions 4, 6 and 8, one 6 dB step apart:
 
-For an electrical reference, the documented G-G output must be recorded only
-through a correctly rated isolated differential interface by a qualified tube-
-equipment technician. A powered AO-28 contains hazardous voltages. Do not open
-the console, defeat its grounding, or attach ordinary audio equipment directly
-to internal terminals. Microphone captures remain useful for end-to-end
-comparison but cannot isolate T1/T2/T3 from the cabinet and room.
+| files | manual | level | 8' drawbar |
+| --- | --- | --- | --- |
+| 10-12 | upper | low | 4 |
+| 13-15 | upper | nominal | 6 |
+| 16-18 | upper | high | 8 |
+| 19-21 | lower | low | 4 |
+| 22-24 | lower | nominal | 6 |
+| 25-27 | lower | high | 8 |
+
+Begin at 250 ms, hold for at least 2.5 seconds, release at 3 seconds and
+capture four seconds total. Use full expression, Normal volume,
+maximum-bandwidth AO-28 tone, and disable percussion, vibrato and Leslie
+rotation. Preserve one recording gain across all eighteen files and do not
+normalize them: the drawbar step is the measured quantity.
+
+Files `28` through `36` are the optional T3 injection grid, three triplets at
+injected levels one 6 dB step apart. They are the only captures that separate
+T3 from T1 and T2. The model renders them as the two tones through the output
+transformer alone at 0.045, 0.09 and 0.18 full scale, gated like a keyed note
+with a 5 ms ramp.
+
+**Bench work, qualified technicians only.** Injecting a signal ahead of T3 and
+recording the documented G-G output requires opening a powered AO-28, which
+contains hazardous voltages. It must be done only by a qualified tube-equipment
+technician, only through a correctly rated isolated differential interface, and
+the injected level in volts must be recorded in the manifest `notes` field: the
+fit maps a level to a coefficient, so an undocumented injection level makes the
+candidate meaningless. Do not defeat the console's grounding or attach ordinary
+audio equipment to internal terminals. Microphone captures of files `10`
+through `27` remain useful for end-to-end comparison but cannot isolate
+T1/T2/T3 from the cabinet and room.
 
 An RF-Organ-generated calibration directory may be used as the reference for a
-self-check without an external manifest. Comparing a directory with itself
-must yield zero deltas and envelope correlation 1.0 for all sixteen WAV files.
+self-check without an external manifest. Comparing a directory with itself must
+yield zero deltas and envelope correlation 1.0 for all thirty-seven WAV files,
+and every fit candidate must come back at a zero trim.
 
 The generated `artifacts/` directory is intentionally ignored by Git. Curated
 measurement data should only enter the repository with clear redistribution

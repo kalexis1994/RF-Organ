@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 mod analysis;
+mod captures;
 mod compare;
 mod wav;
 
+use captures::{PHRASE_SECONDS as SECONDS, SAMPLE_RATE, TRANSFORMER_CAPTURES};
 use rf_organ_dsp::{
     Leslie, LeslieMode, OrganEngine, OrganPart, PercussionDecay, PercussionHarmonic,
     PercussionVolume, ScannerMode, TONEWHEEL_COUNT, gear_frequency,
@@ -13,9 +15,6 @@ use std::error::Error;
 use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
-
-const SAMPLE_RATE: u32 = 48_000;
-const SECONDS: usize = 4;
 
 fn main() {
     if let Err(error) = run() {
@@ -30,10 +29,20 @@ fn run() -> Result<(), Box<dyn Error>> {
     match command.as_deref().and_then(|command| command.to_str()) {
         Some("render") => {
             let destination = arguments.next().ok_or("render requires OUTPUT_DIRECTORY")?;
+            let trims = match arguments.next() {
+                None => captures::NO_TRIM,
+                Some(flag) if flag == *"--transformer-drive-trims" => {
+                    let values = arguments
+                        .next()
+                        .ok_or("--transformer-drive-trims requires T1,T2,T3")?;
+                    parse_drive_trims(values.to_str().ok_or("trims must be UTF-8")?)?
+                }
+                Some(_) => return Err(usage().into()),
+            };
             if arguments.next().is_some() {
                 return Err(usage().into());
             }
-            render_suite(&PathBuf::from(destination))
+            render_suite(&PathBuf::from(destination), trims)
         }
         Some("compare") => {
             let model = arguments.next().ok_or("compare requires MODEL_DIRECTORY")?;
@@ -57,7 +66,30 @@ fn run() -> Result<(), Box<dyn Error>> {
 }
 
 const fn usage() -> &'static str {
-    "usage:\n  rf-organ-lab render OUTPUT_DIRECTORY\n  rf-organ-lab compare MODEL_DIRECTORY REFERENCE_DIRECTORY OUTPUT_DIRECTORY"
+    "usage:\n  rf-organ-lab render OUTPUT_DIRECTORY [--transformer-drive-trims T1,T2,T3]\n  rf-organ-lab compare MODEL_DIRECTORY REFERENCE_DIRECTORY OUTPUT_DIRECTORY"
+}
+
+/// Parses the optional per-transformer drive trims. They exist so that a
+/// synthetic reference set with known coefficients can be produced and fed
+/// back through the comparator; the calibration render uses no trim.
+fn parse_drive_trims(values: &str) -> Result<captures::Trims, Box<dyn Error>> {
+    let mut trims = captures::NO_TRIM;
+    let mut parsed = 0;
+    for (slot, value) in trims.iter_mut().zip(values.split(',')) {
+        let drive = value
+            .trim()
+            .parse::<f32>()
+            .map_err(|error| format!("invalid drive trim {value}: {error}"))?;
+        if !(-1.0..=1.0).contains(&drive) {
+            return Err(format!("drive trim {drive} is outside -1..1").into());
+        }
+        slot.0 = drive;
+        parsed += 1;
+    }
+    if parsed != trims.len() || values.split(',').count() != trims.len() {
+        return Err("--transformer-drive-trims needs exactly T1,T2,T3".into());
+    }
+    Ok(trims)
 }
 
 fn compare_suite(model: &Path, reference: &Path, destination: &Path) -> Result<(), Box<dyn Error>> {
@@ -83,6 +115,10 @@ fn compare_suite(model: &Path, reference: &Path, destination: &Path) -> Result<(
         destination.join("transformer-intermodulation-comparison.csv"),
         reports.transformer_intermodulation_comparison,
     )?;
+    fs::write(
+        destination.join("transformer-fit-candidates.csv"),
+        reports.transformer_fit_candidates,
+    )?;
     println!(
         "RF_ORGAN_LAB_COMPARED model={} reference={} path={}",
         model.display(),
@@ -92,7 +128,7 @@ fn compare_suite(model: &Path, reference: &Path, destination: &Path) -> Result<(
     Ok(())
 }
 
-fn render_suite(destination: &Path) -> Result<(), Box<dyn Error>> {
+fn render_suite(destination: &Path, trims: captures::Trims) -> Result<(), Box<dyn Error>> {
     fs::create_dir_all(destination)?;
     fs::write(
         destination.join("tonewheel-frequencies.csv"),
@@ -106,12 +142,19 @@ fn render_suite(destination: &Path) -> Result<(), Box<dyn Error>> {
             wav::encode_f32(&samples, 2, SAMPLE_RATE)?,
         )?;
     }
+    for capture in &TRANSFORMER_CAPTURES {
+        let samples = captures::render_transformer_phrase(capture, trims);
+        fs::write(
+            destination.join(format!("{}.wav", capture.id)),
+            wav::encode_f32(&samples, 2, SAMPLE_RATE)?,
+        )?;
+    }
     let impulse = render_leslie_impulse();
     fs::write(
         destination.join("leslie-cabinet-impulse.wav"),
         wav::encode_f32(&impulse, 2, SAMPLE_RATE)?,
     )?;
-    fs::write(destination.join("manifest.txt"), manifest())?;
+    fs::write(destination.join("manifest.txt"), manifest(trims))?;
     let analysis = analysis::analyze()?;
     fs::write(destination.join("measurements.csv"), analysis.measurements)?;
     fs::write(
@@ -146,6 +189,10 @@ fn render_suite(destination: &Path) -> Result<(), Box<dyn Error>> {
         destination.join("transformer-intermodulation.csv"),
         analysis.transformer_intermodulation,
     )?;
+    fs::write(
+        destination.join("transformer-calibration.csv"),
+        analysis.transformer_calibration,
+    )?;
     println!("RF_ORGAN_LAB_RENDERED path={}", destination.display());
     Ok(())
 }
@@ -161,16 +208,10 @@ enum Scenario {
     Pedal16,
     Pedal8,
     PedalBoth,
-    UpperTransformerC,
-    UpperTransformerF,
-    UpperTransformerDyad,
-    LowerTransformerC,
-    LowerTransformerF,
-    LowerTransformerDyad,
 }
 
 impl Scenario {
-    const ALL: [Self; 15] = [
+    const ALL: [Self; 9] = [
         Self::Direct,
         Self::Percussion,
         Self::Scanner,
@@ -180,48 +221,24 @@ impl Scenario {
         Self::Pedal16,
         Self::Pedal8,
         Self::PedalBoth,
-        Self::UpperTransformerC,
-        Self::UpperTransformerF,
-        Self::UpperTransformerDyad,
-        Self::LowerTransformerC,
-        Self::LowerTransformerF,
-        Self::LowerTransformerDyad,
     ];
 
     const fn id(self) -> &'static str {
         match self {
-            Self::Direct => "01-direct-888",
-            Self::Percussion => "02-third-percussion",
-            Self::Scanner => "03-scanner-c3",
-            Self::Chorale => "04-leslie-chorale",
-            Self::Tremolo => "05-leslie-tremolo",
-            Self::FullConsole => "06-full-console",
-            Self::Pedal16 => "07-pedal-16ft",
-            Self::Pedal8 => "08-pedal-8ft",
-            Self::PedalBoth => "09-pedal-16ft-8ft",
-            Self::UpperTransformerC => "10-upper-transformer-c",
-            Self::UpperTransformerF => "11-upper-transformer-f",
-            Self::UpperTransformerDyad => "12-upper-transformer-c-f",
-            Self::LowerTransformerC => "13-lower-transformer-c",
-            Self::LowerTransformerF => "14-lower-transformer-f",
-            Self::LowerTransformerDyad => "15-lower-transformer-c-f",
+            Self::Direct => captures::PHRASE_CAPTURES[0],
+            Self::Percussion => captures::PHRASE_CAPTURES[1],
+            Self::Scanner => captures::PHRASE_CAPTURES[2],
+            Self::Chorale => captures::PHRASE_CAPTURES[3],
+            Self::Tremolo => captures::PHRASE_CAPTURES[4],
+            Self::FullConsole => captures::PHRASE_CAPTURES[5],
+            Self::Pedal16 => captures::PHRASE_CAPTURES[6],
+            Self::Pedal8 => captures::PHRASE_CAPTURES[7],
+            Self::PedalBoth => captures::PHRASE_CAPTURES[8],
         }
     }
 
     const fn is_pedal(self) -> bool {
         matches!(self, Self::Pedal16 | Self::Pedal8 | Self::PedalBoth)
-    }
-
-    const fn transformer_registration(self) -> Option<(OrganPart, bool, bool)> {
-        match self {
-            Self::UpperTransformerC => Some((OrganPart::Upper, true, false)),
-            Self::UpperTransformerF => Some((OrganPart::Upper, false, true)),
-            Self::UpperTransformerDyad => Some((OrganPart::Upper, true, true)),
-            Self::LowerTransformerC => Some((OrganPart::Lower, true, false)),
-            Self::LowerTransformerF => Some((OrganPart::Lower, false, true)),
-            Self::LowerTransformerDyad => Some((OrganPart::Lower, true, true)),
-            _ => None,
-        }
     }
 }
 
@@ -239,28 +256,10 @@ fn render_phrase(scenario: Scenario) -> Result<Vec<f32>, Box<dyn Error>> {
 
 fn configure(engine: &mut OrganEngine, scenario: Scenario) {
     let _ = engine.set_output_level(0.72);
-    let _ = engine.set_transformer(0.38, 0.32);
+    let _ = engine.set_transformer(captures::CHARACTER.0, captures::CHARACTER.1);
     let _ = engine.set_console(0.32, 0.0, 0.0);
     let _ = engine.set_expression_character(0.55);
     let _ = engine.set_leslie_cabinet(0.35, 0.75, 0.22, 0.0);
-    if let Some((part, _, _)) = scenario.transformer_registration() {
-        for manual in [OrganPart::Upper, OrganPart::Lower] {
-            for drawbar in 0..rf_organ_dsp::DRAWBAR_COUNT {
-                let _ = engine.set_manual_drawbar(manual, drawbar, 0);
-            }
-        }
-        for drawbar in 0..rf_organ_dsp::PEDAL_DRAWBAR_COUNT {
-            let _ = engine.set_manual_drawbar(OrganPart::Pedal, drawbar, 0);
-        }
-        let _ = engine.set_manual_drawbar(part, 2, 8);
-        let _ = engine.set_output_level(1.0);
-        let _ = engine.set_console(0.0, 0.0, 0.0);
-        let _ = engine.set_expression_character(0.0);
-        engine.set_scanner_mode(ScannerMode::Off);
-        engine.set_scanner_manuals(false, false);
-        engine.set_leslie_mode(LeslieMode::Off);
-        return;
-    }
     match scenario {
         Scenario::Direct => {}
         Scenario::Percussion => {
@@ -301,12 +300,6 @@ fn configure(engine: &mut OrganEngine, scenario: Scenario) {
                 let _ = engine.set_manual_drawbar(OrganPart::Pedal, index, position);
             }
         }
-        Scenario::UpperTransformerC
-        | Scenario::UpperTransformerF
-        | Scenario::UpperTransformerDyad
-        | Scenario::LowerTransformerC
-        | Scenario::LowerTransformerF
-        | Scenario::LowerTransformerDyad => unreachable!(),
     }
 }
 
@@ -315,14 +308,7 @@ fn phrase_events(engine: &mut OrganEngine, scenario: Scenario, frame: usize) {
     let on = quarter;
     let off = SAMPLE_RATE as usize * 3;
     if frame == on {
-        if let Some((part, c, f)) = scenario.transformer_registration() {
-            if c {
-                let _ = engine.note_on_part(part, 72, 1.0);
-            }
-            if f {
-                let _ = engine.note_on_part(part, 77, 1.0);
-            }
-        } else if scenario.is_pedal() {
+        if scenario.is_pedal() {
             let _ = engine.note_on_part(OrganPart::Pedal, 24, 1.0);
         } else {
             for note in [48, 55, 60, 64] {
@@ -367,18 +353,35 @@ fn frequency_table() -> String {
     csv
 }
 
-fn manifest() -> String {
+fn manifest(trims: captures::Trims) -> String {
+    let drive_trims = trims
+        .iter()
+        .map(|(drive, _)| format!("{drive:.3}"))
+        .collect::<Vec<_>>()
+        .join(",");
     format!(
-        "RF-Organ deterministic calibration suite\nversion={}\nsample_rate={}\nphrase_seconds={}\nnormalization=none\nformat=IEEE-float WAV stereo\nanalysis=frequency,level,pedal-spectrum,pedal-release,expression-response,tone-control-response,transformer-intermodulation,percussion-envelope,scanner-sidebands,leslie-rotor-response\n",
+        "RF-Organ deterministic calibration suite\nversion={}\nsample_rate={}\nphrase_seconds={}\nnormalization=none\nformat=IEEE-float WAV stereo\nanalysis=frequency,level,pedal-spectrum,pedal-release,expression-response,tone-control-response,transformer-intermodulation,transformer-calibration,percussion-envelope,scanner-sidebands,leslie-rotor-response\n",
         env!("CARGO_PKG_VERSION"),
         SAMPLE_RATE,
         SECONDS
-    )
+    ) + &format!("transformer_drive_trims={drive_trims}\n")
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn drive_trims_are_parsed_for_synthetic_reference_sets() {
+        let trims = parse_drive_trims("0.1,-0.25,0").expect("three trims");
+        assert_eq!(trims[0].0, 0.1);
+        assert_eq!(trims[1].0, -0.25);
+        assert_eq!(trims[2], (0.0, 0.0));
+        assert!(parse_drive_trims("0.1,0.2").is_err());
+        assert!(parse_drive_trims("0.1,0.2,0.3,0.4").is_err());
+        assert!(parse_drive_trims("0.1,0.2,2.0").is_err());
+        assert!(manifest(trims).contains("transformer_drive_trims=0.100,-0.250,0.000"));
+    }
 
     #[test]
     fn frequency_csv_contains_all_physical_wheels() {
@@ -405,18 +408,14 @@ mod tests {
     }
 
     #[test]
-    fn transformer_reference_scenarios_have_stable_capture_names() {
-        assert_eq!(Scenario::UpperTransformerC.id(), "10-upper-transformer-c");
-        assert_eq!(Scenario::UpperTransformerF.id(), "11-upper-transformer-f");
+    fn transformer_reference_captures_span_paths_and_levels() {
+        assert_eq!(TRANSFORMER_CAPTURES.len(), 27);
+        assert_eq!(TRANSFORMER_CAPTURES[0].id, "10-upper-transformer-low-c");
         assert_eq!(
-            Scenario::UpperTransformerDyad.id(),
-            "12-upper-transformer-c-f"
+            TRANSFORMER_CAPTURES[13].id,
+            "23-lower-transformer-nominal-f"
         );
-        assert_eq!(Scenario::LowerTransformerC.id(), "13-lower-transformer-c");
-        assert_eq!(Scenario::LowerTransformerF.id(), "14-lower-transformer-f");
-        assert_eq!(
-            Scenario::LowerTransformerDyad.id(),
-            "15-lower-transformer-c-f"
-        );
+        assert_eq!(TRANSFORMER_CAPTURES[26].id, "36-t3-injection-high-c-f");
+        assert_eq!(captures::capture_names().len(), Scenario::ALL.len() + 28);
     }
 }

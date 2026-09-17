@@ -10,7 +10,7 @@ use web_sys::{
 };
 
 const PLUGIN_ID: &str = "org.rackforge.organ";
-const CONTROL_IDS: [&str; 45] = [
+const CONTROL_IDS: [&str; 51] = [
     "output",
     "expression",
     "u16",
@@ -56,6 +56,12 @@ const CONTROL_IDS: [&str; 45] = [
     "stereo-width",
     "reflections",
     "rotor-balance",
+    "t1-drive-trim",
+    "t1-memory-trim",
+    "t2-drive-trim",
+    "t2-memory-trim",
+    "t3-drive-trim",
+    "t3-memory-trim",
 ];
 
 struct App {

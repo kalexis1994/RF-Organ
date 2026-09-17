@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+use crate::captures::{
+    C_NOTE, CHARACTER, F_NOTE, Level, NO_TRIM, Notes, TransformerPath, Trims, capture_names,
+    note_frequency, transformer_capture, transformer_steady_frames, trim_for,
+};
 use crate::wav::{self, Audio};
-use rf_organ_dsp::{MANUAL_FIRST_NOTE, drawbar_wheel, gear_frequency};
+use rf_organ_dsp::gear_frequency;
 use std::collections::BTreeMap;
 use std::f64::consts::TAU;
 use std::fmt::Write as _;
@@ -9,24 +13,6 @@ use std::fs;
 use std::path::Path;
 
 const SAMPLE_RATE: u32 = 48_000;
-const CAPTURES: [&str; 16] = [
-    "01-direct-888",
-    "02-third-percussion",
-    "03-scanner-c3",
-    "04-leslie-chorale",
-    "05-leslie-tremolo",
-    "06-full-console",
-    "07-pedal-16ft",
-    "08-pedal-8ft",
-    "09-pedal-16ft-8ft",
-    "10-upper-transformer-c",
-    "11-upper-transformer-f",
-    "12-upper-transformer-c-f",
-    "13-lower-transformer-c",
-    "14-lower-transformer-f",
-    "15-lower-transformer-c-f",
-    "leslie-cabinet-impulse",
-];
 const PEDAL_HARMONICS: [(usize, usize); 8] = [
     (1, 0),
     (2, 12),
@@ -43,6 +29,7 @@ pub struct Reports {
     pub pedal_spectrum_comparison: String,
     pub pedal_fit_candidates: String,
     pub transformer_intermodulation_comparison: String,
+    pub transformer_fit_candidates: String,
     pub reference_quality: String,
 }
 
@@ -91,7 +78,7 @@ pub fn compare_directories(model: &Path, reference: &Path) -> Result<Reports, St
         "capture,common_seconds,reference_minus_model_onset_ms,model_rms_dbfs,reference_rms_dbfs,model_minus_reference_level_db,model_minus_reference_peak_db,model_minus_reference_crest_db,envelope_correlation,model_stereo_width_db,reference_stereo_width_db,model_minus_reference_stereo_width_db\n",
     );
     let mut compared = 0;
-    for capture in CAPTURES {
+    for capture in capture_names() {
         let reference_path = reference.join(format!("{capture}.wav"));
         if !reference_path.is_file() {
             continue;
@@ -132,13 +119,14 @@ pub fn compare_directories(model: &Path, reference: &Path) -> Result<Reports, St
     }
     let (pedal_spectrum_comparison, pedal_fit_candidates) =
         compare_pedal_captures(model, reference, &quality)?;
-    let transformer_intermodulation_comparison =
+    let (transformer_intermodulation_comparison, transformer_fit_candidates) =
         compare_transformer_captures(model, reference, &quality)?;
     Ok(Reports {
         capture_comparison: report,
         pedal_spectrum_comparison,
         pedal_fit_candidates,
         transformer_intermodulation_comparison,
+        transformer_fit_candidates,
         reference_quality,
     })
 }
@@ -269,69 +257,317 @@ fn write_bus_candidates(
     }
 }
 
+/// One measured path/level point: the noise-corrected difference product of a
+/// C+F dyad, in both the model and the reference.
+#[derive(Clone, Copy)]
+struct Observation {
+    path: TransformerPath,
+    level: Level,
+    /// Third-order product, the metric the reduced model actually produces.
+    model_dbc: f64,
+    reference_dbc: f64,
+    status: QualityStatus,
+    qualification: &'static str,
+}
+
 fn compare_transformer_captures(
     model: &Path,
     reference: &Path,
     quality: &BTreeMap<String, CaptureQuality>,
-) -> Result<String, String> {
-    let triplets = [
-        (
-            "t2+t3",
-            "10-upper-transformer-c",
-            "11-upper-transformer-f",
-            "12-upper-transformer-c-f",
-        ),
-        (
-            "t1+t3",
-            "13-lower-transformer-c",
-            "14-lower-transformer-f",
-            "15-lower-transformer-c-f",
-        ),
-    ];
+) -> Result<(String, String), String> {
     let mut csv = String::from(
-        "path,c_hz,f_hz,difference_hz,model_difference_dbfs,reference_difference_dbfs,model_difference_dbc,reference_difference_dbc,reference_minus_model_db,qualification\n",
+        "path,unit,level,c_hz,f_hz,difference_hz,third_order_hz,model_difference_dbfs,reference_difference_dbfs,model_difference_dbc,reference_difference_dbc,reference_minus_model_difference_db,model_third_order_dbfs,reference_third_order_dbfs,model_third_order_dbc,reference_third_order_dbc,reference_minus_model_third_order_db,qualification\n",
     );
-    for (path, c_capture, f_capture, dyad_capture) in triplets {
-        if !reference.join(format!("{dyad_capture}.wav")).is_file() {
-            continue;
-        }
-        let load_triplet = |directory: &Path| -> Result<[Audio; 3], String> {
-            let c = directory.join(format!("{c_capture}.wav"));
-            let f = directory.join(format!("{f_capture}.wav"));
-            let dyad = directory.join(format!("{dyad_capture}.wav"));
-            for required in [&c, &f, &dyad] {
-                if !required.is_file() {
-                    return Err(format!(
-                        "transformer comparison requires the complete triplet: {}",
-                        required.display()
-                    ));
+    let mut observations = Vec::new();
+    for path in TransformerPath::ALL {
+        for level in Level::ALL {
+            let triplet = Notes::ALL.map(|notes| transformer_capture(path, level, notes));
+            if !reference
+                .join(format!("{}.wav", triplet[2].id))
+                .is_file()
+            {
+                continue;
+            }
+            let load = |directory: &Path| -> Result<[Audio; 3], String> {
+                let mut loaded = Vec::with_capacity(3);
+                for capture in triplet {
+                    let file = directory.join(format!("{}.wav", capture.id));
+                    if !file.is_file() {
+                        return Err(format!(
+                            "the {} {} triplet needs its {} capture: {}",
+                            path.label(),
+                            level.label(),
+                            capture.notes.label(),
+                            file.display()
+                        ));
+                    }
+                    loaded.push(read_audio(&file)?);
+                }
+                Ok([
+                    loaded.remove(0),
+                    loaded.remove(0),
+                    loaded.remove(0),
+                ])
+            };
+            let model_audio = load(model)?;
+            let reference_audio = load(reference)?;
+            let model_levels = capture_intermodulation(&model_audio)?;
+            let reference_levels = capture_intermodulation(&reference_audio)?;
+            let mut status = QualityStatus::Pass;
+            let mut qualification = "quality-pass";
+            for capture in triplet {
+                let measured = quality
+                    .get(capture.id)
+                    .ok_or_else(|| format!("missing quality result for {}", capture.id))?;
+                if measured.status > status {
+                    status = measured.status;
+                    qualification = measured.qualification;
                 }
             }
-            Ok([read_audio(&c)?, read_audio(&f)?, read_audio(&dyad)?])
-        };
-        let model_audio = load_triplet(model)?;
-        let reference_audio = load_triplet(reference)?;
-        let model_levels = transformer_intermodulation(&model_audio)?;
-        let reference_levels = transformer_intermodulation(&reference_audio)?;
-        let capture_quality = quality
-            .get(dyad_capture)
-            .ok_or_else(|| format!("missing quality result for {dyad_capture}"))?;
-        writeln!(
-            &mut csv,
-            "{path},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{}",
-            model_levels.c_hz,
-            model_levels.f_hz,
-            model_levels.difference_hz,
-            model_levels.difference_dbfs,
-            reference_levels.difference_dbfs,
-            model_levels.difference_dbc,
-            reference_levels.difference_dbc,
-            reference_levels.difference_dbc - model_levels.difference_dbc,
-            capture_quality.qualification
-        )
-        .expect("string write cannot fail");
+            writeln!(
+                &mut csv,
+                "{},{},{},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{qualification}",
+                path.label(),
+                path.unit().label(),
+                level.label(),
+                model_levels.c_hz,
+                model_levels.f_hz,
+                model_levels.difference_hz,
+                model_levels.third_order_hz,
+                model_levels.difference_dbfs,
+                reference_levels.difference_dbfs,
+                model_levels.difference_dbc,
+                reference_levels.difference_dbc,
+                reference_levels.difference_dbc - model_levels.difference_dbc,
+                model_levels.third_order_dbfs,
+                reference_levels.third_order_dbfs,
+                model_levels.third_order_dbc,
+                reference_levels.third_order_dbc,
+                reference_levels.third_order_dbc - model_levels.third_order_dbc,
+            )
+            .expect("string write cannot fail");
+            observations.push(Observation {
+                path,
+                level,
+                model_dbc: model_levels.third_order_dbc,
+                reference_dbc: reference_levels.third_order_dbc,
+                status,
+                qualification,
+            });
+        }
     }
-    Ok(csv)
+    Ok((csv, transformer_fit_candidates(&observations)))
+}
+
+#[derive(Clone)]
+struct TransformerFit {
+    drive_trim: f32,
+    effective_drive: f32,
+    rms_error_db: f64,
+    worst_residual_db: f64,
+    self_check_db: f64,
+    levels: String,
+}
+
+/// Fits the difference product of one path against its reference captures.
+///
+/// Only the drive trim is searched. The magnetic memory coefficient barely
+/// moves this metric, so it stays where the character control puts it until a
+/// measurement that separates it exists.
+fn transformer_fit_candidates(observations: &[Observation]) -> String {
+    let mut csv = String::from(
+        "parameter,path,unit,levels,current_drive_trim,candidate_drive_trim,candidate_effective_drive,rms_error_db,worst_residual_db,sweep_self_check_db,qualification\n",
+    );
+    let usable = |path: TransformerPath| -> Vec<Observation> {
+        observations
+            .iter()
+            .copied()
+            .filter(|observation| {
+                observation.path == path
+                    && observation.status != QualityStatus::Fail
+                    && observation.reference_dbc.is_finite()
+            })
+            .collect()
+    };
+    let present = |path: TransformerPath| -> bool {
+        observations
+            .iter()
+            .any(|observation| observation.path == path)
+    };
+
+    let injection = usable(TransformerPath::Injection);
+    let output_fit = (!injection.is_empty()).then(|| fit_path(TransformerPath::Injection, &injection, NO_TRIM));
+    if let Some(fit) = &output_fit {
+        write_fit_row(
+            &mut csv,
+            TransformerPath::Injection,
+            fit,
+            &qualification_of(&injection),
+        );
+    } else if present(TransformerPath::Injection) {
+        write_blocked_row(
+            &mut csv,
+            TransformerPath::Injection,
+            "injection-captures-rejected-by-quality-gate",
+        );
+    }
+
+    for path in [TransformerPath::Upper, TransformerPath::Lower] {
+        let rows = usable(path);
+        if rows.is_empty() {
+            if present(path) {
+                write_blocked_row(&mut csv, path, "captures-rejected-by-quality-gate");
+            }
+            continue;
+        }
+        match &output_fit {
+            Some(output) => {
+                let base = trim_for(NO_TRIM, TransformerPath::Injection.unit(), output.drive_trim, 0.0);
+                let fit = fit_path(path, &rows, base);
+                write_fit_row(
+                    &mut csv,
+                    path,
+                    &fit,
+                    &format!(
+                        "{}-with-t3-trim-{:.3}",
+                        qualification_of(&rows),
+                        output.drive_trim
+                    ),
+                );
+            }
+            None => write_blocked_row(&mut csv, path, "underdetermined-requires-t3-injection"),
+        }
+    }
+    csv
+}
+
+fn qualification_of(observations: &[Observation]) -> String {
+    let worst = observations
+        .iter()
+        .max_by_key(|observation| observation.status)
+        .expect("non-empty fit input");
+    worst.qualification.to_owned()
+}
+
+fn write_fit_row(csv: &mut String, path: TransformerPath, fit: &TransformerFit, qualification: &str) {
+    writeln!(
+        csv,
+        "{}-drive-trim,{},{},{},0.000000,{:.6},{:.6},{:.6},{:.6},{:.6},{qualification}",
+        path.unit().label(),
+        path.label(),
+        path.unit().label(),
+        fit.levels,
+        fit.drive_trim,
+        fit.effective_drive,
+        fit.rms_error_db,
+        fit.worst_residual_db,
+        fit.self_check_db,
+    )
+    .expect("string write cannot fail");
+}
+
+fn write_blocked_row(csv: &mut String, path: TransformerPath, qualification: &str) {
+    writeln!(
+        csv,
+        "{}-drive-trim,{},{},,0.000000,,,,,,{qualification}",
+        path.unit().label(),
+        path.label(),
+        path.unit().label(),
+    )
+    .expect("string write cannot fail");
+}
+
+const COARSE_FIRST: f32 = -0.35;
+const COARSE_STEP: f32 = 0.05;
+const COARSE_POINTS: usize = 20;
+const FINE_STEP: f32 = 0.01;
+const FINE_POINTS: usize = 9;
+
+fn fit_path(path: TransformerPath, observations: &[Observation], base: Trims) -> TransformerFit {
+    let mut best: Option<(f32, f64)> = None;
+    let evaluate = |trim: f32, best: &mut Option<(f32, f64)>| {
+        let error = fit_error(path, observations, base, trim);
+        if best.is_none_or(|(_, previous)| error < previous) {
+            *best = Some((trim, error));
+        }
+    };
+    for step in 0..COARSE_POINTS {
+        evaluate(COARSE_FIRST + COARSE_STEP * step as f32, &mut best);
+    }
+    let (coarse, _) = best.expect("non-empty coarse grid");
+    for step in 0..FINE_POINTS {
+        let trim = coarse + FINE_STEP * (step as f32 - (FINE_POINTS / 2) as f32);
+        if (-1.0..=1.0).contains(&trim) {
+            evaluate(trim, &mut best);
+        }
+    }
+    let (drive_trim, rms_error_db) = best.expect("non-empty search");
+    let worst_residual_db = observations
+        .iter()
+        .map(|observation| {
+            (predicted_third_order_dbc(
+                path,
+                observation.level,
+                trim_for(base, path.unit(), drive_trim, 0.0),
+            ) - observation.reference_dbc)
+                .abs()
+        })
+        .fold(0.0_f64, f64::max);
+    let mut levels = observations
+        .iter()
+        .map(|observation| observation.level.label())
+        .collect::<Vec<_>>();
+    levels.dedup();
+    TransformerFit {
+        drive_trim,
+        effective_drive: (CHARACTER.0 + drive_trim).clamp(0.0, 1.0),
+        rms_error_db,
+        worst_residual_db,
+        self_check_db: sweep_self_check(path, observations),
+        levels: levels.join("+"),
+    }
+}
+
+/// Largest disagreement between the shortened fitting sweep and the model's
+/// own four-second captures at the untrimmed calibration. It bounds how much
+/// of a residual belongs to the probe window rather than to the reference.
+fn sweep_self_check(path: TransformerPath, observations: &[Observation]) -> f64 {
+    observations
+        .iter()
+        .map(|observation| {
+            (predicted_third_order_dbc(path, observation.level, NO_TRIM) - observation.model_dbc)
+                .abs()
+        })
+        .fold(0.0_f64, f64::max)
+}
+
+fn fit_error(
+    path: TransformerPath,
+    observations: &[Observation],
+    base: Trims,
+    trim: f32,
+) -> f64 {
+    let trims = trim_for(base, path.unit(), trim, 0.0);
+    let total = observations
+        .iter()
+        .map(|observation| {
+            let predicted = predicted_third_order_dbc(path, observation.level, trims);
+            let error = predicted - observation.reference_dbc;
+            error * error
+        })
+        .sum::<f64>();
+    (total / observations.len() as f64).sqrt()
+}
+
+/// Steady-state third-order product the model produces for one candidate
+/// trim, measured like a reference capture: the two single notes are
+/// subtracted from the dyad in power.
+fn predicted_third_order_dbc(path: TransformerPath, level: Level, trims: Trims) -> f64 {
+    const SETTLE: usize = SAMPLE_RATE as usize / 4;
+    const MEASURE: usize = SAMPLE_RATE as usize / 2;
+    let frames = Notes::ALL
+        .map(|notes| transformer_steady_frames(transformer_capture(path, level, notes), trims, SETTLE, MEASURE));
+    intermodulation(&frames[0], &frames[1], &frames[2]).third_order_dbc
 }
 
 #[derive(Clone, Copy)]
@@ -341,49 +577,63 @@ struct TransformerIntermodulation {
     difference_hz: f64,
     difference_dbfs: f64,
     difference_dbc: f64,
+    third_order_hz: f64,
+    third_order_dbfs: f64,
+    third_order_dbc: f64,
 }
 
-fn transformer_intermodulation(audio: &[Audio; 3]) -> Result<TransformerIntermodulation, String> {
-    let c_hz = manual_frequency(72)?;
-    let f_hz = manual_frequency(77)?;
+fn capture_intermodulation(audio: &[Audio; 3]) -> Result<TransformerIntermodulation, String> {
+    Ok(intermodulation(
+        transformer_steady(&audio[0])?,
+        transformer_steady(&audio[1])?,
+        transformer_steady(&audio[2])?,
+    ))
+}
+
+fn intermodulation(
+    c_only: &[[f64; 2]],
+    f_only: &[[f64; 2]],
+    dyad: &[[f64; 2]],
+) -> TransformerIntermodulation {
+    let c_hz = note_frequency(C_NOTE);
+    let f_hz = note_frequency(F_NOTE);
     let difference_hz = f_hz - c_hz;
-    let c_single = spectral_amplitude(transformer_steady(&audio[0])?, difference_hz);
-    let f_single = spectral_amplitude(transformer_steady(&audio[1])?, difference_hz);
-    let dyad = transformer_steady(&audio[2])?;
+    let third_order_hz = 2.0 * c_hz - f_hz;
     let c = spectral_amplitude(dyad, c_hz);
     let f = spectral_amplitude(dyad, f_hz);
-    let raw_difference = spectral_amplitude(dyad, difference_hz);
-    let corrected_power =
-        (raw_difference * raw_difference - c_single * c_single - f_single * f_single).max(1.0e-30);
-    let difference = corrected_power.sqrt();
     let carrier = 0.5 * (c + f);
-    Ok(TransformerIntermodulation {
+    let product = |frequency: f64| {
+        let dyad_amplitude = spectral_amplitude(dyad, frequency);
+        let c_single = spectral_amplitude(c_only, frequency);
+        let f_single = spectral_amplitude(f_only, frequency);
+        (dyad_amplitude * dyad_amplitude - c_single * c_single - f_single * f_single)
+            .max(1.0e-30)
+            .sqrt()
+    };
+    let difference = product(difference_hz);
+    let third_order = product(third_order_hz);
+    TransformerIntermodulation {
         c_hz,
         f_hz,
         difference_hz,
         difference_dbfs: decibels(difference),
         difference_dbc: decibels(difference / carrier),
-    })
+        third_order_hz,
+        third_order_dbfs: decibels(third_order),
+        third_order_dbc: decibels(third_order / carrier),
+    }
 }
 
+/// Two seconds of held tone, starting half a second after the contact. The
+/// long window keeps the rectangular-window skirts of the two carriers from
+/// reaching the intermodulation bins.
 fn transformer_steady(audio: &Audio) -> Result<&[[f64; 2]], String> {
     let onset = onset(audio)?;
     let start = onset + SAMPLE_RATE as usize / 2;
     audio
         .frames
-        .get(start..start + SAMPLE_RATE as usize)
-        .ok_or_else(|| "transformer capture needs one steady second".to_owned())
-}
-
-fn manual_frequency(note: u8) -> Result<f64, String> {
-    let key = usize::from(
-        note.checked_sub(MANUAL_FIRST_NOTE)
-            .ok_or_else(|| format!("note {note} is outside the manual"))?,
-    );
-    let wheel = drawbar_wheel(key, 2).ok_or_else(|| format!("no 8-foot wheel for note {note}"))?;
-    gear_frequency(wheel)
-        .map(f64::from)
-        .ok_or_else(|| format!("missing gear frequency for wheel {}", wheel + 1))
+        .get(start..start + 2 * SAMPLE_RATE as usize)
+        .ok_or_else(|| "transformer capture needs two steady seconds after its contact".to_owned())
 }
 
 fn analyze_reference_quality(
@@ -393,7 +643,7 @@ fn analyze_reference_quality(
         "capture,status,duration_seconds,peak_dbfs,clipped_samples,noise_dbfs,steady_dbfs,snr_db,onset_seconds,onset_error_ms,key_off_seconds,key_off_error_ms,early_tuning_cents,late_tuning_cents,drift_cents,issues\n",
     );
     let mut results = BTreeMap::new();
-    for capture in CAPTURES {
+    for capture in capture_names() {
         let path = reference.join(format!("{capture}.wav"));
         if !path.is_file() {
             continue;
@@ -503,9 +753,14 @@ fn capture_quality(capture: &str, audio: &Audio) -> Result<QualityMeasurement, S
     let tuning_target = match capture {
         "07-pedal-16ft" | "09-pedal-16ft-8ft" => gear_frequency(0).map(f64::from),
         "08-pedal-8ft" => gear_frequency(12).map(f64::from),
-        "10-upper-transformer-c" | "13-lower-transformer-c" => manual_frequency(72).ok(),
-        "11-upper-transformer-f" | "14-lower-transformer-f" => manual_frequency(77).ok(),
-        _ => None,
+        _ => crate::captures::TRANSFORMER_CAPTURES
+            .iter()
+            .find(|entry| entry.id == capture)
+            .and_then(|entry| match entry.notes {
+                Notes::C => Some(note_frequency(C_NOTE)),
+                Notes::F => Some(note_frequency(F_NOTE)),
+                Notes::Dyad => None,
+            }),
     };
     let (early_tuning_cents, late_tuning_cents, drift_cents) = if let Some(target) = tuning_target {
         let window = SAMPLE_RATE as usize / 2;
@@ -1074,8 +1329,8 @@ mod tests {
 
     #[test]
     fn transformer_triplet_isolates_the_difference_product() {
-        let c_hz = manual_frequency(72).unwrap();
-        let f_hz = manual_frequency(77).unwrap();
+        let c_hz = note_frequency(C_NOTE);
+        let f_hz = note_frequency(F_NOTE);
         let difference_hz = f_hz - c_hz;
         let capture = |c_level: f64, f_level: f64, difference_level: f64| {
             let mut frames = vec![[0.0, 0.0]; SAMPLE_RATE as usize * 4];
@@ -1093,13 +1348,79 @@ mod tests {
                 frames,
             }
         };
-        let levels = transformer_intermodulation(&[
+        let levels = capture_intermodulation(&[
             capture(0.2, 0.0, 0.0),
             capture(0.0, 0.2, 0.0),
             capture(0.2, 0.2, 0.01),
         ])
         .unwrap();
         assert!((levels.difference_dbc + 26.020_599_913).abs() < 0.05);
+        assert!(levels.third_order_dbc < -100.0);
+    }
+
+    #[test]
+    fn an_injection_fit_recovers_a_known_output_transformer_trim() {
+        let target = 0.15;
+        let reference_trims = trim_for(NO_TRIM, TransformerPath::Injection.unit(), target, 0.0);
+        let observations = Level::ALL
+            .into_iter()
+            .map(|level| Observation {
+                path: TransformerPath::Injection,
+                level,
+                model_dbc: predicted_third_order_dbc(TransformerPath::Injection, level, NO_TRIM),
+                reference_dbc: predicted_third_order_dbc(
+                    TransformerPath::Injection,
+                    level,
+                    reference_trims,
+                ),
+                status: QualityStatus::Pass,
+                qualification: "quality-pass",
+            })
+            .collect::<Vec<_>>();
+        let fit = fit_path(TransformerPath::Injection, &observations, NO_TRIM);
+        assert!(
+            (fit.drive_trim - target).abs() <= 0.011,
+            "recovered {}",
+            fit.drive_trim
+        );
+        assert!(fit.rms_error_db < 0.2, "residual {}", fit.rms_error_db);
+        assert!(fit.self_check_db < 1.0e-9);
+        assert_eq!(fit.levels, "low+nominal+high");
+    }
+
+    #[test]
+    fn manual_paths_stay_underdetermined_without_an_injection_capture() {
+        let observations = [Observation {
+            path: TransformerPath::Upper,
+            level: Level::Nominal,
+            model_dbc: -60.0,
+            reference_dbc: -55.0,
+            status: QualityStatus::Warning,
+            qualification: "quality-warning",
+        }];
+        let csv = transformer_fit_candidates(&observations);
+        let row = csv.lines().nth(1).expect("one candidate row");
+        assert_eq!(csv.lines().count(), 2);
+        assert!(row.starts_with("t2-drive-trim,t2+t3,t2,,"));
+        assert!(row.ends_with("underdetermined-requires-t3-injection"));
+    }
+
+    #[test]
+    fn a_failed_reference_triplet_does_not_produce_a_candidate() {
+        let observations = [Observation {
+            path: TransformerPath::Injection,
+            level: Level::Nominal,
+            model_dbc: -60.0,
+            reference_dbc: -55.0,
+            status: QualityStatus::Fail,
+            qualification: "quality-fail",
+        }];
+        let csv = transformer_fit_candidates(&observations);
+        assert_eq!(csv.lines().count(), 2);
+        assert!(
+            csv.contains("injection-captures-rejected-by-quality-gate"),
+            "{csv}"
+        );
     }
 
     #[test]

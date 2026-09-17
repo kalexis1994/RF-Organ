@@ -3,7 +3,7 @@
 RF-Organ is a physically informed tonewheel-organ instrument for RackForge.
 It is written in Rust and licensed under GPL-2.0-or-later.
 
-The current `0.13.0` baseline establishes the real-time architecture:
+The current `0.14.0` baseline establishes the real-time architecture:
 
 - one continuously rotating bank of 91 shared tonewheels;
 - 60 Hz gear-ratio tuning instead of ideal equal temperament;
@@ -14,6 +14,8 @@ The current `0.13.0` baseline establishes the real-time architecture:
 - topology-derived compartment leakage;
 - separate AO-28 matching-transformer paths for upper (T2) and lower+pedal
   (T1), ahead of the vibrato routing;
+- one shared transformer character control plus independent calibration trims
+  for T1, T2 and T3, so a measurement of one unit does not move the others;
 - an AO-28-derived console path with separate pre/post-expression stages and
   a calibratable capacitive swell response, post-V4B tone shelf, V3B output
   stage and T3 output transformer;
@@ -66,6 +68,11 @@ cargo run --release -p rf-organ-lab -- render artifacts/calibration
 cargo run --release -p rf-organ-lab -- compare artifacts/calibration path/to/reference-captures artifacts/comparison
 ```
 
+`render` also accepts `--transformer-drive-trims T1,T2,T3`, which produces a
+synthetic reference set with known transformer coefficients. Comparing it with
+the untrimmed calibration render recovers those coefficients and is how the
+fitting chain is verified.
+
 The output includes scalar measurements, expression, tone-control and
 transformer-intermodulation response, percussion envelopes, scanner sidebands,
 isolated pedal spectra and key-off response, and Leslie acceleration/braking
@@ -73,6 +80,10 @@ curves alongside the audio renders.
 The comparator aligns reference captures without resampling or normalizing
 them, then reports level, crest, envelope and stereo differences. Isolated
 pedal captures additionally produce per-harmonic errors and provisional
-resistor-bus/L20 fitting candidates. A capture-quality gate prevents clipped,
-mistimed, noisy or unstable pedal recordings from producing coefficients.
+resistor-bus/L20 fitting candidates. Transformer captures are recorded at three
+documented levels; their intermodulation products yield drive-trim candidates
+for T3 from the optional bench injection grid, and then for T2 and T1. Without
+an injection measurement the two manual paths are reported as underdetermined
+rather than fitted. A capture-quality gate prevents clipped, mistimed, noisy or
+unstable recordings from producing coefficients.
 See `docs/CALIBRATION.md` for the comparison and provenance protocol.

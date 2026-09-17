@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+use crate::captures::{C_NOTE, CHARACTER, F_NOTE, Level, note_frequency};
 use rf_organ_dsp::{
     ConsoleElectronics, DRAWBAR_COUNT, Leslie, LeslieMode, MANUAL_FIRST_NOTE, MatchingTransformer,
     OrganEngine, OrganPart, PercussionDecay, PercussionHarmonic, PercussionVolume, ScannerMode,
-    ScannerVibrato, drawbar_wheel, gear_frequency,
+    ScannerVibrato, TransformerUnit, drawbar_wheel, gear_frequency,
 };
 use std::f64::consts::TAU;
 use std::fmt::Write as _;
@@ -21,6 +22,7 @@ pub struct Artifacts {
     pub expression_response: String,
     pub tone_control_response: String,
     pub transformer_intermodulation: String,
+    pub transformer_calibration: String,
 }
 
 #[derive(Clone, Copy)]
@@ -50,6 +52,8 @@ fn analyze_inner() -> Result<Artifacts, String> {
     measurements.extend(tone_control);
     let (transformer, transformer_intermodulation) = transformer_probe();
     measurements.extend(transformer);
+    let (calibration, transformer_calibration) = transformer_calibration_probe();
+    measurements.extend(calibration);
     let (pedal, pedal_spectrum, pedal_release) = pedal_probe()?;
     measurements.extend(pedal);
     let (percussion, percussion_envelope) = percussion_probe()?;
@@ -68,6 +72,7 @@ fn analyze_inner() -> Result<Artifacts, String> {
         expression_response,
         tone_control_response,
         transformer_intermodulation,
+        transformer_calibration,
     })
 }
 
@@ -220,17 +225,20 @@ fn transformer_probe() -> (Vec<Measurement>, String) {
     const C_HZ: f64 = 523.3;
     const F_HZ: f64 = 698.5;
     const DIFFERENCE_HZ: f64 = F_HZ - C_HZ;
+    const THIRD_ORDER_HZ: f64 = 2.0 * C_HZ - F_HZ;
     let mut measurements = Vec::new();
     let mut csv = String::from(
-        "configuration,drive,hysteresis,c_hz,f_hz,difference_hz,c_dbfs,f_dbfs,difference_dbc\n",
+        "configuration,drive,hysteresis,c_hz,f_hz,difference_hz,third_order_hz,c_dbfs,f_dbfs,difference_dbc,third_order_dbc\n",
     );
     for (name, drive, hysteresis) in CONFIGURATIONS {
-        let samples = render_transformer_pair(drive, hysteresis, C_HZ, F_HZ);
+        let samples = render_transformer_pair(drive, hysteresis, C_HZ, F_HZ, 0.18);
         let c = spectral_amplitude(&samples, C_HZ);
         let f = spectral_amplitude(&samples, F_HZ);
         let difference = spectral_amplitude(&samples, DIFFERENCE_HZ);
+        let third_order = spectral_amplitude(&samples, THIRD_ORDER_HZ);
         let carrier = 0.5 * (c + f);
         let difference_dbc = decibels(difference / carrier);
+        let third_order_dbc = decibels(third_order / carrier);
         let probe = match name {
             "clean" => "transformer-clean",
             "baseline" => "transformer-baseline",
@@ -245,9 +253,15 @@ fn transformer_probe() -> (Vec<Measurement>, String) {
             value: difference_dbc,
             unit: "dBc",
         });
+        measurements.push(Measurement {
+            probe,
+            metric: "third-order-product",
+            value: third_order_dbc,
+            unit: "dBc",
+        });
         writeln!(
             &mut csv,
-            "{name},{drive:.3},{hysteresis:.3},{C_HZ:.3},{F_HZ:.3},{DIFFERENCE_HZ:.3},{:.6},{:.6},{difference_dbc:.6}",
+            "{name},{drive:.3},{hysteresis:.3},{C_HZ:.3},{F_HZ:.3},{DIFFERENCE_HZ:.3},{THIRD_ORDER_HZ:.3},{:.6},{:.6},{difference_dbc:.6},{third_order_dbc:.6}",
             decibels(c),
             decibels(f)
         )
@@ -256,15 +270,86 @@ fn transformer_probe() -> (Vec<Measurement>, String) {
     (measurements, csv)
 }
 
-fn render_transformer_pair(drive: f32, hysteresis: f32, c_hz: f64, f_hz: f64) -> Vec<f64> {
-    const AMPLITUDE: f64 = 0.18;
+fn transformer_calibration_probe() -> (Vec<Measurement>, String) {
+    const TRIMS: [(&str, f32); 3] = [("minus", -0.2), ("zero", 0.0), ("plus", 0.2)];
+    let c_hz = note_frequency(C_NOTE);
+    let f_hz = note_frequency(F_NOTE);
+    let difference_hz = f_hz - c_hz;
+    let third_order_hz = 2.0 * c_hz - f_hz;
+    let mut measurements = Vec::new();
+    let mut csv = String::from(
+        "unit,drive_trim,effective_drive,effective_hysteresis,other_units_drive,level,tone_peak,c_dbfs,f_dbfs,difference_dbc,third_order_dbc\n",
+    );
+    for unit in TransformerUnit::ALL {
+        for (trim, drive_trim) in TRIMS {
+            let mut engine = OrganEngine::new(SAMPLE_RATE as f32).expect("valid engine");
+            assert!(engine.set_transformer(CHARACTER.0, CHARACTER.1));
+            assert!(engine.set_transformer_trim(unit, drive_trim, 0.0));
+            let calibration = engine.transformer_diagnostics(unit);
+            let others = TransformerUnit::ALL
+                .into_iter()
+                .filter(|other| *other != unit)
+                .map(|other| engine.transformer_diagnostics(other).drive)
+                .fold(0.0_f32, f32::max);
+            for level in Level::ALL {
+                let tone = level.injection_amplitude();
+                let samples = render_transformer_pair(
+                    calibration.drive,
+                    calibration.hysteresis,
+                    c_hz,
+                    f_hz,
+                    tone,
+                );
+                let c = spectral_amplitude(&samples, c_hz);
+                let f = spectral_amplitude(&samples, f_hz);
+                let difference = spectral_amplitude(&samples, difference_hz);
+                let third_order = spectral_amplitude(&samples, third_order_hz);
+                let carrier = 0.5 * (c + f);
+                let difference_dbc = decibels(difference / carrier);
+                let third_order_dbc = decibels(third_order / carrier);
+                if trim == "zero" && unit == TransformerUnit::T3 {
+                    measurements.push(Measurement {
+                        probe: match level {
+                            Level::Low => "transformer-injection-low",
+                            Level::Nominal => "transformer-injection-nominal",
+                            Level::High => "transformer-injection-high",
+                        },
+                        metric: "third-order-product",
+                        value: third_order_dbc,
+                        unit: "dBc",
+                    });
+                }
+                writeln!(
+                    &mut csv,
+                    "{},{drive_trim:.3},{:.6},{:.6},{others:.6},{},{tone:.6},{:.6},{:.6},{difference_dbc:.6},{third_order_dbc:.6}",
+                    unit.label(),
+                    calibration.drive,
+                    calibration.hysteresis,
+                    level.label(),
+                    decibels(c),
+                    decibels(f)
+                )
+                .expect("string write cannot fail");
+            }
+        }
+    }
+    (measurements, csv)
+}
+
+fn render_transformer_pair(
+    drive: f32,
+    hysteresis: f32,
+    c_hz: f64,
+    f_hz: f64,
+    amplitude: f64,
+) -> Vec<f64> {
     const SETTLE: usize = SAMPLE_RATE / 2;
     let mut transformer = MatchingTransformer::new(SAMPLE_RATE as f32);
     assert!(transformer.set(drive, hysteresis));
     let mut samples = Vec::with_capacity(SAMPLE_RATE);
     for frame in 0..SETTLE + SAMPLE_RATE {
         let time = frame as f64 / SAMPLE_RATE as f64;
-        let input = AMPLITUDE * ((TAU * c_hz * time).sin() + (TAU * f_hz * time).sin());
+        let input = amplitude * ((TAU * c_hz * time).sin() + (TAU * f_hz * time).sin());
         let output = transformer.process(input as f32);
         if frame >= SETTLE {
             samples.push(f64::from(output));
@@ -925,7 +1010,39 @@ mod tests {
     }
 
     #[test]
-    fn transformer_probe_exposes_the_difference_product() {
+    fn calibration_probe_moves_one_transformer_and_grows_with_level() {
+        let (measurements, csv) = with_analysis_stack(transformer_calibration_probe);
+        let rows = csv.lines().skip(1).collect::<Vec<_>>();
+        assert_eq!(rows.len(), 27);
+        assert!(csv.starts_with(
+            "unit,drive_trim,effective_drive,effective_hysteresis,other_units_drive,level,tone_peak,c_dbfs,f_dbfs,difference_dbc,third_order_dbc\n"
+        ));
+        for row in &rows {
+            let fields = row.split(',').collect::<Vec<_>>();
+            let effective: f64 = fields[2].parse().expect("effective drive");
+            let others: f64 = fields[4].parse().expect("other units");
+            let trim: f64 = fields[1].parse().expect("trim");
+            assert!((others - f64::from(CHARACTER.0)).abs() < 1.0e-6, "{row}");
+            assert!(
+                (effective - f64::from(CHARACTER.0) - trim).abs() < 1.0e-6,
+                "{row}"
+            );
+        }
+        let level = |probe: &str| {
+            measurements
+                .iter()
+                .find(|measurement| {
+                    measurement.probe == probe && measurement.metric == "third-order-product"
+                })
+                .expect("probe")
+                .value
+        };
+        assert!(level("transformer-injection-low") < level("transformer-injection-nominal"));
+        assert!(level("transformer-injection-nominal") < level("transformer-injection-high"));
+    }
+
+    #[test]
+    fn transformer_probe_exposes_the_intermodulation_products() {
         let (measurements, csv) = with_analysis_stack(transformer_probe);
         let level = |probe| {
             measurements

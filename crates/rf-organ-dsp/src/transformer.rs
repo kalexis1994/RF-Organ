@@ -2,7 +2,7 @@
 
 /// Reduced magnetic model shared by the AO-28 T1/T2 input matching
 /// transformers and the T3 output transformer. Each instance owns its own
-/// magnetization state.
+/// magnetization state and its own calibration.
 pub struct MatchingTransformer {
     sample_rate: f32,
     drive: f32,
@@ -65,4 +65,36 @@ impl MatchingTransformer {
 
 fn unit(value: f32) -> bool {
     value.is_finite() && (0.0..=1.0).contains(&value)
+}
+
+/// The three AO-28 transformers modelled by RF-Organ. They share one musical
+/// character control but keep independent calibration and magnetic state:
+/// T1 carries the lower manual plus pedals, T2 the upper manual, and T3 the
+/// output stage after V3B.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TransformerUnit {
+    T1,
+    T2,
+    T3,
+}
+
+impl TransformerUnit {
+    pub const ALL: [Self; 3] = [Self::T1, Self::T2, Self::T3];
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::T1 => "t1",
+            Self::T2 => "t2",
+            Self::T3 => "t3",
+        }
+    }
+
+    /// Stable slot for per-unit calibration tables.
+    pub const fn index(self) -> usize {
+        match self {
+            Self::T1 => 0,
+            Self::T2 => 1,
+            Self::T3 => 2,
+        }
+    }
 }

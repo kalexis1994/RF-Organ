@@ -22,7 +22,7 @@ pub use pedal::{PEDAL_DRAWBAR_COUNT, PEDAL_FIRST_NOTE, PEDAL_KEY_COUNT};
 pub use percussion::{PercussionDecay, PercussionHarmonic, PercussionVolume};
 pub use scanner::{ScannerMode, ScannerVibrato};
 pub use tonewheel::{TONEWHEEL_COUNT, gear_frequency};
-pub use transformer::{MatchingTransformer, TransformerDiagnostics};
+pub use transformer::{MatchingTransformer, TransformerDiagnostics, TransformerUnit};
 
 use manual::Manual;
 use pedal::Pedalboard;
@@ -57,6 +57,8 @@ pub struct OrganEngine {
     scanner: ScannerVibrato,
     percussion: Percussion,
     leslie: Leslie,
+    transformer_character: (f32, f32),
+    transformer_trims: [(f32, f32); 3],
     output_level: f32,
     expression: f32,
     leakage: f32,
@@ -84,6 +86,8 @@ impl OrganEngine {
             scanner: ScannerVibrato::new(sample_rate),
             percussion: Percussion::new(sample_rate),
             leslie: Leslie::new(sample_rate),
+            transformer_character: (0.35, 0.25),
+            transformer_trims: [(0.0, 0.0); 3],
             output_level: 0.72,
             expression: 1.0,
             leakage: 0.025,
@@ -220,11 +224,60 @@ impl OrganEngine {
         true
     }
 
+    /// Sets the shared musical character of the three transformers. Each unit
+    /// keeps its own calibration trim on top of this value.
     pub fn set_transformer(&mut self, drive: f32, hysteresis: f32) -> bool {
-        let upper_valid = self.upper_transformer.set(drive, hysteresis);
-        let lower_pedal_valid = self.lower_pedal_transformer.set(drive, hysteresis);
-        let output_valid = self.output_transformer.set(drive, hysteresis);
-        upper_valid && lower_pedal_valid && output_valid
+        if !unit(drive) || !unit(hysteresis) {
+            return false;
+        }
+        self.transformer_character = (drive, hysteresis);
+        for which in TransformerUnit::ALL {
+            self.calibrate(which);
+        }
+        true
+    }
+
+    /// Offsets one transformer from the shared character. Trims are bipolar
+    /// and the resulting coefficients are clamped to the model range, so a
+    /// measurement of T1, T2 or T3 can be applied without moving the others.
+    pub fn set_transformer_trim(
+        &mut self,
+        which: TransformerUnit,
+        drive: f32,
+        hysteresis: f32,
+    ) -> bool {
+        if !bipolar(drive) || !bipolar(hysteresis) {
+            return false;
+        }
+        self.transformer_trims[which.index()] = (drive, hysteresis);
+        self.calibrate(which);
+        true
+    }
+
+    pub const fn transformer_trim(&self, which: TransformerUnit) -> (f32, f32) {
+        self.transformer_trims[which.index()]
+    }
+
+    pub const fn transformer_diagnostics(&self, which: TransformerUnit) -> TransformerDiagnostics {
+        match which {
+            TransformerUnit::T1 => self.lower_pedal_transformer.diagnostics(),
+            TransformerUnit::T2 => self.upper_transformer.diagnostics(),
+            TransformerUnit::T3 => self.output_transformer.diagnostics(),
+        }
+    }
+
+    fn calibrate(&mut self, which: TransformerUnit) {
+        let (character_drive, character_hysteresis) = self.transformer_character;
+        let (drive_trim, hysteresis_trim) = self.transformer_trims[which.index()];
+        let drive = (character_drive + drive_trim).clamp(0.0, 1.0);
+        let hysteresis = (character_hysteresis + hysteresis_trim).clamp(0.0, 1.0);
+        let transformer = match which {
+            TransformerUnit::T1 => &mut self.lower_pedal_transformer,
+            TransformerUnit::T2 => &mut self.upper_transformer,
+            TransformerUnit::T3 => &mut self.output_transformer,
+        };
+        let applied = transformer.set(drive, hysteresis);
+        debug_assert!(applied);
     }
 
     pub fn set_console(&mut self, drive: f32, bass: f32, tone: f32) -> bool {
@@ -340,6 +393,10 @@ impl OrganEngine {
 
 fn unit(value: f32) -> bool {
     value.is_finite() && (0.0..=1.0).contains(&value)
+}
+
+fn bipolar(value: f32) -> bool {
+    value.is_finite() && (-1.0..=1.0).contains(&value)
 }
 
 #[cfg(test)]
@@ -458,6 +515,72 @@ mod tests {
         let separate = upper.route_ao28_inputs(0.4, 0.0, 0.0, 0.0)
             + lower.route_ao28_inputs(0.0, 0.4, 0.0, 0.0);
         assert_eq!(both, separate);
+    }
+
+    #[test]
+    fn transformer_trims_offset_one_unit_at_a_time() {
+        let mut engine = OrganEngine::new(48_000.0).expect("valid engine");
+        assert!(engine.set_transformer(0.4, 0.3));
+        for which in TransformerUnit::ALL {
+            let diagnostics = engine.transformer_diagnostics(which);
+            assert_eq!(diagnostics.drive, 0.4, "{}", which.label());
+            assert_eq!(diagnostics.hysteresis, 0.3, "{}", which.label());
+        }
+
+        assert!(engine.set_transformer_trim(TransformerUnit::T3, 0.25, -0.1));
+        assert_eq!(engine.transformer_diagnostics(TransformerUnit::T3).drive, 0.65);
+        assert!(
+            (engine
+                .transformer_diagnostics(TransformerUnit::T3)
+                .hysteresis
+                - 0.2)
+                .abs()
+                < 1.0e-6
+        );
+        assert_eq!(engine.transformer_diagnostics(TransformerUnit::T1).drive, 0.4);
+        assert_eq!(engine.transformer_diagnostics(TransformerUnit::T2).drive, 0.4);
+        assert_eq!(
+            engine.transformer_trim(TransformerUnit::T3),
+            (0.25, -0.1)
+        );
+    }
+
+    #[test]
+    fn transformer_trims_follow_the_character_control_and_stay_in_range() {
+        let mut engine = OrganEngine::new(48_000.0).expect("valid engine");
+        assert!(engine.set_transformer_trim(TransformerUnit::T1, -0.5, 1.0));
+        assert!(engine.set_transformer(0.2, 0.5));
+        let t1 = engine.transformer_diagnostics(TransformerUnit::T1);
+        assert_eq!(t1.drive, 0.0);
+        assert_eq!(t1.hysteresis, 1.0);
+        assert_eq!(engine.transformer_diagnostics(TransformerUnit::T2).drive, 0.2);
+        assert!(!engine.set_transformer_trim(TransformerUnit::T1, 1.5, 0.0));
+        assert!(!engine.set_transformer_trim(TransformerUnit::T1, 0.0, f32::NAN));
+        assert_eq!(engine.transformer_trim(TransformerUnit::T1), (-0.5, 1.0));
+    }
+
+    #[test]
+    fn an_output_transformer_trim_changes_only_the_output_stage() {
+        let mut shared = OrganEngine::new(48_000.0).expect("valid engine");
+        let mut trimmed = OrganEngine::new(48_000.0).expect("valid engine");
+        for engine in [&mut shared, &mut trimmed] {
+            assert!(engine.set_transformer(0.4, 0.3));
+            engine.set_scanner_manuals(false, false);
+            assert!(engine.note_on(72, 1.0));
+        }
+        assert!(trimmed.set_transformer_trim(TransformerUnit::T3, 0.4, 0.0));
+
+        let mut difference = 0.0;
+        for _ in 0..4096 {
+            let [left, _] = shared.next_sample();
+            let [trimmed_left, _] = trimmed.next_sample();
+            difference += (left - trimmed_left).abs();
+        }
+        assert!(difference > 0.01);
+        assert_eq!(
+            shared.transformer_diagnostics(TransformerUnit::T2).drive,
+            trimmed.transformer_diagnostics(TransformerUnit::T2).drive
+        );
     }
 
     #[test]

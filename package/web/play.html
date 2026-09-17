@@ -93,6 +93,19 @@
           <label>Swell Character<input id="swell-character" data-parameter="40" type="range" min="0" max="1" step="0.001" disabled /></label>
         </div>
       </details>
+
+      <details class="panel advanced">
+        <summary>Transformer calibration</summary>
+        <p class="note">Bipolar trims offset one transformer from the shared character: T1 carries the lower manual and pedals, T2 the upper manual, T3 the output stage.</p>
+        <div class="advanced-grid">
+          <label>T1 Drive Trim<input id="t1-drive-trim" data-parameter="45" type="range" min="-1" max="1" step="0.001" disabled /></label>
+          <label>T1 Memory Trim<input id="t1-memory-trim" data-parameter="46" type="range" min="-1" max="1" step="0.001" disabled /></label>
+          <label>T2 Drive Trim<input id="t2-drive-trim" data-parameter="47" type="range" min="-1" max="1" step="0.001" disabled /></label>
+          <label>T2 Memory Trim<input id="t2-memory-trim" data-parameter="48" type="range" min="-1" max="1" step="0.001" disabled /></label>
+          <label>T3 Drive Trim<input id="t3-drive-trim" data-parameter="49" type="range" min="-1" max="1" step="0.001" disabled /></label>
+          <label>T3 Memory Trim<input id="t3-memory-trim" data-parameter="50" type="range" min="-1" max="1" step="0.001" disabled /></label>
+        </div>
+      </details>
     </main>
     <script type="module" src="bootstrap.js"></script>
   </body>

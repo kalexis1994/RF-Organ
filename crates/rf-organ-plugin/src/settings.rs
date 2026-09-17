@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 use rf_organ_dsp::{
     DRAWBAR_COUNT, LeslieMode, OrganEngine, OrganPart, PEDAL_DRAWBAR_COUNT, PercussionDecay,
-    PercussionHarmonic, PercussionVolume, ScannerMode,
+    PercussionHarmonic, PercussionVolume, ScannerMode, TransformerUnit,
 };
 
-pub const PARAMETER_COUNT: usize = 45;
+pub const PARAMETER_COUNT: usize = 51;
+/// Bipolar per-transformer calibration trims, ordered T1, T2, T3.
+pub const TRANSFORMER_TRIM_FIRST: u32 = 45;
 pub const DRAWBAR_FIRST: u32 = 2;
 pub const DRAWBAR_LAST: u32 = DRAWBAR_FIRST + DRAWBAR_COUNT as u32 - 1;
 pub const LOWER_DRAWBAR_FIRST: u32 = 24;
@@ -42,6 +44,7 @@ pub struct Settings {
     pub leslie_stereo_width: f64,
     pub leslie_reflections: f64,
     pub leslie_horn_drum_balance: f64,
+    pub transformer_trims: [[f64; 2]; 3],
 }
 
 impl Default for Settings {
@@ -75,6 +78,7 @@ impl Default for Settings {
             leslie_stereo_width: 0.75,
             leslie_reflections: 0.22,
             leslie_horn_drum_balance: 0.0,
+            transformer_trims: [[0.0; 2]; 3],
         }
     }
 }
@@ -101,6 +105,11 @@ impl Settings {
             && unit(self.leslie_stereo_width)
             && unit(self.leslie_reflections)
             && bipolar(self.leslie_horn_drum_balance)
+            && self
+                .transformer_trims
+                .iter()
+                .flatten()
+                .all(|trim| bipolar(*trim))
     }
 
     pub fn parameter(self, index: u32) -> Option<f64> {
@@ -145,6 +154,10 @@ impl Settings {
             42 => self.leslie_stereo_width,
             43 => self.leslie_reflections,
             44 => self.leslie_horn_drum_balance,
+            45..=50 => {
+                let trim = (index - TRANSFORMER_TRIM_FIRST) as usize;
+                self.transformer_trims[trim / 2][trim % 2]
+            }
             _ => return None,
         })
     }
@@ -204,6 +217,10 @@ impl Settings {
             42 => self.leslie_stereo_width = value,
             43 => self.leslie_reflections = value,
             44 => self.leslie_horn_drum_balance = value,
+            45..=50 => {
+                let trim = (index - TRANSFORMER_TRIM_FIRST) as usize;
+                self.transformer_trims[trim / 2][trim % 2] = value;
+            }
             _ => return None,
         }
         self.valid().then_some(self)
@@ -229,6 +246,11 @@ impl Settings {
             self.transformer_drive as f32,
             self.transformer_hysteresis as f32,
         );
+        for (unit, [drive, hysteresis]) in
+            TransformerUnit::ALL.into_iter().zip(self.transformer_trims)
+        {
+            let _ = engine.set_transformer_trim(unit, drive as f32, hysteresis as f32);
+        }
         let _ = engine.set_console(
             self.console_drive as f32,
             self.console_bass as f32,

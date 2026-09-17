@@ -3,11 +3,11 @@
 use serde_json::{Value, json};
 
 pub const PROTOCOL: &str = "rackforge.plugin.web@1";
-pub const PARAMETERS: usize = 45;
+pub const PARAMETERS: usize = 51;
 pub const DEFAULTS: [f64; PARAMETERS] = [
     0.72, 1.0, 8.0, 8.0, 8.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.55, 0.45, 0.2, 0.38, 0.32, 0.0, 0.82,
     0.5, 0.0, 0.0, 1.0, 1.0, 1.0, 8.0, 8.0, 8.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 8.0, 0.0, 1.0, 0.0,
-    0.32, 0.0, 0.0, 0.55, 0.35, 0.75, 0.22, 0.0,
+    0.32, 0.0, 0.0, 0.55, 0.35, 0.75, 0.22, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
 ];
 
 #[derive(Clone, Debug, PartialEq)]
@@ -62,7 +62,7 @@ pub fn valid(index: usize, value: f64) -> bool {
             16 => value.fract() == 0.0 && (0.0..=3.0).contains(&value),
             19 => value.fract() == 0.0 && (0.0..=6.0).contains(&value),
             20..=23 | 35..=36 => [0.0, 1.0].contains(&value),
-            38..=39 | 44 => (-1.0..=1.0).contains(&value),
+            38..=39 | 44 | 45..=50 => (-1.0..=1.0).contains(&value),
             _ => false,
         }
 }
