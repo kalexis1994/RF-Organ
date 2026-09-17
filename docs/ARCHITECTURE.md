@@ -84,14 +84,37 @@ is one banded matrix-vector product: neighbouring sections occupy neighbouring
 state indices, and entries below a documented threshold are dropped, which a
 test checks against the dense transition over a full second.
 
-## Version 0.16.0 limitations
+## Percussion and keying
+
+Percussion is single-trigger, taken from the upper manual's 4' bus for the
+second harmonic and its 2 2/3' bus for the third, and it cancels the 1'
+drawbar while it is on. At Normal volume it also takes about 6 dB out of the
+upper drawbars, which is Hammond's documented figure for the vintage console;
+Soft leaves them alone.
+
+The envelope is not a gate. It rises through a short attack instead of
+stepping, and the supply it draws from only recovers once every key is up, so
+a console played fast and detached delivers less percussion on each note than
+one played with gaps. Both time constants are provisional and the laboratory
+measures them: the attack in quarter-millisecond windows, the recovery as peak
+level against the gap since the last release.
+
+Keying reaches the generator through nine contacts per key, which close over a
+few milliseconds with the highest first, and the laboratory times them one
+drawbar at a time so the same protocol can be run on a console.
+
+## Version 0.17.0 limitations
 
 - The classic B-3 pedal contact and resistor-panel topology is present. The
   L20 pedal-filter coefficient and console matching-network constants remain
   provisional; musical pedal sustain is intentionally absent because it is a
   feature of later digital Hammond instruments, not the electromechanical B-3.
-- Percussion routing follows the AO-28 schematic, but its electrical
-  constants are not yet calibrated against a reference console.
+- Percussion routing follows the AO-28 schematic and Hammond's documented
+  console behaviour, but its decay times, attack and recovery are provisional:
+  the manufacturer publishes no figures in seconds for them.
+- Contact timing is a provisional deterministic model. The published keyboard
+  action study is behind a paywall, so the laboratory measures the spread and
+  the click rather than claiming a fitted one.
 - The vibrato line uses the documented component values with an unwarped
   bilinear transform, so its cutoff is placed by the components rather than
   fitted; the scanner runs at 6.9 Hz and its plate overlap is modelled as a

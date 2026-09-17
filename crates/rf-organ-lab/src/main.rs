@@ -169,6 +169,14 @@ fn compare_suite(model: &Path, reference: &Path, destination: &Path) -> Result<(
         destination.join("transformer-fit-candidates.csv"),
         reports.transformer_fit_candidates,
     )?;
+    fs::write(
+        destination.join("percussion-comparison.csv"),
+        reports.percussion_comparison,
+    )?;
+    fs::write(
+        destination.join("percussion-fit-candidates.csv"),
+        reports.percussion_fit_candidates,
+    )?;
     println!(
         "RF_ORGAN_LAB_COMPARED model={} reference={} path={}",
         model.display(),
@@ -199,6 +207,13 @@ fn render_suite(destination: &Path, trims: captures::Trims) -> Result<(), Box<dy
             wav::encode_f32(&samples, 2, SAMPLE_RATE)?,
         )?;
     }
+    for capture in &captures::PERCUSSION_CAPTURES {
+        let samples = captures::render_percussion_phrase(capture);
+        fs::write(
+            destination.join(format!("{}.wav", capture.id)),
+            wav::encode_f32(&samples, 2, SAMPLE_RATE)?,
+        )?;
+    }
     let impulse = render_leslie_impulse();
     fs::write(
         destination.join("leslie-cabinet-impulse.wav"),
@@ -210,6 +225,14 @@ fn render_suite(destination: &Path, trims: captures::Trims) -> Result<(), Box<dy
     fs::write(
         destination.join("percussion-envelope.csv"),
         analysis.percussion_envelope,
+    )?;
+    fs::write(
+        destination.join("percussion-recovery.csv"),
+        analysis.percussion_recovery,
+    )?;
+    fs::write(
+        destination.join("keying-contacts.csv"),
+        analysis.keying_contacts,
     )?;
     fs::write(
         destination.join("scanner-sidebands.csv"),
@@ -414,7 +437,7 @@ fn manifest(trims: captures::Trims) -> String {
         .collect::<Vec<_>>()
         .join(",");
     format!(
-        "RF-Organ deterministic calibration suite\nversion={}\nsample_rate={}\nphrase_seconds={}\nnormalization=none\nformat=IEEE-float WAV stereo\nanalysis=frequency,level,pedal-spectrum,pedal-release,expression-response,tone-control-response,transformer-intermodulation,transformer-calibration,percussion-envelope,scanner-sidebands,scanner-line-response,leslie-rotor-response\n",
+        "RF-Organ deterministic calibration suite\nversion={}\nsample_rate={}\nphrase_seconds={}\nnormalization=none\nformat=IEEE-float WAV stereo\nanalysis=frequency,level,pedal-spectrum,pedal-release,expression-response,tone-control-response,transformer-intermodulation,transformer-calibration,percussion-envelope,percussion-recovery,keying-contacts,scanner-sidebands,scanner-line-response,leslie-rotor-response\n",
         env!("CARGO_PKG_VERSION"),
         SAMPLE_RATE,
         SECONDS
@@ -470,6 +493,6 @@ mod tests {
             "23-lower-transformer-nominal-f"
         );
         assert_eq!(TRANSFORMER_CAPTURES[26].id, "36-t3-injection-high-c-f");
-        assert_eq!(captures::capture_names().len(), Scenario::ALL.len() + 28);
+        assert_eq!(captures::capture_names().len(), Scenario::ALL.len() + 32);
     }
 }

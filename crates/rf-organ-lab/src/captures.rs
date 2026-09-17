@@ -8,7 +8,8 @@
 
 use rf_organ_dsp::{
     DRAWBAR_COUNT, LeslieMode, MANUAL_FIRST_NOTE, MatchingTransformer, OrganEngine, OrganPart,
-    PEDAL_DRAWBAR_COUNT, ScannerMode, TransformerUnit, drawbar_wheel, gear_frequency,
+    PEDAL_DRAWBAR_COUNT, PercussionDecay, PercussionHarmonic, PercussionVolume, ScannerMode,
+    TransformerUnit, drawbar_wheel, gear_frequency,
 };
 use std::f64::consts::{PI, TAU};
 
@@ -38,6 +39,44 @@ pub const PHRASE_CAPTURES: [&str; 9] = [
     "09-pedal-16ft-8ft",
 ];
 pub const IMPULSE_CAPTURE: &str = "leslie-cabinet-impulse";
+/// Key struck in the percussion captures, and the registration behind it. The
+/// 888 registration puts nothing on the 2 2/3' bus, so the third-harmonic
+/// percussion stands alone in the spectrum at three times the 8' frequency.
+pub const PERCUSSION_NOTE: u8 = 60;
+pub const PERCUSSION_DRAWBARS: [u8; 3] = [8, 8, 8];
+
+#[derive(Clone, Copy, Debug)]
+pub struct PercussionCapture {
+    pub id: &'static str,
+    pub volume: PercussionVolume,
+    pub decay: PercussionDecay,
+}
+
+/// One capture per tablet combination, recorded at one gain like the
+/// transformer grid: the level difference between the Normal and Soft pairs is
+/// itself a measurement.
+pub const PERCUSSION_CAPTURES: [PercussionCapture; 4] = [
+    PercussionCapture {
+        id: "37-percussion-normal-fast",
+        volume: PercussionVolume::Normal,
+        decay: PercussionDecay::Fast,
+    },
+    PercussionCapture {
+        id: "38-percussion-normal-slow",
+        volume: PercussionVolume::Normal,
+        decay: PercussionDecay::Slow,
+    },
+    PercussionCapture {
+        id: "39-percussion-soft-fast",
+        volume: PercussionVolume::Soft,
+        decay: PercussionDecay::Fast,
+    },
+    PercussionCapture {
+        id: "40-percussion-soft-slow",
+        volume: PercussionVolume::Soft,
+        decay: PercussionDecay::Slow,
+    },
+];
 
 /// Which transformers a capture exercises. A microphone capture of a manual
 /// always traverses two units; only the bench injection reaches T3 alone.
@@ -332,8 +371,52 @@ pub fn capture_names() -> Vec<&'static str> {
     PHRASE_CAPTURES
         .into_iter()
         .chain(TRANSFORMER_CAPTURES.iter().map(|capture| capture.id))
+        .chain(PERCUSSION_CAPTURES.iter().map(|capture| capture.id))
         .chain([IMPULSE_CAPTURE])
         .collect()
+}
+
+/// Renders one percussion capture with the same timing as the rest of the
+/// suite: contact at 250 ms, release at three seconds, four seconds total.
+pub fn render_percussion_phrase(capture: &PercussionCapture) -> Vec<f32> {
+    let frames = SAMPLE_RATE as usize * PHRASE_SECONDS;
+    let onset = SAMPLE_RATE as usize / 4;
+    let release = SAMPLE_RATE as usize * 3;
+    let mut engine = OrganEngine::new(SAMPLE_RATE as f32).expect("valid engine");
+    for manual in [OrganPart::Upper, OrganPart::Lower] {
+        for drawbar in 0..DRAWBAR_COUNT {
+            let _ = engine.set_manual_drawbar(manual, drawbar, 0);
+        }
+    }
+    for drawbar in 0..PEDAL_DRAWBAR_COUNT {
+        let _ = engine.set_manual_drawbar(OrganPart::Pedal, drawbar, 0);
+    }
+    for (drawbar, position) in PERCUSSION_DRAWBARS.into_iter().enumerate() {
+        let _ = engine.set_manual_drawbar(OrganPart::Upper, drawbar, position);
+    }
+    let _ = engine.set_output_level(1.0);
+    let _ = engine.set_transformer(CHARACTER.0, CHARACTER.1);
+    let _ = engine.set_console(0.0, 0.0, 0.0);
+    let _ = engine.set_expression_character(0.0);
+    engine.set_scanner_mode(ScannerMode::Off);
+    engine.set_scanner_manuals(false, false);
+    engine.set_leslie_mode(LeslieMode::Off);
+    engine.set_percussion_enabled(true);
+    engine.set_percussion_harmonic(PercussionHarmonic::Third);
+    engine.set_percussion_volume(capture.volume);
+    engine.set_percussion_decay(capture.decay);
+
+    let mut output = Vec::with_capacity(frames * 2);
+    for frame in 0..frames {
+        if frame == onset {
+            let _ = engine.note_on_part(OrganPart::Upper, PERCUSSION_NOTE, 1.0);
+        }
+        if frame == release {
+            engine.all_notes_off();
+        }
+        output.extend_from_slice(&engine.next_sample());
+    }
+    output
 }
 
 /// Renders one complete transformer capture: four seconds, contact at 250 ms,
@@ -480,7 +563,6 @@ fn press(engine: &mut OrganEngine, part: OrganPart, notes: Notes) {
     }
 }
 
-/// The generator frequency reached by the 8-foot contact of a manual key.
 /// Builds a trim set that offsets a single unit.
 pub fn trim_for(base: Trims, unit: TransformerUnit, drive: f32, hysteresis: f32) -> Trims {
     let mut trims = base;
@@ -488,9 +570,18 @@ pub fn trim_for(base: Trims, unit: TransformerUnit, drive: f32, hysteresis: f32)
     trims
 }
 
+/// The generator frequency reached by the 8-foot contact of a manual key.
 pub fn note_frequency(note: u8) -> f64 {
+    bus_frequency(note, 2)
+}
+
+/// The generator frequency reached by one drawbar contact of a manual key.
+/// The gear ratios are not exact harmonic multiples, so the third-harmonic
+/// percussion has to be looked up rather than computed as three times the
+/// fundamental.
+pub fn bus_frequency(note: u8, bus: usize) -> f64 {
     let key = usize::from(note - MANUAL_FIRST_NOTE);
-    let wheel = drawbar_wheel(key, 2).expect("8-foot contact");
+    let wheel = drawbar_wheel(key, bus).expect("manual contact");
     f64::from(gear_frequency(wheel).expect("bounded wheel"))
 }
 
@@ -501,7 +592,7 @@ mod tests {
     #[test]
     fn the_capture_grid_is_complete_and_uniquely_named() {
         let names = capture_names();
-        assert_eq!(names.len(), 37);
+        assert_eq!(names.len(), 41);
         let mut sorted = names.clone();
         sorted.sort_unstable();
         sorted.dedup();

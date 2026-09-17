@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 use crate::captures::{
-    C_NOTE, CHARACTER, F_NOTE, Level, NO_TRIM, Notes, TransformerPath, Trims, capture_names,
-    note_frequency, transformer_capture, transformer_steady_frames, trim_for,
+    C_NOTE, CHARACTER, F_NOTE, Level, NO_TRIM, Notes, PERCUSSION_CAPTURES, PERCUSSION_NOTE,
+    PercussionCapture, TransformerPath, Trims, bus_frequency, capture_names, note_frequency,
+    transformer_capture, transformer_steady_frames, trim_for,
 };
 use crate::wav::{self, Audio};
 use rf_organ_dsp::gear_frequency;
+use rf_organ_dsp::{PercussionDecay, PercussionVolume};
 use std::collections::BTreeMap;
 use std::f64::consts::TAU;
 use std::fmt::Write as _;
@@ -30,6 +32,8 @@ pub struct Reports {
     pub pedal_fit_candidates: String,
     pub transformer_intermodulation_comparison: String,
     pub transformer_fit_candidates: String,
+    pub percussion_comparison: String,
+    pub percussion_fit_candidates: String,
     pub reference_quality: String,
 }
 
@@ -121,12 +125,16 @@ pub fn compare_directories(model: &Path, reference: &Path) -> Result<Reports, St
         compare_pedal_captures(model, reference, &quality)?;
     let (transformer_intermodulation_comparison, transformer_fit_candidates) =
         compare_transformer_captures(model, reference, &quality)?;
+    let (percussion_comparison, percussion_fit_candidates) =
+        compare_percussion_captures(model, reference, &quality)?;
     Ok(Reports {
         capture_comparison: report,
         pedal_spectrum_comparison,
         pedal_fit_candidates,
         transformer_intermodulation_comparison,
         transformer_fit_candidates,
+        percussion_comparison,
+        percussion_fit_candidates,
         reference_quality,
     })
 }
@@ -639,6 +647,251 @@ fn transformer_steady(audio: &Audio) -> Result<&[[f64; 2]], String> {
         .frames
         .get(start..start + 2 * SAMPLE_RATE as usize)
         .ok_or_else(|| "transformer capture needs two steady seconds after its contact".to_owned())
+}
+
+/// What one percussion capture says about the console.
+#[derive(Clone, Copy)]
+struct PercussionMeasurement {
+    /// Steady 8-foot drawbar level once the strike has gone.
+    organ_dbfs: f64,
+    /// Peak of the third-harmonic strike, relative to that.
+    strike_dbc: f64,
+    /// Decay time, extrapolated from the first 20 dB.
+    t60: f64,
+}
+
+fn compare_percussion_captures(
+    model: &Path,
+    reference: &Path,
+    quality: &BTreeMap<String, CaptureQuality>,
+) -> Result<(String, String), String> {
+    let mut csv = String::from(
+        "capture,volume,decay,fundamental_hz,third_hz,model_organ_dbfs,reference_organ_dbfs,model_strike_dbc,reference_strike_dbc,reference_minus_model_strike_db,model_t60_s,reference_t60_s,reference_minus_model_t60_s,qualification\n",
+    );
+    let mut measured: Vec<(
+        PercussionCapture,
+        PercussionMeasurement,
+        PercussionMeasurement,
+        &'static str,
+        QualityStatus,
+    )> = Vec::new();
+    for capture in PERCUSSION_CAPTURES {
+        let reference_path = reference.join(format!("{}.wav", capture.id));
+        if !reference_path.is_file() {
+            continue;
+        }
+        let model_path = model.join(format!("{}.wav", capture.id));
+        if !model_path.is_file() {
+            return Err(format!(
+                "model capture is missing: {}",
+                model_path.display()
+            ));
+        }
+        let model_measured = percussion_measurement(&read_audio(&model_path)?)?;
+        let reference_measured = percussion_measurement(&read_audio(&reference_path)?)?;
+        let capture_quality = quality
+            .get(capture.id)
+            .ok_or_else(|| format!("missing quality result for {}", capture.id))?;
+        writeln!(
+            &mut csv,
+            "{},{},{},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{}",
+            capture.id,
+            volume_label(capture.volume),
+            decay_label(capture.decay),
+            bus_frequency(PERCUSSION_NOTE, 2),
+            bus_frequency(PERCUSSION_NOTE, 4),
+            model_measured.organ_dbfs,
+            reference_measured.organ_dbfs,
+            model_measured.strike_dbc,
+            reference_measured.strike_dbc,
+            reference_measured.strike_dbc - model_measured.strike_dbc,
+            model_measured.t60,
+            reference_measured.t60,
+            reference_measured.t60 - model_measured.t60,
+            capture_quality.qualification
+        )
+        .expect("string write cannot fail");
+        measured.push((
+            capture,
+            model_measured,
+            reference_measured,
+            capture_quality.qualification,
+            capture_quality.status,
+        ));
+    }
+    Ok((csv, percussion_fit_candidates(&measured)))
+}
+
+const fn volume_label(volume: PercussionVolume) -> &'static str {
+    match volume {
+        PercussionVolume::Soft => "soft",
+        PercussionVolume::Normal => "normal",
+    }
+}
+
+const fn decay_label(decay: PercussionDecay) -> &'static str {
+    match decay {
+        PercussionDecay::Slow => "slow",
+        PercussionDecay::Fast => "fast",
+    }
+}
+
+/// These coefficients are read straight off a capture rather than searched
+/// for: the decay time, the strike level and the documented drawbar cut are
+/// exactly what the measurement produces.
+fn percussion_fit_candidates(
+    measured: &[(
+        PercussionCapture,
+        PercussionMeasurement,
+        PercussionMeasurement,
+        &'static str,
+        QualityStatus,
+    )],
+) -> String {
+    let mut csv = String::from(
+        "parameter,capture,unit,current_value,candidate_value,reference_minus_model,qualification\n",
+    );
+    let usable = measured
+        .iter()
+        .filter(|(_, _, _, _, status)| *status != QualityStatus::Fail);
+    for (capture, model, reference, qualification, _) in usable.clone() {
+        writeln!(
+            &mut csv,
+            "percussion-t60-{},{},s,{:.6},{:.6},{:.6},{qualification}",
+            decay_label(capture.decay),
+            capture.id,
+            model.t60,
+            reference.t60,
+            reference.t60 - model.t60
+        )
+        .expect("string write cannot fail");
+        writeln!(
+            &mut csv,
+            "percussion-level-{},{},dBc,{:.6},{:.6},{:.6},{qualification}",
+            volume_label(capture.volume),
+            capture.id,
+            model.strike_dbc,
+            reference.strike_dbc,
+            reference.strike_dbc - model.strike_dbc
+        )
+        .expect("string write cannot fail");
+    }
+
+    // Hammond documents the vintage console as taking about 6 dB out of the
+    // upper drawbars at Normal volume and nothing at Soft, so a Normal and a
+    // Soft capture recorded at one gain measure that cut directly.
+    let level = |wanted: PercussionVolume| {
+        usable
+            .clone()
+            .find(|(capture, _, _, _, _)| {
+                capture.volume == wanted && capture.decay == PercussionDecay::Fast
+            })
+            .map(|(_, model, reference, qualification, _)| (*model, *reference, *qualification))
+    };
+    if let (
+        Some((model_normal, reference_normal, qualification)),
+        Some((model_soft, reference_soft, _)),
+    ) = (
+        level(PercussionVolume::Normal),
+        level(PercussionVolume::Soft),
+    ) {
+        let model_cut = model_normal.organ_dbfs - model_soft.organ_dbfs;
+        let reference_cut = reference_normal.organ_dbfs - reference_soft.organ_dbfs;
+        writeln!(
+            &mut csv,
+            "percussion-drawbar-cut,37-percussion-normal-fast|39-percussion-soft-fast,dB,{model_cut:.6},{reference_cut:.6},{:.6},{qualification}",
+            reference_cut - model_cut
+        )
+        .expect("string write cannot fail");
+    }
+    csv
+}
+
+/// Measures one percussion capture. The 888 registration leaves the 2 2/3'
+/// bus empty, so the third-harmonic strike is alone in its bin and its decay
+/// can be read directly; the fundamental gives the drawbar level it stands
+/// against.
+fn percussion_measurement(audio: &Audio) -> Result<PercussionMeasurement, String> {
+    if audio.sample_rate != SAMPLE_RATE {
+        return Err(format!(
+            "percussion captures must be {SAMPLE_RATE} Hz; got {}",
+            audio.sample_rate
+        ));
+    }
+    let onset = onset(audio)?;
+    let window = SAMPLE_RATE as usize / 100;
+    let fundamental = bus_frequency(PERCUSSION_NOTE, 2);
+    let third = bus_frequency(PERCUSSION_NOTE, 4);
+
+    let steady_start = onset + 2 * SAMPLE_RATE as usize;
+    let steady = audio
+        .frames
+        .get(steady_start..steady_start + SAMPLE_RATE as usize / 2)
+        .ok_or_else(|| "percussion capture needs two seconds of held tone".to_owned())?;
+    let organ = spectral_amplitude(steady, fundamental);
+    if organ <= 1.0e-12 {
+        return Err("percussion capture has no drawbar tone".to_owned());
+    }
+    // Whatever sits in the third-harmonic bin once the strike has gone:
+    // generator leakage in the model, and room and preamp noise in a
+    // reference capture. Subtracting it in power is what lets the decay be
+    // followed past the point where it meets that floor.
+    let floor = spectral_amplitude(steady, third);
+
+    let envelope = audio
+        .frames
+        .get(onset..steady_start)
+        .ok_or_else(|| "percussion capture is too short".to_owned())?
+        .chunks_exact(window)
+        .map(|chunk| {
+            let level = spectral_amplitude(chunk, third);
+            (level * level - floor * floor).max(0.0).sqrt()
+        })
+        .collect::<Vec<_>>();
+    let (peak_index, peak) =
+        envelope
+            .iter()
+            .copied()
+            .enumerate()
+            .fold((0, 0.0), |(at, peak), (index, level)| {
+                if level > peak {
+                    (index, level)
+                } else {
+                    (at, peak)
+                }
+            });
+    if peak <= 1.0e-12 {
+        return Err("percussion capture has no strike".to_owned());
+    }
+    if peak < floor * 10.0 {
+        return Err(format!(
+            "percussion strike is only {:.1} dB over the third-harmonic floor; 20 dB are needed to fit a decay",
+            decibels(peak / floor.max(1.0e-15))
+        ));
+    }
+
+    // RT20: fit the slope between 5 and 25 dB below the peak and extrapolate.
+    // A reference capture's noise floor rarely reaches 60 dB of decay.
+    let after = &envelope[peak_index..];
+    let crossing = |drop: f64| {
+        let threshold = peak * 10.0_f64.powf(-drop / 20.0);
+        after
+            .iter()
+            .position(|level| *level <= threshold)
+            .map(|index| index as f64 * window as f64 / f64::from(SAMPLE_RATE))
+    };
+    let (start, end) = (
+        crossing(5.0).ok_or_else(|| "percussion strike never decayed 5 dB".to_owned())?,
+        crossing(25.0).ok_or_else(|| "percussion strike never decayed 25 dB".to_owned())?,
+    );
+    if end <= start {
+        return Err("percussion decay is not monotonic enough to fit".to_owned());
+    }
+    Ok(PercussionMeasurement {
+        organ_dbfs: decibels(organ),
+        strike_dbc: decibels(peak / organ),
+        t60: 60.0 * (end - start) / 20.0,
+    })
 }
 
 fn analyze_reference_quality(

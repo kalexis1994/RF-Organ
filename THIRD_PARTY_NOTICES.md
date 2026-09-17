@@ -49,6 +49,22 @@ The insertion-loss make-up that keeps the chorus position usable is a
 provisional stand-in for the AO-28 vibrato amplifier, derived from the
 resistor network rather than fitted.
 
+## Hammond percussion documentation
+
+Version 0.17.0 takes the percussion behaviour Hammond documents for the
+vintage console in the XK-7/XK-7D owner's manual: the 1' drawbar is cancelled
+while percussion is on, the second harmonic is the 4' bus and the third is the
+2 2/3' bus, the envelope is single-trigger so that re-keying is required, and
+at Normal volume the upper drawbars are reduced "by a small amount (about
+6 dB)" while Soft leaves them alone. The 6 dB figure is the manufacturer's,
+and RF-Organ applies it as such.
+
+Hammond documents no decay times, attack time or recovery behaviour in
+seconds, so those constants stay provisional and are exposed as measurements
+instead: the laboratory reports the four decay curves, the attack, the
+recovery after release and the nine contact closure times, and the comparator
+turns a reference capture into candidate values for them directly.
+
 See `docs/RESEARCH.md` for the Hammond service documentation, tonewheel,
 scanner-vibrato and Leslie papers that define the wider research baseline.
 

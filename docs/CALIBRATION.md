@@ -26,7 +26,10 @@ The suite contains:
 - per-unit transformer calibration: the effective drive and memory coefficients
   T1, T2 and T3 receive from the shared character control plus their own trim,
   and the product levels each one produces at three signal levels;
-- fast and slow percussion envelope curves measured in 10 ms RMS windows;
+- percussion envelope curves for all four tablet combinations, the attack in
+  quarter-millisecond windows, the level the strike takes out of the drawbars,
+  and the recovery curve after a release;
+- the nine key contacts timed one drawbar at a time, at three velocities;
 - 1 kHz scanner carrier and the first three sideband pairs for V1–V3 and
   C1–C3, plus the level a steady tone returns at across the audio band;
 - horn and drum acceleration/braking curves sampled every 10 ms, including
@@ -38,7 +41,13 @@ The suite contains:
 `measurements.csv` is the compact comparison surface. The detailed
 tables retain the underlying curves:
 
-- `percussion-envelope.csv` records both decay registrations;
+- `percussion-envelope.csv` records all four tablet combinations;
+- `percussion-recovery.csv` records the peak of a strike against the gap since
+  the last release, which is how fast detached playing loses the effect;
+- `keying-contacts.csv` records, for each drawbar contact and three
+  velocities, when it closes relative to the key, the energy in the first
+  10 ms against the steady tone, and that steady level. Opening one drawbar at
+  a time is what makes the same measurement possible on a console;
 - `scanner-sidebands.csv` records carrier level in dBFS and the first three
   sideband pairs in dBc. One scanner revolution travels out to the ninth
   terminal and back, so the modulation is not a sinusoid and the pairs do not
@@ -243,6 +252,31 @@ An RF-Organ-generated calibration directory may be used as the reference for a
 self-check without an external manifest. Comparing a directory with itself must
 yield zero deltas and envelope correlation 1.0 for all thirty-seven WAV files,
 and every fit candidate must come back at a zero trim.
+
+## Percussion reference protocol
+
+Files `37` through `40` record percussion on the upper manual with drawbars
+888 and nothing else out, the third harmonic selected, middle C (MIDI 60),
+contact at 250 ms and release at 3 seconds. The four files are Normal/Fast,
+Normal/Slow, Soft/Fast and Soft/Slow, and they must share one recording gain:
+the level difference between a Normal and a Soft file is itself the
+measurement of the documented drawbar cut.
+
+The 888 registration leaves the 2 2/3' bus empty, so the third-harmonic strike
+stands alone in the spectrum at the generator frequency of that bus and its
+decay can be read directly. `percussion-comparison.csv` reports, for model and
+reference, the steady drawbar level at the fundamental, the strike level
+against it in dBc, and the decay time. The decay is fitted between 5 and 25 dB
+below the peak and extrapolated to 60 dB, because a real capture rarely has
+60 dB of clean decay; what sits in the bin once the strike has gone is
+subtracted in power first, so a leaky generator or a noisy room does not stop
+the fit.
+
+`percussion-fit-candidates.csv` needs no search: the decay time, the strike
+level and the drawbar cut are exactly what the measurement produces, so the
+reference value is the candidate. The drawbar cut it reports is the end-to-end
+one, measured through the matching transformer and console, and comes out
+slightly under the 6 dB the tablet takes at the manual.
 
 ## Sample rate and cost
 

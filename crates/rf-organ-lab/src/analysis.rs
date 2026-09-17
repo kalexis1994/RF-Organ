@@ -16,6 +16,8 @@ const WINDOW: usize = SAMPLE_RATE / 100;
 pub struct Artifacts {
     pub measurements: String,
     pub percussion_envelope: String,
+    pub percussion_recovery: String,
+    pub keying_contacts: String,
     pub scanner_sidebands: String,
     pub scanner_line_response: String,
     pub leslie_rotor_response: String,
@@ -58,8 +60,10 @@ fn analyze_inner() -> Result<Artifacts, String> {
     measurements.extend(calibration);
     let (pedal, pedal_spectrum, pedal_release) = pedal_probe()?;
     measurements.extend(pedal);
-    let (percussion, percussion_envelope) = percussion_probe()?;
+    let (percussion, percussion_envelope, percussion_recovery) = percussion_probe()?;
     measurements.extend(percussion);
+    let (keying, keying_contacts) = keying_probe()?;
+    measurements.extend(keying);
     let (scanner, scanner_sidebands, scanner_line_response) = scanner_probe();
     measurements.extend(scanner);
     let (leslie, leslie_rotor_response) = leslie_probe();
@@ -67,6 +71,8 @@ fn analyze_inner() -> Result<Artifacts, String> {
     Ok(Artifacts {
         measurements: measurement_csv(&measurements),
         percussion_envelope,
+        percussion_recovery,
+        keying_contacts,
         scanner_sidebands,
         scanner_line_response,
         leslie_rotor_response,
@@ -536,41 +542,194 @@ fn tonewheel_probe() -> Result<Vec<Measurement>, String> {
     ])
 }
 
-fn percussion_probe() -> Result<(Vec<Measurement>, String), String> {
-    let fast = percussion_curve(PercussionDecay::Fast)?;
-    let slow = percussion_curve(PercussionDecay::Slow)?;
-    let fast_t60 =
-        decay_time(&fast, 0.001).ok_or_else(|| "fast percussion did not decay".to_owned())?;
-    let slow_t60 =
-        decay_time(&slow, 0.001).ok_or_else(|| "slow percussion did not decay".to_owned())?;
-    let mut csv = String::from("time_seconds,fast_rms,slow_rms\n");
-    for ((time, fast), (_, slow)) in fast.iter().zip(&slow) {
-        writeln!(&mut csv, "{time:.6},{fast:.9},{slow:.9}").expect("string write cannot fail");
+/// Percussion, measured the way a reference capture would have to: one key,
+/// every combination of the two tablets, and the drawbar registration left
+/// where it was so that the documented Normal-volume drawbar cut shows up.
+fn percussion_probe() -> Result<(Vec<Measurement>, String, String), String> {
+    const SETTINGS: [(&str, PercussionVolume, PercussionDecay); 4] = [
+        (
+            "normal-fast",
+            PercussionVolume::Normal,
+            PercussionDecay::Fast,
+        ),
+        (
+            "normal-slow",
+            PercussionVolume::Normal,
+            PercussionDecay::Slow,
+        ),
+        ("soft-fast", PercussionVolume::Soft, PercussionDecay::Fast),
+        ("soft-slow", PercussionVolume::Soft, PercussionDecay::Slow),
+    ];
+    let mut measurements = Vec::new();
+    let mut csv = String::from("setting,time_seconds,rms\n");
+    for (name, volume, decay) in SETTINGS {
+        let curve = percussion_curve(volume, decay)?;
+        let t60 =
+            decay_time(&curve, 0.001).ok_or_else(|| format!("{name} percussion did not decay"))?;
+        let peak = curve
+            .iter()
+            .map(|(_, level)| *level)
+            .fold(0.0_f64, f64::max);
+        let attack_seconds = percussion_attack(volume, decay)?;
+        let probe = match name {
+            "normal-fast" => "percussion-fast",
+            "normal-slow" => "percussion-slow",
+            "soft-fast" => "percussion-soft-fast",
+            _ => "percussion-soft-slow",
+        };
+        measurements.extend([
+            Measurement {
+                probe,
+                metric: "t60",
+                value: t60,
+                unit: "s",
+            },
+            Measurement {
+                probe,
+                metric: "peak-level",
+                value: decibels(peak),
+                unit: "dBFS",
+            },
+            Measurement {
+                probe,
+                metric: "attack-time",
+                value: attack_seconds * 1_000.0,
+                unit: "ms",
+            },
+        ]);
+        for (time, level) in &curve {
+            writeln!(&mut csv, "{name},{time:.6},{level:.9}").expect("string write cannot fail");
+        }
     }
-    Ok((
-        vec![
-            Measurement {
-                probe: "percussion-fast",
-                metric: "t60",
-                value: fast_t60,
-                unit: "s",
-            },
-            Measurement {
-                probe: "percussion-slow",
-                metric: "t60",
-                value: slow_t60,
-                unit: "s",
-            },
-        ],
-        csv,
-    ))
+
+    // The documented console takes about 6 dB out of the upper drawbars when
+    // percussion is on at Normal volume, and leaves them alone at Soft.
+    let reference = drawbar_level(None)?;
+    for (name, volume) in [
+        ("percussion-normal", PercussionVolume::Normal),
+        ("percussion-soft", PercussionVolume::Soft),
+    ] {
+        measurements.push(Measurement {
+            probe: name,
+            metric: "drawbar-level",
+            value: decibels(drawbar_level(Some(volume))? / reference),
+            unit: "dB",
+        });
+    }
+
+    Ok((measurements, csv, percussion_recovery_probe()?))
 }
 
-fn percussion_curve(decay: PercussionDecay) -> Result<Vec<(f64, f64)>, String> {
+/// Steady drawbar level of the upper manual with percussion off, or on at the
+/// given volume. Measured after the percussion has decayed away so that only
+/// the drawbar path is left.
+fn drawbar_level(volume: Option<PercussionVolume>) -> Result<f64, String> {
+    let mut engine = clean_engine()?;
+    for drawbar in 0..3 {
+        assert!(engine.set_manual_drawbar(OrganPart::Upper, drawbar, 8));
+    }
+    if let Some(volume) = volume {
+        engine.set_percussion_enabled(true);
+        engine.set_percussion_harmonic(PercussionHarmonic::Third);
+        engine.set_percussion_volume(volume);
+        engine.set_percussion_decay(PercussionDecay::Fast);
+    }
+    assert!(engine.note_on_part(OrganPart::Upper, 60, 1.0));
+    let mut samples = Vec::with_capacity(SAMPLE_RATE);
+    for frame in 0..SAMPLE_RATE * 3 {
+        let sample = f64::from(engine.next_sample()[0]);
+        if frame >= SAMPLE_RATE * 2 {
+            samples.push(sample);
+        }
+    }
+    Ok(rms(&samples))
+}
+
+/// How much percussion is left when a key is struck again a given time after
+/// the last one was released. The console recharges only with every key up,
+/// which is why fast detached playing loses the effect.
+fn percussion_recovery_probe() -> Result<String, String> {
+    const GAPS_MS: [usize; 8] = [0, 25, 50, 100, 200, 400, 800, 1_600];
+    let mut csv = String::from("gap_ms,peak_level,relative_db\n");
+    let mut reference = 0.0;
+    for (index, gap) in GAPS_MS.into_iter().enumerate() {
+        let mut engine = clean_engine()?;
+        engine.set_percussion_enabled(true);
+        engine.set_percussion_harmonic(PercussionHarmonic::Third);
+        engine.set_percussion_volume(PercussionVolume::Normal);
+        engine.set_percussion_decay(PercussionDecay::Fast);
+        assert!(engine.note_on_part(OrganPart::Upper, 60, 1.0));
+        for _ in 0..SAMPLE_RATE / 2 {
+            engine.next_sample();
+        }
+        assert!(engine.note_off_part(OrganPart::Upper, 60, 1.0));
+        for _ in 0..gap * SAMPLE_RATE / 1_000 {
+            engine.next_sample();
+        }
+        assert!(engine.note_on_part(OrganPart::Upper, 60, 1.0));
+        let peak = (0..SAMPLE_RATE / 4)
+            .map(|_| f64::from(engine.next_sample()[0]).abs())
+            .fold(0.0, f64::max);
+        if index == GAPS_MS.len() - 1 {
+            reference = peak;
+        }
+        writeln!(&mut csv, "{gap},{peak:.9},").expect("string write cannot fail");
+    }
+    if reference <= 0.0 {
+        return Err("percussion recovery probe produced no signal".to_owned());
+    }
+    // Rewrite the relative column now that the fully recovered strike is known.
+    let mut relative = String::from("gap_ms,peak_level,relative_db\n");
+    for line in csv.lines().skip(1) {
+        let mut fields = line.split(',');
+        let gap = fields.next().unwrap_or_default();
+        let peak: f64 = fields.next().unwrap_or("0").parse().unwrap_or(0.0);
+        writeln!(
+            &mut relative,
+            "{gap},{peak:.9},{:.6}",
+            decibels(peak / reference)
+        )
+        .expect("string write cannot fail");
+    }
+    Ok(relative)
+}
+
+/// Time from the key contact to the loudest part of the strike, measured in
+/// quarter-millisecond windows because the envelope curve's 10 ms grid is far
+/// coarser than the attack itself.
+fn percussion_attack(volume: PercussionVolume, decay: PercussionDecay) -> Result<f64, String> {
+    const WINDOW: usize = SAMPLE_RATE / 4_000;
     let mut engine = clean_engine()?;
     engine.set_percussion_enabled(true);
     engine.set_percussion_harmonic(PercussionHarmonic::Third);
-    engine.set_percussion_volume(PercussionVolume::Normal);
+    engine.set_percussion_volume(volume);
+    engine.set_percussion_decay(decay);
+    assert!(engine.note_on_part(OrganPart::Upper, 60, 1.0));
+    let samples = (0..SAMPLE_RATE / 10)
+        .map(|_| f64::from(engine.next_sample()[0]))
+        .collect::<Vec<_>>();
+    let (windows, _) = samples.as_chunks::<WINDOW>();
+    let (index, _) = windows.iter().map(|window| rms(window)).enumerate().fold(
+        (0, 0.0),
+        |(at, peak), (index, level)| {
+            if level > peak {
+                (index, level)
+            } else {
+                (at, peak)
+            }
+        },
+    );
+    Ok((index * WINDOW) as f64 / SAMPLE_RATE as f64)
+}
+
+fn percussion_curve(
+    volume: PercussionVolume,
+    decay: PercussionDecay,
+) -> Result<Vec<(f64, f64)>, String> {
+    let mut engine = clean_engine()?;
+    engine.set_percussion_enabled(true);
+    engine.set_percussion_harmonic(PercussionHarmonic::Third);
+    engine.set_percussion_volume(volume);
     engine.set_percussion_decay(decay);
     assert!(engine.note_on_part(OrganPart::Upper, 60, 1.0));
     let mut samples = Vec::with_capacity(SAMPLE_RATE * 2);
@@ -582,6 +741,71 @@ fn percussion_curve(decay: PercussionDecay) -> Result<Vec<(f64, f64)>, String> {
         .iter()
         .enumerate()
         .map(|(index, samples)| (index as f64 * 0.01, rms(samples)))
+        .collect())
+}
+
+/// When each of the nine key contacts arrives, measured one drawbar at a time
+/// so that the protocol can be repeated on a console: open a single drawbar,
+/// strike one key, and time the onset.
+fn keying_probe() -> Result<(Vec<Measurement>, String), String> {
+    const FOOTAGES: [&str; DRAWBAR_COUNT] =
+        ["16", "5-1-3", "8", "4", "2-2-3", "2", "1-3-5", "1-1-3", "1"];
+    const VELOCITIES: [(&str, f32); 3] = [("soft", 0.25), ("medium", 0.6), ("hard", 1.0)];
+    let mut measurements = Vec::new();
+    let mut csv = String::from("velocity,bus,footage,closure_ms,first_ten_ms_db,steady_dbfs\n");
+    for (velocity_name, velocity) in VELOCITIES {
+        let mut first = f64::MAX;
+        let mut last: f64 = 0.0;
+        for (bus, footage) in FOOTAGES.into_iter().enumerate() {
+            let samples = render_contact(bus, velocity)?;
+            let steady = rms(&samples[SAMPLE_RATE / 4..]);
+            if steady <= 1.0e-12 {
+                return Err(format!("contact {bus} produced no tone"));
+            }
+            let threshold = steady * 0.1;
+            let window = SAMPLE_RATE / 2_000;
+            let closure = samples
+                .chunks_exact(window)
+                .position(|chunk| rms(chunk) > threshold)
+                .ok_or_else(|| format!("contact {bus} never closed"))?;
+            let closure_ms = (closure * window) as f64 * 1_000.0 / SAMPLE_RATE as f64;
+            let click = rms(&samples[..SAMPLE_RATE / 100]);
+            first = first.min(closure_ms);
+            last = last.max(closure_ms);
+            writeln!(
+                &mut csv,
+                "{velocity_name},{},{footage},{closure_ms:.6},{:.6},{:.6}",
+                bus + 1,
+                decibels(click / steady),
+                decibels(steady)
+            )
+            .expect("string write cannot fail");
+        }
+        let probe = match velocity_name {
+            "soft" => "keying-soft",
+            "medium" => "keying-medium",
+            _ => "keying-hard",
+        };
+        measurements.push(Measurement {
+            probe,
+            metric: "contact-spread",
+            value: last - first,
+            unit: "ms",
+        });
+    }
+    Ok((measurements, csv))
+}
+
+/// One drawbar open, one key struck at the given velocity, with the contact
+/// model at its default spread and bounce.
+fn render_contact(bus: usize, velocity: f32) -> Result<Vec<f64>, String> {
+    let mut engine = clean_engine()?;
+    assert!(engine.set_contact_spread(0.55));
+    assert!(engine.set_contact_bounce(0.45));
+    assert!(engine.set_manual_drawbar(OrganPart::Upper, bus, 8));
+    assert!(engine.note_on_part(OrganPart::Upper, 60, velocity));
+    Ok((0..SAMPLE_RATE / 2)
+        .map(|_| f64::from(engine.next_sample()[0]))
         .collect())
 }
 
@@ -928,11 +1152,75 @@ mod tests {
 
     #[test]
     fn percussion_probe_separates_fast_and_slow_t60() {
-        let (measurements, _) = with_analysis_stack(|| percussion_probe().unwrap());
-        let fast = measurements[0].value;
-        let slow = measurements[1].value;
+        let (measurements, envelope, recovery) =
+            with_analysis_stack(|| percussion_probe().unwrap());
+        let value = |probe, metric| {
+            measurements
+                .iter()
+                .find(|measurement| measurement.probe == probe && measurement.metric == metric)
+                .unwrap_or_else(|| panic!("{probe}/{metric}"))
+                .value
+        };
+        let fast = value("percussion-fast", "t60");
+        let slow = value("percussion-slow", "t60");
         assert!((0.2..0.4).contains(&fast), "fast T60 was {fast}");
         assert!((1.0..1.5).contains(&slow), "slow T60 was {slow}");
+        assert!(
+            value("percussion-soft-fast", "peak-level") < value("percussion-fast", "peak-level")
+        );
+        let attack = value("percussion-fast", "attack-time");
+        assert!((0.5..12.0).contains(&attack), "attack was {attack} ms");
+
+        // Hammond documents about 6 dB out of the drawbars at Normal volume,
+        // and none at Soft.
+        let normal = value("percussion-normal", "drawbar-level");
+        assert!(
+            (normal + 6.0).abs() < 0.5,
+            "drawbar level moved {normal} dB"
+        );
+        assert!(
+            value("percussion-soft", "drawbar-level").abs() < 0.05,
+            "soft percussion moved the drawbars"
+        );
+
+        assert_eq!(envelope.lines().count(), 4 * 200 + 1);
+        let last = recovery.lines().last().expect("recovery rows");
+        assert!(last.ends_with("0.000000"), "{last}");
+        let immediate: f64 = recovery
+            .lines()
+            .nth(1)
+            .expect("first gap")
+            .rsplit(',')
+            .next()
+            .expect("relative")
+            .parse()
+            .expect("relative");
+        assert!(
+            immediate < -6.0,
+            "an immediate re-strike returned {immediate} dB"
+        );
+    }
+
+    #[test]
+    fn keying_probe_orders_the_contacts_and_sees_the_click() {
+        let (measurements, csv) = with_analysis_stack(|| keying_probe().unwrap());
+        assert_eq!(csv.lines().count(), 3 * DRAWBAR_COUNT + 1);
+        let spread = |probe| {
+            measurements
+                .iter()
+                .find(|measurement| measurement.probe == probe)
+                .expect("probe")
+                .value
+        };
+        // A slower press spreads the nine contacts further apart.
+        assert!(spread("keying-soft") > spread("keying-hard"));
+        for probe in ["keying-soft", "keying-medium", "keying-hard"] {
+            assert!(
+                (0.0..40.0).contains(&spread(probe)),
+                "{probe} {}",
+                spread(probe)
+            );
+        }
     }
 
     #[test]

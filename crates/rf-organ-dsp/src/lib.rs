@@ -346,16 +346,18 @@ impl OrganEngine {
         let wheels = self.tonewheels.samples();
         let upper = self
             .upper
-            .sample(wheels, self.leakage, self.percussion.enabled());
+            .sample(wheels, self.leakage, self.percussion.enabled())
+            * self.percussion.drawbar_attenuation();
         let lower = self.lower.sample(wheels, self.leakage, false);
         let pedals = self.pedals.sample(wheels);
         let percussion_bus = match self.percussion.harmonic() {
             PercussionHarmonic::Second => 3,
             PercussionHarmonic::Third => 4,
         };
-        let percussion = self
-            .percussion
-            .process(self.upper.harmonic_sample(wheels, percussion_bus));
+        let percussion = self.percussion.process(
+            self.upper.harmonic_sample(wheels, percussion_bus),
+            self.held_notes > 0,
+        );
         let console = self.route_ao28_inputs(upper, lower, pedals, percussion);
         let console = self.electronics.process(console, self.expression);
         let organ = self.output_transformer.process(console) * self.output_level;
