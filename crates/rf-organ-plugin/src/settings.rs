@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 use rf_organ_dsp::{
-    DRAWBAR_COUNT, LeslieMode, OrganEngine, OrganPart, PEDAL_DRAWBAR_COUNT, PercussionDecay,
+    DRAWBAR_COUNT, DRUM_RADIUS_DEFAULT_M, DRUM_RADIUS_RANGE_M, HORN_RADIUS_DEFAULT_M,
+    HORN_RADIUS_RANGE_M, LeslieMode, MIC_DISTANCE_DEFAULT_M, MIC_DISTANCE_RANGE_M,
+    MIC_OFFSET_MAX_M, MIC_PATTERN_DEFAULT, MIC_SPACING_DEFAULT_M, MIC_SPACING_MAX_M,
+    MicrophoneArray, OrganEngine, OrganPart, PEDAL_DRAWBAR_COUNT, PercussionDecay,
     PercussionHarmonic, PercussionVolume, ScannerMode, TransformerUnit,
 };
 
-pub const PARAMETER_COUNT: usize = 51;
+pub const PARAMETER_COUNT: usize = 55;
 /// Bipolar per-transformer calibration trims, ordered T1, T2, T3.
 pub const TRANSFORMER_TRIM_FIRST: u32 = 45;
 pub const DRAWBAR_FIRST: u32 = 2;
@@ -40,8 +43,16 @@ pub struct Settings {
     pub console_bass: f64,
     pub console_treble: f64,
     pub expression_character: f64,
+    /// Microphone placement in metres, as a tape measure would give it.
     pub leslie_mic_distance: f64,
-    pub leslie_stereo_width: f64,
+    pub leslie_mic_spacing: f64,
+    pub leslie_mic_offset: f64,
+    /// Omnidirectional at zero, cardioid at a half, figure of eight at one.
+    pub leslie_mic_pattern: f64,
+    /// The radius each rotor's mouth turns at, in metres. Undocumented, so it
+    /// is a control; see `THIRD_PARTY_NOTICES.md`.
+    pub leslie_horn_radius: f64,
+    pub leslie_drum_radius: f64,
     pub leslie_reflections: f64,
     pub leslie_horn_drum_balance: f64,
     pub transformer_trims: [[f64; 2]; 3],
@@ -74,8 +85,12 @@ impl Default for Settings {
             console_bass: 0.0,
             console_treble: 0.0,
             expression_character: 0.55,
-            leslie_mic_distance: 0.35,
-            leslie_stereo_width: 0.75,
+            leslie_mic_distance: MIC_DISTANCE_DEFAULT_M as f64,
+            leslie_mic_spacing: MIC_SPACING_DEFAULT_M as f64,
+            leslie_mic_offset: 0.0,
+            leslie_mic_pattern: MIC_PATTERN_DEFAULT as f64,
+            leslie_horn_radius: HORN_RADIUS_DEFAULT_M as f64,
+            leslie_drum_radius: DRUM_RADIUS_DEFAULT_M as f64,
             leslie_reflections: 0.22,
             leslie_horn_drum_balance: 0.0,
             transformer_trims: [[0.0; 2]; 3],
@@ -101,8 +116,28 @@ impl Settings {
             && bipolar(self.console_bass)
             && bipolar(self.console_treble)
             && unit(self.expression_character)
-            && unit(self.leslie_mic_distance)
-            && unit(self.leslie_stereo_width)
+            && finite_range(
+                self.leslie_mic_distance,
+                MIC_DISTANCE_RANGE_M.0 as f64,
+                MIC_DISTANCE_RANGE_M.1 as f64,
+            )
+            && finite_range(self.leslie_mic_spacing, 0.0, MIC_SPACING_MAX_M as f64)
+            && finite_range(
+                self.leslie_mic_offset,
+                -(MIC_OFFSET_MAX_M as f64),
+                MIC_OFFSET_MAX_M as f64,
+            )
+            && unit(self.leslie_mic_pattern)
+            && finite_range(
+                self.leslie_horn_radius,
+                HORN_RADIUS_RANGE_M.0 as f64,
+                HORN_RADIUS_RANGE_M.1 as f64,
+            )
+            && finite_range(
+                self.leslie_drum_radius,
+                DRUM_RADIUS_RANGE_M.0 as f64,
+                DRUM_RADIUS_RANGE_M.1 as f64,
+            )
             && unit(self.leslie_reflections)
             && bipolar(self.leslie_horn_drum_balance)
             && self
@@ -151,13 +186,17 @@ impl Settings {
             39 => self.console_treble,
             40 => self.expression_character,
             41 => self.leslie_mic_distance,
-            42 => self.leslie_stereo_width,
+            42 => self.leslie_mic_spacing,
             43 => self.leslie_reflections,
             44 => self.leslie_horn_drum_balance,
             45..=50 => {
                 let trim = (index - TRANSFORMER_TRIM_FIRST) as usize;
                 self.transformer_trims[trim / 2][trim % 2]
             }
+            51 => self.leslie_mic_offset,
+            52 => self.leslie_mic_pattern,
+            53 => self.leslie_horn_radius,
+            54 => self.leslie_drum_radius,
             _ => return None,
         })
     }
@@ -214,13 +253,17 @@ impl Settings {
             39 => self.console_treble = value,
             40 => self.expression_character = value,
             41 => self.leslie_mic_distance = value,
-            42 => self.leslie_stereo_width = value,
+            42 => self.leslie_mic_spacing = value,
             43 => self.leslie_reflections = value,
             44 => self.leslie_horn_drum_balance = value,
             45..=50 => {
                 let trim = (index - TRANSFORMER_TRIM_FIRST) as usize;
                 self.transformer_trims[trim / 2][trim % 2] = value;
             }
+            51 => self.leslie_mic_offset = value,
+            52 => self.leslie_mic_pattern = value,
+            53 => self.leslie_horn_radius = value,
+            54 => self.leslie_drum_radius = value,
             _ => return None,
         }
         self.valid().then_some(self)
@@ -261,10 +304,18 @@ impl Settings {
         let _ = engine.set_leslie_mix(self.leslie_mix as f32);
         let _ = engine.set_leslie_acceleration(self.leslie_acceleration as f32);
         let _ = engine.set_leslie_cabinet(
-            self.leslie_mic_distance as f32,
-            self.leslie_stereo_width as f32,
             self.leslie_reflections as f32,
             self.leslie_horn_drum_balance as f32,
+        );
+        let _ = engine.set_leslie_microphones(MicrophoneArray {
+            distance_m: self.leslie_mic_distance as f32,
+            spacing_m: self.leslie_mic_spacing as f32,
+            offset_m: self.leslie_mic_offset as f32,
+            pattern: self.leslie_mic_pattern as f32,
+        });
+        let _ = engine.set_leslie_rotor_radii(
+            self.leslie_horn_radius as f32,
+            self.leslie_drum_radius as f32,
         );
         engine.set_scanner_mode(self.scanner_mode);
         engine.set_scanner_manuals(self.upper_scanner, self.lower_scanner);
@@ -292,8 +343,8 @@ pub fn presets() -> [(&'static str, &'static str, &'static str, Settings); 8] {
                 leslie_mode: LeslieMode::Chorale,
                 scanner_mode: ScannerMode::Chorus3,
                 upper_scanner: true,
-                leslie_mic_distance: 0.5,
-                leslie_stereo_width: 0.68,
+                leslie_mic_distance: 0.9,
+                leslie_mic_spacing: 0.24,
                 ..straight
             },
         ),
@@ -310,8 +361,8 @@ pub fn presets() -> [(&'static str, &'static str, &'static str, Settings); 8] {
                 percussion_harmonic: PercussionHarmonic::Third,
                 percussion_volume: PercussionVolume::Normal,
                 percussion_decay: PercussionDecay::Fast,
-                leslie_mic_distance: 0.2,
-                leslie_stereo_width: 0.9,
+                leslie_mic_distance: 0.25,
+                leslie_mic_spacing: 0.38,
                 leslie_reflections: 0.16,
                 leslie_horn_drum_balance: 0.12,
                 ..straight
@@ -328,8 +379,8 @@ pub fn presets() -> [(&'static str, &'static str, &'static str, Settings); 8] {
                 percussion_harmonic: PercussionHarmonic::Third,
                 percussion_volume: PercussionVolume::Normal,
                 percussion_decay: PercussionDecay::Fast,
-                leslie_mic_distance: 0.4,
-                leslie_stereo_width: 0.72,
+                leslie_mic_distance: 0.5,
+                leslie_mic_spacing: 0.28,
                 ..straight
             },
         ),
@@ -371,7 +422,7 @@ pub fn presets() -> [(&'static str, &'static str, &'static str, Settings); 8] {
                 transformer_drive: 0.66,
                 console_drive: 0.52,
                 leslie_mic_distance: 0.22,
-                leslie_stereo_width: 0.88,
+                leslie_mic_spacing: 0.36,
                 leslie_reflections: 0.26,
                 ..straight
             },
@@ -393,8 +444,8 @@ pub fn presets() -> [(&'static str, &'static str, &'static str, Settings); 8] {
                 pedal_drawbars: [8, 8],
                 upper_scanner: true,
                 lower_scanner: true,
-                leslie_mic_distance: 0.42,
-                leslie_stereo_width: 0.78,
+                leslie_mic_distance: 0.45,
+                leslie_mic_spacing: 0.32,
                 leslie_reflections: 0.3,
                 leslie_horn_drum_balance: -0.08,
                 ..straight

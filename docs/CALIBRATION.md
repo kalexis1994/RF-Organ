@@ -330,6 +330,44 @@ reference fit. Comparing a directory with itself returns the model's own
 coefficient exactly, with the bias visible beside it — presently -0.12, which
 is how much the transformers move the answer.
 
+## Rotary geometry protocol
+
+`leslie-doppler.csv` and the `doppler-` and `arrival-` rows of
+`measurements.csv` come from a probe that feeds one steady tone into the
+cabinet, demodulates each output channel against that tone, and reads the
+pitch deviation off the drift of the resulting phase. It reports, for each
+rotor, the deviation it measured and the deviation the geometry predicts: the
+exact one, from differentiating the path length around a full turn, and the
+far-field one, which is the tangential speed of the mouth over the speed of
+sound. The difference between the two channels' phases, at a known carrier, is
+how much longer the sound took to reach one microphone than the other.
+
+The drum is the clean test, because it reaches the microphones through a gain
+and nothing else. At the default placement - a cardioid pair 35 cm out and
+30 cm apart - it measures 21.06 cents up and 20.96 down against a predicted
+21.70, and an arrival span of 539 microseconds against a predicted 551: a
+shortfall of under a cent, which is the tenth of a rotation the deviation is
+averaged over plus the delay line's linear interpolation. The prediction
+itself was checked against an independent calculation of the same integral.
+
+The horn measures 39.9 up and 53.0 down against the same predicted 38.5. The
+excess and the lopsidedness are not the path; they are the tone shelf that
+turns with the horn. Weighting a signal's low and high halves differently is a
+shelving filter, and moving those weights as the rotor turns moves its phase,
+which reads as pitch. It is not wrong for a horn to do this - a real one is
+brighter on axis, and that colour has to be minimum-phase - but the weights
+themselves are invented, so the size of the effect means nothing yet. It grows
+as the microphones come closer, because the angle they see the mouth through
+swings harder. What the
+probe establishes is that the underlying deviation is the geometry's, and that
+anything on top of it is the shaping's.
+
+To measure a real cabinet against this, put a spaced pair at a measured
+distance in front of it, play a steady tone well above 800 Hz for the horn and
+well below it for the drum, and report peak deviation in cents. The radii are
+the quantity to solve for: a horn whose mouth turns at radius r sweeps
+1200*log2(1 + r*omega/c) cents at angular speed omega.
+
 ## Sample rate and cost
 
 Every other probe in this document runs at 48 kHz. The sweep checks that the
@@ -374,6 +412,11 @@ later took it from 359 to 230 ns per sample at 48 kHz, and from 510 to 224 at
 192 kHz, where the cost of an exact solve does not grow with the rate. The
 scanner's measured sidebands moved by a thousandth of a decibel, which is what
 replacing an approximation with the thing it approximated should look like.
+
+Placing the microphones geometrically in 0.24.0 left the cost where it was:
+the rotary load adds under 20 ns per sample at every rate, because a path
+length is four multiplications and a reciprocal square root with no division
+in it.
 
 Those numbers describe one machine and one build; they are a regression signal,
 not a specification.

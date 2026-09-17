@@ -3,12 +3,12 @@
 use crate::captures::{C_NOTE, CHARACTER, F_NOTE, Level, note_frequency};
 use crate::signal::{decay_time, decibels, peak, rms, zero_crossing_frequency};
 use rf_organ_dsp::{
-    ConsoleElectronics, DRAWBAR_COUNT, Leslie, LeslieMode, MANUAL_FIRST_NOTE, MANUAL_KEY_COUNT,
-    MatchingTransformer, OrganEngine, OrganPart, PercussionDecay, PercussionHarmonic,
-    PercussionVolume, ScannerMode, ScannerVibrato, TransformerUnit, compartment_companions,
-    drawbar_wheel, gear_frequency,
+    ConsoleElectronics, DRAWBAR_COUNT, Leslie, LeslieGeometry, LeslieMode, MANUAL_FIRST_NOTE,
+    MANUAL_KEY_COUNT, MatchingTransformer, MicrophoneArray, OrganEngine, OrganPart,
+    PercussionDecay, PercussionHarmonic, PercussionVolume, ScannerMode, ScannerVibrato,
+    TransformerUnit, compartment_companions, drawbar_wheel, gear_frequency,
 };
-use std::f64::consts::TAU;
+use std::f64::consts::{PI, TAU};
 use std::fmt::Write as _;
 
 const SAMPLE_RATE: usize = 48_000;
@@ -22,6 +22,7 @@ pub struct Artifacts {
     pub scanner_sidebands: String,
     pub scanner_line_response: String,
     pub leslie_rotor_response: String,
+    pub leslie_doppler: String,
     pub pedal_spectrum: String,
     pub pedal_release: String,
     pub expression_response: String,
@@ -78,6 +79,8 @@ fn analyze_inner() -> Result<Artifacts, String> {
     measurements.extend(scanner);
     let (leslie, leslie_rotor_response) = leslie_probe();
     measurements.extend(leslie);
+    let (doppler, leslie_doppler) = leslie_doppler_probe();
+    measurements.extend(doppler);
     Ok(Artifacts {
         measurements: measurement_csv(&measurements),
         percussion_envelope,
@@ -86,6 +89,7 @@ fn analyze_inner() -> Result<Artifacts, String> {
         scanner_sidebands,
         scanner_line_response,
         leslie_rotor_response,
+        leslie_doppler,
         pedal_spectrum,
         pedal_release,
         expression_response,
@@ -1385,6 +1389,260 @@ fn leslie_probe() -> (Vec<Measurement>, String) {
     (measurements, csv)
 }
 
+/// Straight-line distance from a rotor's mouth to a microphone, in metres.
+fn path_length(distance: f64, lateral: f64, radius: f64, angle: f64) -> f64 {
+    let along = distance - radius * angle.cos();
+    let across = lateral - radius * angle.sin();
+    (along * along + across * across).sqrt()
+}
+
+/// What the geometry says the pitch deviation and the arrival difference
+/// should be, worked out from the path lengths alone.
+struct GeometryPrediction {
+    peak_cents: f64,
+    far_field_cents: f64,
+    arrival_span_us: f64,
+}
+
+fn predict(geometry: LeslieGeometry, radius: f32, rotor_hz: f64) -> GeometryPrediction {
+    const STEPS: usize = 4096;
+    let distance = f64::from(geometry.mic_distance_m);
+    let half_width = f64::from(geometry.mic_half_width_m);
+    let speed = f64::from(geometry.sound_speed_m_per_s);
+    let radius = f64::from(radius);
+    let angular = TAU * rotor_hz;
+    let step = TAU / STEPS as f64;
+    let mut peak_cents: f64 = 0.0;
+    let mut shortest = f64::MAX;
+    let mut longest = f64::MIN;
+    for index in 0..STEPS {
+        let angle = index as f64 * step;
+        // What a listener hears is the carrier times one minus the rate the
+        // path is lengthening, over the speed of sound.
+        let ahead = path_length(distance, half_width, radius, angle + 0.5 * step);
+        let behind = path_length(distance, half_width, radius, angle - 0.5 * step);
+        let lengthening = (ahead - behind) / step * angular;
+        let cents = 1200.0 * (1.0 - lengthening / speed).log2();
+        peak_cents = peak_cents.max(cents.abs());
+        let difference = path_length(distance, half_width, radius, angle)
+            - path_length(distance, -half_width, radius, angle);
+        shortest = shortest.min(difference);
+        longest = longest.max(difference);
+    }
+    GeometryPrediction {
+        peak_cents,
+        // The far-field form the literature gives: the tangential speed of
+        // the radiating point over the speed of sound.
+        far_field_cents: 1200.0 * (1.0 + radius * angular / speed).log2(),
+        arrival_span_us: (longest - shortest) / speed * 1.0e6,
+    }
+}
+
+/// Accumulates a phase that is allowed to leave the interval a four-quadrant
+/// arctangent returns it in.
+fn unwrap(previous: &mut f64, total: &mut f64, phase: f64) -> f64 {
+    let mut delta = phase - *previous;
+    while delta > PI {
+        delta -= TAU;
+    }
+    while delta < -PI {
+        delta += TAU;
+    }
+    *previous = phase;
+    *total += delta;
+    *total
+}
+
+/// Doppler and stereo image, against the geometry that causes them.
+///
+/// A rotor's mouth is a point travelling on a circle, so the line to a
+/// microphone lengthens and shortens as it turns, and the pitch deviation a
+/// listener hears is how fast that line changes over the speed of sound. The
+/// far-field form of it is in the literature as the tangential speed of the
+/// radiating point over the speed of sound. This probe measures what comes out
+/// of the cabinet and compares it against both the exact path and that
+/// formula: the radii are provisional, but what they produce is not guesswork.
+fn leslie_doppler_probe() -> (Vec<Measurement>, String) {
+    const SETTLE_SECONDS: usize = 12;
+    const CAPTURE_SECONDS: usize = 3;
+    // The deviation is read over a tenth of a rotation, which is long enough
+    // that what is left of the carrier does not reach the answer and short
+    // enough that the peak of a 6 Hz sweep survives it.
+    const BLOCK: usize = 480;
+    const SKIP_SECONDS: f64 = 0.6;
+    let mut csv = String::from(
+        "rotor,time_seconds,cents_left,cents_right,level_left_db,level_right_db,arrival_us\n",
+    );
+    let mut measurements = Vec::new();
+
+    for (probe, carrier, balance, horn) in [
+        ("leslie-horn", 2_000.0_f64, 1.0_f32, true),
+        ("leslie-drum", 400.0_f64, -1.0_f32, false),
+    ] {
+        let mut leslie = Leslie::new(SAMPLE_RATE as f32);
+        assert!(leslie.set_mix(1.0));
+        assert!(leslie.set_acceleration(0.5));
+        // One rotor at a time, with the room switched off: this probe is about
+        // the path to the microphones, not about the cabinet's walls.
+        assert!(leslie.set_cabinet(0.0, balance));
+        assert!(leslie.set_microphones(MicrophoneArray::default()));
+        leslie.set_mode(LeslieMode::Tremolo);
+
+        let omega = TAU * carrier / SAMPLE_RATE as f64;
+        let mut frame = 0_usize;
+        for _ in 0..SAMPLE_RATE * SETTLE_SECONDS {
+            let input = (omega * frame as f64).sin() as f32;
+            leslie.process(input);
+            frame += 1;
+        }
+        let state = leslie.diagnostics();
+        let rotor_hz = if horn {
+            f64::from(state.horn_speed_hz)
+        } else {
+            f64::from(state.drum_speed_hz)
+        };
+        let geometry = leslie.geometry();
+        let radius = if horn {
+            geometry.horn_radius_m
+        } else {
+            geometry.drum_radius_m
+        };
+        let prediction = predict(geometry, radius, rotor_hz);
+
+        // Demodulate both channels against the carrier: the drift of the
+        // resulting phase is the Doppler shift, and its magnitude is the level.
+        // Three poles, because one leaves enough of the carrier's image in
+        // the quadrature pair to swamp a deviation of a few tens of cents.
+        let smoothing = {
+            let x = TAU * 40.0 / SAMPLE_RATE as f64;
+            x / (1.0 + x)
+        };
+        let mut quadrature = [[[0.0_f64; 2]; 3]; 2];
+        let mut previous = [0.0_f64; 2];
+        let mut total = [0.0_f64; 2];
+        let mut history = [
+            Vec::with_capacity(SAMPLE_RATE * CAPTURE_SECONDS),
+            Vec::with_capacity(SAMPLE_RATE * CAPTURE_SECONDS),
+        ];
+        let mut level = [
+            Vec::with_capacity(SAMPLE_RATE * CAPTURE_SECONDS),
+            Vec::with_capacity(SAMPLE_RATE * CAPTURE_SECONDS),
+        ];
+        for _ in 0..SAMPLE_RATE * CAPTURE_SECONDS {
+            let angle = omega * frame as f64;
+            let input = angle.sin() as f32;
+            let output = leslie.process(input);
+            let (cosine, sine) = (angle.cos(), angle.sin());
+            for channel in 0..2 {
+                let value = f64::from(output[channel]);
+                let mut pair = [value * cosine, -value * sine];
+                for stage in &mut quadrature[channel] {
+                    stage[0] += smoothing * (pair[0] - stage[0]);
+                    stage[1] += smoothing * (pair[1] - stage[1]);
+                    pair = *stage;
+                }
+                let phase = pair[1].atan2(pair[0]);
+                history[channel].push(unwrap(&mut previous[channel], &mut total[channel], phase));
+                level[channel].push((pair[0] * pair[0] + pair[1] * pair[1]).sqrt());
+            }
+            frame += 1;
+        }
+
+        let skip = (SKIP_SECONDS * SAMPLE_RATE as f64) as usize;
+        let mut peak_cents: f64 = 0.0;
+        let mut rise_cents = f64::MIN;
+        let mut fall_cents = f64::MAX;
+        let mut quietest = f64::MAX;
+        let mut loudest = f64::MIN;
+        let mut nearest = f64::MAX;
+        let mut furthest = f64::MIN;
+        for index in (skip + BLOCK)..history[0].len() {
+            let mut cents = [0.0_f64; 2];
+            for channel in 0..2 {
+                let drift = history[channel][index] - history[channel][index - BLOCK];
+                let deviation = drift * SAMPLE_RATE as f64 / (BLOCK as f64 * TAU);
+                cents[channel] = 1200.0 * ((carrier + deviation) / carrier).log2();
+            }
+            peak_cents = peak_cents.max(cents[0].abs());
+            rise_cents = rise_cents.max(cents[0]);
+            fall_cents = fall_cents.min(cents[0]);
+            let amplitude = level[0][index];
+            if amplitude > 0.0 {
+                quietest = quietest.min(amplitude);
+                loudest = loudest.max(amplitude);
+            }
+            // The phase the two channels differ by, at a known carrier, is the
+            // difference in how long the sound took to reach each microphone.
+            let arrival = (history[0][index] - history[1][index]) / (TAU * carrier) * 1.0e6;
+            nearest = nearest.min(arrival);
+            furthest = furthest.max(arrival);
+            if index % (SAMPLE_RATE / 200) == 0 {
+                let seconds = index as f64 / SAMPLE_RATE as f64;
+                let _ = writeln!(
+                    csv,
+                    "{probe},{seconds:.4},{:.3},{:.3},{:.3},{:.3},{arrival:.2}",
+                    cents[0],
+                    cents[1],
+                    decibels(level[0][index]),
+                    decibels(level[1][index]),
+                );
+            }
+        }
+
+        measurements.extend([
+            Measurement {
+                probe,
+                metric: "doppler-rise",
+                value: rise_cents,
+                unit: "cents",
+            },
+            Measurement {
+                probe,
+                metric: "doppler-fall",
+                value: fall_cents,
+                unit: "cents",
+            },
+            Measurement {
+                probe,
+                metric: "doppler-geometric",
+                value: prediction.peak_cents,
+                unit: "cents",
+            },
+            Measurement {
+                probe,
+                metric: "doppler-far-field",
+                value: prediction.far_field_cents,
+                unit: "cents",
+            },
+            Measurement {
+                probe,
+                metric: "doppler-geometry-error",
+                value: peak_cents - prediction.peak_cents,
+                unit: "cents",
+            },
+            Measurement {
+                probe,
+                metric: "arrival-span",
+                value: furthest - nearest,
+                unit: "microseconds",
+            },
+            Measurement {
+                probe,
+                metric: "arrival-span-geometric",
+                value: prediction.arrival_span_us,
+                unit: "microseconds",
+            },
+            Measurement {
+                probe,
+                metric: "level-swing",
+                value: decibels(loudest) - decibels(quietest),
+                unit: "dB",
+            },
+        ]);
+    }
+    (measurements, csv)
+}
+
 fn clean_engine() -> Result<OrganEngine, String> {
     let mut engine = OrganEngine::new(SAMPLE_RATE as f32).map_err(|error| error.0.to_owned())?;
     for part in [OrganPart::Upper, OrganPart::Lower] {
@@ -1625,6 +1883,55 @@ mod tests {
         assert!(metric("pedal-16ft", "key-off-energy-t99.9") < 0.1);
         assert_eq!(spectrum.lines().count(), 17);
         assert_eq!(release.lines().count(), SAMPLE_RATE / 10 + 1);
+    }
+
+    /// The drum radiates without a rotating tone shelf, so what reaches the
+    /// microphones is the geometry and nothing else: its deviation has to
+    /// land on what the path lengths predict. The horn carries a shelf that
+    /// turns with it, which adds phase modulation of its own, so its measured
+    /// deviation is larger and no longer symmetric.
+    #[test]
+    fn doppler_follows_the_path_that_causes_it() {
+        let (measurements, csv) = with_analysis_stack(leslie_doppler_probe);
+        let value = |probe: &str, metric: &str| {
+            measurements
+                .iter()
+                .find(|measurement| measurement.probe == probe && measurement.metric == metric)
+                .expect("measurement")
+                .value
+        };
+        assert!(csv.lines().count() > 100);
+        assert!(
+            measurements
+                .iter()
+                .all(|measurement| measurement.value.is_finite())
+        );
+
+        let drum_error = value("leslie-drum", "doppler-geometry-error");
+        assert!(drum_error.abs() < 2.0, "drum is off by {drum_error} cents");
+        let drum_rise = value("leslie-drum", "doppler-rise");
+        let drum_fall = value("leslie-drum", "doppler-fall");
+        assert!(
+            (drum_rise + drum_fall).abs() < 1.0,
+            "drum sweep is lopsided: {drum_rise} and {drum_fall}"
+        );
+        let span = value("leslie-drum", "arrival-span");
+        let predicted = value("leslie-drum", "arrival-span-geometric");
+        assert!(
+            (span - predicted).abs() < 0.1 * predicted,
+            "arrival span {span} against {predicted} microseconds"
+        );
+
+        // The horn's own deviation still has to be of the size the geometry
+        // sets, even with the shelf on top of it.
+        let horn_error = value("leslie-horn", "doppler-geometry-error");
+        assert!(horn_error > 0.0 && horn_error < 25.0, "horn {horn_error}");
+        assert!(
+            value("leslie-horn", "doppler-geometric") > value("leslie-drum", "doppler-geometric")
+        );
+        for rotor in ["leslie-horn", "leslie-drum"] {
+            assert!(value(rotor, "level-swing") > 1.0);
+        }
     }
 
     #[test]

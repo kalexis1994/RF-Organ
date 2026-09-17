@@ -73,8 +73,40 @@ what stays constant.
 RF-Organ runs its rotors at 400 and 40 rpm for the horn and 340 and 40 for the
 drum, the figures usually quoted for a 122 and the ones Hammond's own worked
 examples use. The six transition times are provisional, inside the documented
-floors, and the laboratory measures what they produce. The stop angle and the
-microphone geometry Hammond specifies in centimetres are not modelled yet.
+floors, and the laboratory measures what they produce. The stop angle is not
+modelled yet.
+
+## Rotating source geometry
+
+Version 0.24.0 places the microphones by the same geometry Smith, Serafin, Abel
+and Berners set out in "Doppler Simulation and the Leslie" (Proceedings of the
+5th International Conference on Digital Audio Effects, Hamburg, 2002): the
+radiating mouth is treated as an omnidirectional point on a circle, the
+listener as a point off that circle, and the pitch deviation as what the
+changing distance between them does to the arrival time, whose far-field form
+is the tangential speed of the radiating point over the speed of sound. The
+paper also gives the reason the omnidirectional assumption is fair, which is
+the diffuser fitted into the mouth of the horn.
+
+Nothing was taken from that paper but its description of the physics, which is
+not a copyrightable element and carries no licence obligation; no code, figure
+or table of it is reproduced here, and the implementation in
+`crates/rf-organ-dsp/src/leslie.rs` is our own.
+
+The microphone placement follows the ranges Hammond publishes for a digital
+cabinet: 0 to 170 cm in front, 0 to 40 cm between the pair, and an offset of
+the pair from the rotor's pivot. RF-Organ exposes those as distances in metres,
+the way RackForge's Concert Grand exposes its own microphone placement, and
+adds a pattern control from omnidirectional through cardioid to a figure of
+eight, which on a rotating source decides how much of the sweep arrives as
+level and how much as tone.
+
+What is not documented anywhere we can cite is the radius each mouth actually
+turns at. So the horn's 18 cm and the drum's 12 cm are not constants: they are
+the defaults of two controls on a model page, in metres, where a measurement
+can replace them without a rebuild. `artifacts/measurements.csv` reports the
+pitch deviation they produce against the deviation the same geometry
+predicts.
 
 ## Generator compartments and wheel motion
 

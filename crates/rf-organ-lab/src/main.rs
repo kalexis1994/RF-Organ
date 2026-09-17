@@ -263,6 +263,10 @@ fn render_suite(destination: &Path, trims: captures::Trims) -> Result<(), Box<dy
         analysis.leslie_rotor_response,
     )?;
     fs::write(
+        destination.join("leslie-doppler.csv"),
+        analysis.leslie_doppler,
+    )?;
+    fs::write(
         destination.join("pedal-spectrum.csv"),
         analysis.pedal_spectrum,
     )?;
@@ -364,7 +368,7 @@ fn configure(engine: &mut OrganEngine, scenario: Scenario) {
     let _ = engine.set_transformer(captures::CHARACTER.0, captures::CHARACTER.1);
     let _ = engine.set_console(0.32, 0.0, 0.0);
     let _ = engine.set_expression_character(0.55);
-    let _ = engine.set_leslie_cabinet(0.35, 0.75, 0.22, 0.0);
+    let _ = engine.set_leslie_cabinet(0.22, 0.0);
     match scenario {
         Scenario::Direct => {}
         Scenario::Percussion => {
@@ -439,7 +443,7 @@ fn render_leslie_impulse() -> Vec<f32> {
     let mut leslie = Leslie::new(SAMPLE_RATE as f32);
     leslie.set_mode(LeslieMode::Brake);
     let _ = leslie.set_mix(1.0);
-    let _ = leslie.set_cabinet(0.35, 0.75, 1.0, 0.0);
+    let _ = leslie.set_cabinet(1.0, 0.0);
     let frames = SAMPLE_RATE as usize / 2;
     let mut output = Vec::with_capacity(frames * 2);
     for frame in 0..frames {
@@ -465,7 +469,7 @@ fn manifest(trims: captures::Trims) -> String {
         .collect::<Vec<_>>()
         .join(",");
     format!(
-        "RF-Organ deterministic calibration suite\nversion={}\nsample_rate={}\nphrase_seconds={}\nnormalization=none\nformat=IEEE-float WAV stereo\nanalysis=frequency,level,generator-taper,generator-leakage,pedal-spectrum,pedal-release,expression-response,tone-control-response,console-distortion,transformer-intermodulation,transformer-calibration,percussion-envelope,percussion-recovery,keying-contacts,scanner-sidebands,scanner-line-response,leslie-rotor-response\n",
+        "RF-Organ deterministic calibration suite\nversion={}\nsample_rate={}\nphrase_seconds={}\nnormalization=none\nformat=IEEE-float WAV stereo\nanalysis=frequency,level,generator-taper,generator-leakage,pedal-spectrum,pedal-release,expression-response,tone-control-response,console-distortion,transformer-intermodulation,transformer-calibration,percussion-envelope,percussion-recovery,keying-contacts,scanner-sidebands,scanner-line-response,leslie-rotor-response,leslie-doppler\n",
         env!("CARGO_PKG_VERSION"),
         SAMPLE_RATE,
         SECONDS

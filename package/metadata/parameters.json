@@ -6,7 +6,8 @@
     { "id": "pedals", "name": "Pedals", "order": 2 },
     { "id": "generator", "name": "Generator", "order": 3 },
     { "id": "electronics", "name": "Console Electronics", "order": 4 },
-    { "id": "leslie", "name": "Rotary Speaker", "order": 5 }
+    { "id": "leslie", "name": "Rotary Speaker", "order": 5 },
+    { "id": "model_rotary", "name": "Model - Rotary", "order": 6 }
   ],
   "parameters": [
     {
@@ -467,17 +468,17 @@
       "name": "Mic Distance",
       "page": "leslie",
       "order": 3,
-      "kind": { "type": "float", "minimum": 0.0, "maximum": 1.0, "default": 0.35, "step": 0.001 },
+      "kind": { "type": "float", "minimum": 0.12, "maximum": 1.7, "default": 0.35, "step": 0.005, "unit": "m" },
       "flags": { "automatable": true },
       "suggested_control": "knob"
     },
     {
       "index": 42,
-      "id": "leslie-stereo-width",
-      "name": "Stereo Width",
+      "id": "leslie-mic-spacing",
+      "name": "Mic Spacing",
       "page": "leslie",
       "order": 4,
-      "kind": { "type": "float", "minimum": 0.0, "maximum": 1.0, "default": 0.75, "step": 0.001 },
+      "kind": { "type": "float", "minimum": 0.0, "maximum": 0.4, "default": 0.3, "step": 0.005, "unit": "m" },
       "flags": { "automatable": true },
       "suggested_control": "knob"
     },
@@ -559,6 +560,46 @@
       "order": 10,
       "kind": { "type": "float", "minimum": -1.0, "maximum": 1.0, "default": 0.0, "step": 0.001 },
       "flags": { "automatable": true },
+      "suggested_control": "knob"
+    },
+    {
+      "index": 51,
+      "id": "leslie-mic-offset",
+      "name": "Mic Offset",
+      "page": "leslie",
+      "order": 7,
+      "kind": { "type": "float", "minimum": -0.5, "maximum": 0.5, "default": 0.0, "step": 0.005, "unit": "m" },
+      "flags": { "automatable": true },
+      "suggested_control": "knob"
+    },
+    {
+      "index": 52,
+      "id": "leslie-mic-pattern",
+      "name": "Mic Pattern (omni to figure of eight)",
+      "page": "leslie",
+      "order": 8,
+      "kind": { "type": "float", "minimum": 0.0, "maximum": 1.0, "default": 0.5, "step": 0.01 },
+      "flags": { "automatable": true },
+      "suggested_control": "knob"
+    },
+    {
+      "index": 53,
+      "id": "leslie-horn-radius",
+      "name": "HORN_RADIUS_M",
+      "page": "model_rotary",
+      "order": 0,
+      "kind": { "type": "float", "minimum": 0.05, "maximum": 0.4, "default": 0.18, "step": 0.001, "unit": "m" },
+      "flags": { "automatable": true, "advanced": true },
+      "suggested_control": "knob"
+    },
+    {
+      "index": 54,
+      "id": "leslie-drum-radius",
+      "name": "DRUM_RADIUS_M",
+      "page": "model_rotary",
+      "order": 1,
+      "kind": { "type": "float", "minimum": 0.05, "maximum": 0.3, "default": 0.12, "step": 0.001, "unit": "m" },
+      "flags": { "automatable": true, "advanced": true },
       "suggested_control": "knob"
     }
   ],

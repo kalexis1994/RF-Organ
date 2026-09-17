@@ -33,6 +33,115 @@ const fn rpm_to_hz(rpm: f32) -> f32 {
     rpm / 60.0
 }
 
+/// Radius at which each rotor's mouth travels, in metres. Smith, Serafin,
+/// Abel and Berners model the horn as an omnidirectional source on a circle
+/// of radius r, whose far-field Doppler amplitude is r times angular velocity
+/// over the speed of sound; a diffuser in the horn is what makes the
+/// omnidirectional assumption fair. These two are the only quantity in the
+/// cabinet's geometry we could not find published, so they are defaults for a
+/// pair of controls rather than constants, and the laboratory reports the
+/// pitch deviation they produce against the deviation the geometry predicts.
+pub const HORN_RADIUS_DEFAULT_M: f32 = 0.18;
+pub const DRUM_RADIUS_DEFAULT_M: f32 = 0.12;
+pub const HORN_RADIUS_RANGE_M: (f32, f32) = (0.05, 0.40);
+pub const DRUM_RADIUS_RANGE_M: (f32, f32) = (0.05, 0.30);
+const SOUND_SPEED_M_PER_S: f32 = 343.0;
+/// Microphone placement, in the units and ranges Hammond documents: up to
+/// 170 cm in front of the cabinet, up to 40 cm between the pair, and up to
+/// 50 cm of offset between the centre of the pair and the rotor's pivot. The
+/// near limit is ours: a microphone cannot be put inside the cabinet.
+pub const MIC_DISTANCE_RANGE_M: (f32, f32) = (0.12, 1.7);
+pub const MIC_SPACING_MAX_M: f32 = 0.4;
+pub const MIC_OFFSET_MAX_M: f32 = 0.5;
+
+/// Shortest path a rotor's mouth can be from a microphone, squared. The
+/// microphones cannot be put inside the cabinet, so no path is ever this
+/// short; it only keeps the arithmetic away from zero.
+const NEAREST_SQUARED_M2: f32 = 4.0e-4;
+
+/// Reciprocal square root, from the usual bit-pattern seed refined by three
+/// Newton steps.
+///
+/// A rotor needs four path lengths every sample and `core` has no square root
+/// of its own, so this way each one costs multiplications and no divisions.
+/// The reciprocal is what the level and the direction want anyway, and the
+/// length is the square times it. A test holds the result against the real
+/// square root over every distance a cabinet can produce.
+fn inverse_root(square: f32) -> f32 {
+    let mut root = f32::from_bits(0x5f37_59df - (square.to_bits() >> 1));
+    let half = 0.5 * square;
+    root *= 1.5 - half * root * root;
+    root *= 1.5 - half * root * root;
+    root *= 1.5 - half * root * root;
+    root
+}
+
+/// One microphone on its stand: where it is, and where it points.
+///
+/// The pair stands in front of the cabinet and aims at the rotor's pivot, so
+/// the axis only has to be worked out when somebody moves a stand.
+#[derive(Clone, Copy)]
+struct Placement {
+    distance: f32,
+    lateral: f32,
+    /// Unit vector from the microphone toward the pivot.
+    axis: (f32, f32),
+}
+
+impl Placement {
+    fn new(distance: f32, lateral: f32) -> Self {
+        let inverse =
+            inverse_root((distance * distance + lateral * lateral).max(NEAREST_SQUARED_M2));
+        Self {
+            distance,
+            lateral,
+            axis: (distance * inverse, lateral * inverse),
+        }
+    }
+}
+
+/// Distance from a rotor's mouth to one microphone, and the level that
+/// distance gives it.
+///
+/// The mouth is at `radius` on a circle around the pivot and the straight line
+/// between the two is what the sound travels: the delay is its length over the
+/// speed of sound, the level falls with it, and the pattern decides how much
+/// of what arrives off the microphone's axis it keeps. Doppler is not applied
+/// on top of any of this, it is what a moving path length already does.
+struct MicrophonePath {
+    delay_samples: f32,
+    gain: f32,
+    /// How squarely the mouth faces this microphone: 1 when it points
+    /// straight at it, 0 when it points away.
+    facing: f32,
+}
+
+fn microphone_path(
+    place: Placement,
+    radius: f32,
+    sine: f32,
+    cosine: f32,
+    samples_per_metre: f32,
+    pattern: f32,
+) -> MicrophonePath {
+    let along = place.distance - radius * cosine;
+    let across = place.lateral - radius * sine;
+    let squared = (along * along + across * across).max(NEAREST_SQUARED_M2);
+    let inverse = inverse_root(squared);
+    // Where the sound arrives from, against where the microphone is pointing:
+    // an omnidirectional capsule ignores this and a figure of eight lives by
+    // it, including the change of sign behind it.
+    let incidence = (place.axis.0 * along + place.axis.1 * across) * inverse;
+    MicrophonePath {
+        delay_samples: squared * inverse * samples_per_metre,
+        gain: place.distance * inverse * ((1.0 - pattern) + pattern * incidence),
+        // The mouth radiates outward along the radius, so how far off axis
+        // the microphone lies is the angle between that radius and the line
+        // to it.
+        facing: 0.5 + 0.5 * (along * cosine + across * sine) * inverse,
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[repr(u8)]
 pub enum LeslieMode {
@@ -41,6 +150,61 @@ pub enum LeslieMode {
     Brake = 1,
     Chorale = 2,
     Tremolo = 3,
+}
+
+/// Where the microphones stand and what they are, in the units a tape
+/// measure and a microphone cabinet use.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MicrophoneArray {
+    /// In front of the cabinet.
+    pub distance_m: f32,
+    /// Between the pair.
+    pub spacing_m: f32,
+    /// Of the pair's centre from the rotor's pivot.
+    pub offset_m: f32,
+    /// Omnidirectional at zero, cardioid at a half, figure of eight at one.
+    pub pattern: f32,
+}
+
+pub const MIC_DISTANCE_DEFAULT_M: f32 = 0.35;
+pub const MIC_SPACING_DEFAULT_M: f32 = 0.3;
+pub const MIC_PATTERN_DEFAULT: f32 = 0.5;
+
+impl Default for MicrophoneArray {
+    fn default() -> Self {
+        Self {
+            distance_m: MIC_DISTANCE_DEFAULT_M,
+            spacing_m: MIC_SPACING_DEFAULT_M,
+            offset_m: 0.0,
+            pattern: MIC_PATTERN_DEFAULT,
+        }
+    }
+}
+
+/// The four stands: the horn's pair, then the drum's pair on the other side of
+/// the offset.
+fn stands(distance: f32, spacing: f32, offset: f32) -> [Placement; 4] {
+    let half = 0.5 * spacing;
+    [
+        Placement::new(distance, offset + half),
+        Placement::new(distance, offset - half),
+        Placement::new(distance, -offset + half),
+        Placement::new(distance, -offset - half),
+    ]
+}
+
+/// The cabinet's geometry, in metres, for tools that need to predict what it
+/// should be doing rather than take its word for it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct LeslieGeometry {
+    pub horn_radius_m: f32,
+    pub drum_radius_m: f32,
+    pub sound_speed_m_per_s: f32,
+    /// Microphone placement: in front of the cabinet, half the spacing
+    /// between the pair, and the pair's offset from the pivot.
+    pub mic_distance_m: f32,
+    pub mic_half_width_m: f32,
+    pub mic_centre_m: f32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -215,8 +379,11 @@ pub struct Leslie {
     cabinet_right: DelayLine,
     horn_tone_left: f32,
     horn_tone_right: f32,
-    mic_distance: f32,
-    stereo_width: f32,
+    /// Horn left and right, then drum left and right.
+    places: [Placement; 4],
+    pattern: f32,
+    horn_radius: f32,
+    drum_radius: f32,
     reflections: f32,
     horn_drum_balance: f32,
 }
@@ -255,8 +422,10 @@ impl Leslie {
             cabinet_right: DelayLine::new(),
             horn_tone_left: 0.0,
             horn_tone_right: 0.0,
-            mic_distance: 0.35,
-            stereo_width: 0.75,
+            places: stands(MIC_DISTANCE_DEFAULT_M, MIC_SPACING_DEFAULT_M, 0.0),
+            pattern: MIC_PATTERN_DEFAULT,
+            horn_radius: HORN_RADIUS_DEFAULT_M,
+            drum_radius: DRUM_RADIUS_DEFAULT_M,
             reflections: 0.22,
             horn_drum_balance: 0.0,
         }
@@ -314,24 +483,51 @@ impl Leslie {
         true
     }
 
-    pub fn set_cabinet(
-        &mut self,
-        mic_distance: f32,
-        stereo_width: f32,
-        reflections: f32,
-        horn_drum_balance: f32,
-    ) -> bool {
-        if !unit(mic_distance)
-            || !unit(stereo_width)
-            || !unit(reflections)
-            || !bipolar(horn_drum_balance)
+    pub fn set_cabinet(&mut self, reflections: f32, horn_drum_balance: f32) -> bool {
+        if !unit(reflections) || !bipolar(horn_drum_balance) {
+            return false;
+        }
+        self.reflections = reflections;
+        self.horn_drum_balance = horn_drum_balance;
+        true
+    }
+
+    /// Moves the microphone stands, in metres, and chooses their pattern from
+    /// omnidirectional at zero through cardioid at a half to a figure of eight
+    /// at one.
+    ///
+    /// `offset` slides the pair away from the pivot, and it slides the horn's
+    /// pair and the drum's pair in opposite directions: a cabinet's two rotors
+    /// turn against each other, so a placement that catches the horn coming
+    /// toward you catches the drum going away.
+    pub fn set_microphones(&mut self, array: MicrophoneArray) -> bool {
+        let (near, far) = MIC_DISTANCE_RANGE_M;
+        if !(near..=far).contains(&array.distance_m)
+            || !(0.0..=MIC_SPACING_MAX_M).contains(&array.spacing_m)
+            || array.offset_m.abs() > MIC_OFFSET_MAX_M
+            || !unit(array.pattern)
+            || !array.distance_m.is_finite()
+            || !array.spacing_m.is_finite()
+            || !array.offset_m.is_finite()
         {
             return false;
         }
-        self.mic_distance = mic_distance;
-        self.stereo_width = stereo_width;
-        self.reflections = reflections;
-        self.horn_drum_balance = horn_drum_balance;
+        self.places = stands(array.distance_m, array.spacing_m, array.offset_m);
+        self.pattern = array.pattern;
+        true
+    }
+
+    /// The radius each rotor's mouth turns at, in metres. This is the one
+    /// quantity of the cabinet's geometry we have no published figure for, so
+    /// it is a control and not a constant.
+    pub fn set_rotor_radii(&mut self, horn_m: f32, drum_m: f32) -> bool {
+        let (horn_near, horn_far) = HORN_RADIUS_RANGE_M;
+        let (drum_near, drum_far) = DRUM_RADIUS_RANGE_M;
+        if !(horn_near..=horn_far).contains(&horn_m) || !(drum_near..=drum_far).contains(&drum_m) {
+            return false;
+        }
+        self.horn_radius = horn_m;
+        self.drum_radius = drum_m;
         true
     }
 
@@ -345,37 +541,61 @@ impl Leslie {
         self.horn.advance(self.sample_rate);
         self.drum.advance(self.sample_rate);
 
-        let horn_base = self.sample_rate * (0.00075 + 0.0015 * self.mic_distance);
-        let horn_depth = self.sample_rate * 0.00042 * (1.0 - 0.55 * self.mic_distance);
-        let drum_base = self.sample_rate * (0.0011 + 0.0020 * self.mic_distance);
-        let drum_depth = self.sample_rate * 0.00017 * (1.0 - 0.5 * self.mic_distance);
-        let raw_horn_left = self
-            .horn_delay
-            .read(horn_base + horn_depth * self.horn.sine);
-        let raw_horn_right = self
-            .horn_delay
-            .read(horn_base - horn_depth * self.horn.sine);
-        let drum_left = self
-            .drum_delay
-            .read(drum_base + drum_depth * self.drum.sine);
-        let drum_right = self
-            .drum_delay
-            .read(drum_base - drum_depth * self.drum.sine);
+        // Four straight lines, from each rotor's mouth to each microphone.
+        // Their lengths give the delays, the levels and, because they change
+        // as the rotor turns, the Doppler shift.
+        let samples_per_metre = self.sample_rate / SOUND_SPEED_M_PER_S;
+        let horn_left = microphone_path(
+            self.places[0],
+            self.horn_radius,
+            self.horn.sine,
+            self.horn.cosine,
+            samples_per_metre,
+            self.pattern,
+        );
+        let horn_right = microphone_path(
+            self.places[1],
+            self.horn_radius,
+            self.horn.sine,
+            self.horn.cosine,
+            samples_per_metre,
+            self.pattern,
+        );
+        let drum_path_left = microphone_path(
+            self.places[2],
+            self.drum_radius,
+            self.drum.sine,
+            self.drum.cosine,
+            samples_per_metre,
+            self.pattern,
+        );
+        let drum_path_right = microphone_path(
+            self.places[3],
+            self.drum_radius,
+            self.drum.sine,
+            self.drum.cosine,
+            samples_per_metre,
+            self.pattern,
+        );
+        let horn_facing_left = horn_left.facing;
+        let horn_facing_right = horn_right.facing;
+        let drum_facing_left = drum_path_left.facing;
+        let drum_facing_right = drum_path_right.facing;
+        let raw_horn_left = self.horn_delay.read(horn_left.delay_samples) * horn_left.gain;
+        let raw_horn_right = self.horn_delay.read(horn_right.delay_samples) * horn_right.gain;
+        let drum_left = self.drum_delay.read(drum_path_left.delay_samples) * drum_path_left.gain;
+        let drum_right = self.drum_delay.read(drum_path_right.delay_samples) * drum_path_right.gain;
 
         let horn_filter = one_pole(2_200.0, self.sample_rate);
         self.horn_tone_left += horn_filter * (raw_horn_left - self.horn_tone_left);
         self.horn_tone_right += horn_filter * (raw_horn_right - self.horn_tone_right);
         let horn_high_left = raw_horn_left - self.horn_tone_left;
         let horn_high_right = raw_horn_right - self.horn_tone_right;
-        let horn_facing_left = 0.5 + 0.5 * self.horn.cosine;
-        let horn_facing_right = 1.0 - horn_facing_left;
         let horn_left = self.horn_tone_left * (0.55 + 0.35 * horn_facing_left)
             + horn_high_left * (0.20 + 0.80 * horn_facing_left);
         let horn_right = self.horn_tone_right * (0.55 + 0.35 * horn_facing_right)
             + horn_high_right * (0.20 + 0.80 * horn_facing_right);
 
-        let drum_facing_left = 0.5 + 0.5 * self.drum.cosine;
-        let drum_facing_right = 1.0 - drum_facing_left;
         let horn_gain = if self.horn_drum_balance < 0.0 {
             1.0 + self.horn_drum_balance
         } else {
@@ -390,11 +610,7 @@ impl Leslie {
             horn_gain * horn_left + drum_gain * drum_left * (0.66 + 0.34 * drum_facing_left);
         let mut wet_right =
             horn_gain * horn_right + drum_gain * drum_right * (0.66 + 0.34 * drum_facing_right);
-
-        let mid = 0.5 * (wet_left + wet_right);
-        let side = 0.5 * (wet_left - wet_right) * (0.35 + 1.3 * self.stereo_width);
-        wet_left = mid + side;
-        wet_right = mid - side;
+        // Where the microphones meet, so does the image: no width, no stereo.
 
         self.cabinet_left.push(wet_left);
         self.cabinet_right.push(wet_right);
@@ -415,6 +631,18 @@ impl Leslie {
             input * (1.0 - wet) + wet_left * wet,
             input * (1.0 - wet) + wet_right * wet,
         ]
+    }
+
+    /// Read-only geometry for deterministic calibration tools.
+    pub fn geometry(&self) -> LeslieGeometry {
+        LeslieGeometry {
+            horn_radius_m: self.horn_radius,
+            drum_radius_m: self.drum_radius,
+            sound_speed_m_per_s: SOUND_SPEED_M_PER_S,
+            mic_distance_m: self.places[0].distance,
+            mic_half_width_m: 0.5 * (self.places[0].lateral - self.places[1].lateral),
+            mic_centre_m: 0.5 * (self.places[0].lateral + self.places[1].lateral),
+        }
     }
 
     /// Read-only mechanical state for deterministic calibration tools.
@@ -467,6 +695,118 @@ fn one_pole(frequency: f32, sample_rate: f32) -> f32 {
 mod tests {
     use super::*;
 
+    /// The reciprocal root against the real one, over every distance a
+    /// cabinet can put between a mouth and a microphone, and well past both
+    /// ends of it.
+    #[test]
+    fn the_path_length_root_is_exact_to_a_micrometre() {
+        let mut worst = 0.0_f32;
+        for step in 0..20_000 {
+            let length = 0.01 + step as f32 * 0.001;
+            let recovered = length * length * inverse_root(length * length);
+            worst = worst.max((recovered - length).abs() / length);
+        }
+        assert!(worst < 1.0e-6, "worst relative error {worst}");
+    }
+
+    /// The microphones stand where the documented ranges say, in metres, and
+    /// a stand outside them is refused rather than folded back in.
+    #[test]
+    fn the_microphones_span_their_documented_ranges() {
+        let mut leslie = Leslie::new(48_000.0);
+        let (near, far) = MIC_DISTANCE_RANGE_M;
+        assert!(leslie.set_microphones(MicrophoneArray {
+            distance_m: near,
+            spacing_m: 0.0,
+            offset_m: 0.0,
+            pattern: 0.0,
+        }));
+        let close = leslie.geometry();
+        assert!((close.mic_distance_m - near).abs() < 1.0e-6);
+        assert_eq!(close.mic_half_width_m, 0.0);
+        assert!(leslie.set_microphones(MicrophoneArray {
+            distance_m: far,
+            spacing_m: MIC_SPACING_MAX_M,
+            offset_m: MIC_OFFSET_MAX_M,
+            pattern: 1.0,
+        }));
+        let wide = leslie.geometry();
+        assert!((wide.mic_distance_m - far).abs() < 1.0e-6);
+        assert!((wide.mic_half_width_m - 0.5 * MIC_SPACING_MAX_M).abs() < 1.0e-6);
+        assert!((wide.mic_centre_m - MIC_OFFSET_MAX_M).abs() < 1.0e-6);
+        for refused in [
+            MicrophoneArray {
+                distance_m: far + 0.01,
+                ..MicrophoneArray::default()
+            },
+            MicrophoneArray {
+                distance_m: 0.0,
+                ..MicrophoneArray::default()
+            },
+            MicrophoneArray {
+                spacing_m: MIC_SPACING_MAX_M + 0.01,
+                ..MicrophoneArray::default()
+            },
+            MicrophoneArray {
+                offset_m: -MIC_OFFSET_MAX_M - 0.01,
+                ..MicrophoneArray::default()
+            },
+            MicrophoneArray {
+                pattern: 1.1,
+                ..MicrophoneArray::default()
+            },
+        ] {
+            assert!(!leslie.set_microphones(refused), "{refused:?}");
+        }
+        assert!(!leslie.set_rotor_radii(HORN_RADIUS_RANGE_M.1 + 0.01, DRUM_RADIUS_DEFAULT_M));
+        assert!(!leslie.set_rotor_radii(HORN_RADIUS_DEFAULT_M, 0.0));
+        assert!(leslie.set_rotor_radii(0.2, 0.1));
+        assert_eq!(leslie.geometry().horn_radius_m, 0.2);
+    }
+
+    /// A microphone pair that meets in the middle hears one signal: the two
+    /// paths are the same path, so the image is mono without anything having
+    /// to fold it down.
+    #[test]
+    fn no_spacing_leaves_no_stereo() {
+        let mut leslie = Leslie::new(48_000.0);
+        assert!(leslie.set_mix(1.0));
+        assert!(leslie.set_cabinet(0.0, 0.0));
+        assert!(leslie.set_microphones(MicrophoneArray {
+            distance_m: 0.4,
+            spacing_m: 0.0,
+            offset_m: 0.0,
+            ..MicrophoneArray::default()
+        }));
+        leslie.set_mode(LeslieMode::Tremolo);
+        let mut worst = 0.0_f32;
+        for index in 0..48_000 {
+            let input = (index as f32 * 0.01).sin();
+            let [left, right] = leslie.process(input);
+            worst = worst.max((left - right).abs());
+        }
+        assert!(worst < 1.0e-6, "channels differ by {worst}");
+    }
+
+    /// Moving the pair off centre moves the horn's microphones one way and
+    /// the drum's the other, so the two rotors are never emphasised from the
+    /// same side at once.
+    #[test]
+    fn the_offset_separates_the_rotors() {
+        let mut leslie = Leslie::new(48_000.0);
+        assert!(leslie.set_microphones(MicrophoneArray {
+            distance_m: 0.4,
+            spacing_m: 0.2,
+            offset_m: 0.3,
+            ..MicrophoneArray::default()
+        }));
+        let geometry = leslie.geometry();
+        assert!(geometry.mic_centre_m > 0.0);
+        let horn_left = geometry.mic_centre_m + geometry.mic_half_width_m;
+        let drum_left = -geometry.mic_centre_m + geometry.mic_half_width_m;
+        assert!(horn_left > drum_left);
+    }
+
     #[test]
     fn off_is_an_exact_bypass_while_rotors_keep_state() {
         let mut leslie = Leslie::new(48_000.0);
@@ -484,8 +824,8 @@ mod tests {
         live_cabinet.set_mode(LeslieMode::Brake);
         assert!(dry_cabinet.set_mix(1.0));
         assert!(live_cabinet.set_mix(1.0));
-        assert!(dry_cabinet.set_cabinet(0.35, 0.75, 0.0, 0.0));
-        assert!(live_cabinet.set_cabinet(0.35, 0.75, 1.0, 0.0));
+        assert!(dry_cabinet.set_cabinet(0.0, 0.0));
+        assert!(live_cabinet.set_cabinet(1.0, 0.0));
         let mut difference = 0.0;
         for index in 0..2048 {
             let input = if index == 0 { 1.0 } else { 0.0 };

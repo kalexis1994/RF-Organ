@@ -8,17 +8,18 @@ use rackforge_plugin_sdk::{
     MIDI2_KIND_NOTE_OFF, MIDI2_KIND_NOTE_ON, MidiEvent, MidiEvent2, ParameterEvent, Processor,
     export_processor,
 };
-use rf_organ_dsp::{LeslieMode, OrganEngine, OrganPart};
+use rf_organ_dsp::{LeslieMode, MIC_DISTANCE_RANGE_M, MIC_SPACING_MAX_M, OrganEngine, OrganPart};
 pub use settings::{PARAMETER_COUNT, Settings, presets};
 
 pub const MAX_FRAMES: u32 = 4096;
 pub const MAX_EVENTS: usize = 256;
-pub const STATE_VERSION: u32 = 6;
+pub const STATE_VERSION: u32 = 7;
 pub const STATE_BYTES_V1: usize = 8 + 19 * 8;
 pub const STATE_BYTES_V2: usize = 8 + 24 * 8;
 pub const STATE_BYTES_V3: usize = 8 + 37 * 8;
 pub const STATE_BYTES_V4: usize = 8 + 41 * 8;
 pub const STATE_BYTES_V5: usize = 8 + 45 * 8;
+pub const STATE_BYTES_V6: usize = 8 + 51 * 8;
 pub const STATE_BYTES: usize = 8 + PARAMETER_COUNT * 8;
 
 #[derive(Default)]
@@ -205,6 +206,7 @@ impl Processor for RfOrganProcessor {
             STATE_BYTES_V3,
             STATE_BYTES_V4,
             STATE_BYTES_V5,
+            STATE_BYTES_V6,
             STATE_BYTES,
         ]
         .contains(&state.len())
@@ -219,6 +221,7 @@ impl Processor for RfOrganProcessor {
             (3, STATE_BYTES_V3) => 37,
             (4, STATE_BYTES_V4) => 41,
             (5, STATE_BYTES_V5) => 45,
+            (6, STATE_BYTES_V6) => 51,
             (STATE_VERSION, STATE_BYTES) => PARAMETER_COUNT,
             _ => return false,
         };
@@ -233,6 +236,17 @@ impl Processor for RfOrganProcessor {
                     .try_into()
                     .expect("validated state"),
             );
+            // Before 0.24.0 the microphone placement was two numbers from
+            // zero to one. It is a distance and a spacing in metres now, so an
+            // older state has to be converted and not read straight through.
+            let value = match (version, index) {
+                (..=6, 41) => {
+                    let (near, far) = MIC_DISTANCE_RANGE_M;
+                    f64::from(near) + value * f64::from(far - near)
+                }
+                (..=6, 42) => value * f64::from(MIC_SPACING_MAX_M),
+                _ => value,
+            };
             let Some(updated) = settings.with_parameter(index, value) else {
                 return false;
             };
@@ -415,12 +429,37 @@ mod tests {
         assert!(restored.load_state(&version_four));
         assert_eq!(restored.settings, Settings::default());
 
+        // Every version up to six placed the microphones with two numbers
+        // from zero to one, which this version reads as metres, so those
+        // states have to arrive converted rather than merely accepted.
+        let place_in_units = |state: &mut [u8]| {
+            for (index, unit) in [(41_usize, 0.35_f64), (42, 0.75)] {
+                let offset = 8 + index * 8;
+                state[offset..offset + 8].copy_from_slice(&unit.to_le_bytes());
+            }
+        };
+        let (near, far) = MIC_DISTANCE_RANGE_M;
+        let migrated = Settings {
+            leslie_mic_distance: f64::from(near) + 0.35 * f64::from(far - near),
+            leslie_mic_spacing: 0.75 * f64::from(MIC_SPACING_MAX_M),
+            ..Settings::default()
+        };
+
         let mut version_five = [0_u8; STATE_BYTES_V5];
         version_five.copy_from_slice(&current[..STATE_BYTES_V5]);
         version_five[4..8].copy_from_slice(&5_u32.to_le_bytes());
+        place_in_units(&mut version_five);
         assert!(restored.load_state(&version_five));
-        assert_eq!(restored.settings, Settings::default());
+        assert_eq!(restored.settings, migrated);
         assert_eq!(restored.settings.transformer_trims, [[0.0; 2]; 3]);
+
+        let mut version_six = [0_u8; STATE_BYTES_V6];
+        version_six.copy_from_slice(&current[..STATE_BYTES_V6]);
+        version_six[4..8].copy_from_slice(&6_u32.to_le_bytes());
+        place_in_units(&mut version_six);
+        assert!(restored.load_state(&version_six));
+        assert_eq!(restored.settings, migrated);
+        assert_eq!(restored.settings.leslie_mic_offset, 0.0);
     }
 
     #[test]

@@ -158,7 +158,7 @@ slow speed takes a tenth of the time braking from fast does, and the drum takes
 several times longer than the horn either way. A mode switch waits briefly
 before the rotor responds, as a relay and a clutch do.
 
-## Version 0.23.0 limitations
+## Version 0.24.0 limitations
 
 - The classic B-3 pedal contact and resistor-panel topology is present. The
   L20 pedal-filter coefficient and console matching-network constants remain
@@ -205,7 +205,18 @@ before the rotor responds, as a relay and a clutch do.
   `docs/CALIBRATION.md`.
 - Leslie cabinet reflections and angle-dependent filters are present, but
   their coefficients are not yet fitted to multi-angle cabinet measurements.
+- The microphones are placed geometrically, in centimetres, and the delay,
+  level, direction and Doppler all come from the length of the line between a
+  rotor's mouth and each microphone. The radius each mouth turns at is not
+  documented anywhere we can cite, so 18 cm for the horn and 12 cm for the
+  drum are defaults for two controls rather than constants, on their own
+  model page, because that is what an unmeasured quantity should be. The
+  laboratory measures the deviation they produce against the deviation the
+  geometry predicts, and the drum lands within a cent of it. The horn does
+  not, by about 15 cents at the default placement, because its rotating tone
+  shelf modulates phase as well as level; that is a property of the shaping,
+  not of the path, and the shaping is still provisional.
 - The engine is measured as sample-rate invariant from 32 to 192 kHz. A fully
-  engaged console runs about 16x real time at 48 kHz and 4.1x at 192 kHz on the
-  development machine. What remains is mostly the generator itself, which is
+  engaged console runs about 15.7x real time at 48 kHz and 4.0x at 192 kHz on
+  the development machine. What remains is mostly the generator itself, which is
   inherent: 91 wheels turn whether or not anyone is playing.
