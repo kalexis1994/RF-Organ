@@ -8,7 +8,8 @@
   transformers, vibrato channels, percussion input and V4A summing node):
   https://device.report/m/1764f5c997292f510b1451dbaa1e3c2ac48ee76b3628eff16a05a580795ece2b
 - Hammond XK-7/XK-7D owner's manual (manufacturer description of the AO-28,
-  matching/output transformer hysteresis, expression and tone-control chain):
+  matching/output transformer hysteresis, expression chain and the gently
+  sloped 200 Hz tone control with a modern ±9 dB extension):
   https://hammondorganco.com/wp-content/uploads/2026/03/XK7DXK7-OEM-MANUAL.pdf
 - Hammond XK-5 owner's playing guide (manufacturer expression-response model,
   including independently retained low/high-frequency bands):

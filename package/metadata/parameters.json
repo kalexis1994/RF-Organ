@@ -444,7 +444,7 @@
     {
       "index": 39,
       "id": "console-treble",
-      "name": "Treble Trim",
+      "name": "AO-28 Tone",
       "page": "electronics",
       "order": 2,
       "kind": { "type": "float", "minimum": -1.0, "maximum": 1.0, "default": 0.0, "step": 0.001 },

@@ -61,3 +61,9 @@ value to expose a calibratable low-frequency corner. Low/mid/high attenuation
 remains a reduced model informed by Hammond's published description of
 expression as both volume and tonal control; it is not represented as a solved
 AO-28 circuit.
+
+Version 0.12.0 places a reduced 200 Hz tone shelf after V4B, followed by a
+separate V3B/12BH7 stage and T3 magnetic state. The physical console offered
+tone cut only; RF-Organ retains the existing bipolar calibration parameter and
+uses Hammond's documented modern ±9 dB extension around neutral. The response
+and output-transformer coefficients remain provisional pending measurement.

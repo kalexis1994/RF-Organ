@@ -19,6 +19,7 @@ pub struct Artifacts {
     pub pedal_spectrum: String,
     pub pedal_release: String,
     pub expression_response: String,
+    pub tone_control_response: String,
 }
 
 #[derive(Clone, Copy)]
@@ -44,6 +45,8 @@ fn analyze_inner() -> Result<Artifacts, String> {
     measurements.extend(tonewheel_probe()?);
     let (expression, expression_response) = expression_probe();
     measurements.extend(expression);
+    let (tone_control, tone_control_response) = tone_control_probe();
+    measurements.extend(tone_control);
     let (pedal, pedal_spectrum, pedal_release) = pedal_probe()?;
     measurements.extend(pedal);
     let (percussion, percussion_envelope) = percussion_probe()?;
@@ -60,6 +63,7 @@ fn analyze_inner() -> Result<Artifacts, String> {
         pedal_spectrum,
         pedal_release,
         expression_response,
+        tone_control_response,
     })
 }
 
@@ -128,6 +132,77 @@ fn expression_gain(
     }
     let gain = spectral_amplitude(&samples, frequency) / AMPLITUDE;
     (decibels(gain), electronics.diagnostics())
+}
+
+fn tone_control_probe() -> (Vec<Measurement>, String) {
+    const CONTROLS: [(&str, f32); 5] = [
+        ("minus-9", -1.0),
+        ("minus-4.5", -0.5),
+        ("neutral", 0.0),
+        ("plus-4.5", 0.5),
+        ("plus-9", 1.0),
+    ];
+    const FREQUENCIES: [(&str, f64); 3] = [("low", 100.0), ("mid", 1_000.0), ("high", 10_000.0)];
+    let mut measurements = Vec::new();
+    let mut csv = String::from("control_db,tone_corner_hz,frequency_hz,relative_gain_db\n");
+    for (control_name, control) in CONTROLS {
+        for (band, frequency) in FREQUENCIES {
+            let neutral = tone_control_gain(0.0, frequency).0;
+            let (gain, diagnostics) = tone_control_gain(control, frequency);
+            let relative_gain_db = decibels(gain / neutral);
+            let probe = match control_name {
+                "minus-9" => "tone-minus-9",
+                "minus-4.5" => "tone-minus-4.5",
+                "neutral" => "tone-neutral",
+                "plus-4.5" => "tone-plus-4.5",
+                "plus-9" => "tone-plus-9",
+                _ => unreachable!(),
+            };
+            let metric = match band {
+                "low" => "low-gain",
+                "mid" => "mid-gain",
+                "high" => "high-gain",
+                _ => unreachable!(),
+            };
+            measurements.push(Measurement {
+                probe,
+                metric,
+                value: relative_gain_db,
+                unit: "dB",
+            });
+            writeln!(
+                &mut csv,
+                "{:.3},{:.3},{frequency:.3},{relative_gain_db:.6}",
+                control * 9.0,
+                diagnostics.tone_corner_hz
+            )
+            .expect("string write cannot fail");
+        }
+    }
+    (measurements, csv)
+}
+
+fn tone_control_gain(
+    control: f32,
+    frequency: f64,
+) -> (f64, rf_organ_dsp::ConsoleElectronicsDiagnostics) {
+    const AMPLITUDE: f64 = 0.25;
+    const SETTLE: usize = SAMPLE_RATE / 4;
+    let mut electronics = ConsoleElectronics::new(SAMPLE_RATE as f32);
+    assert!(electronics.set(0.0, 0.0, control));
+    assert!(electronics.set_expression_character(0.0));
+    let mut samples = Vec::with_capacity(SAMPLE_RATE);
+    for frame in 0..SETTLE + SAMPLE_RATE {
+        let input = (TAU * frequency * frame as f64 / SAMPLE_RATE as f64).sin() * AMPLITUDE;
+        let output = electronics.process(input as f32, 1.0);
+        if frame >= SETTLE {
+            samples.push(f64::from(output));
+        }
+    }
+    (
+        spectral_amplitude(&samples, frequency) / AMPLITUDE,
+        electronics.diagnostics(),
+    )
 }
 
 fn pedal_probe() -> Result<(Vec<Measurement>, String, String), String> {
@@ -761,6 +836,23 @@ mod tests {
         assert!(gain("expression-25", "low-gain") > gain("expression-25", "mid-gain"));
         assert!(gain("expression-25", "high-gain") > gain("expression-25", "mid-gain"));
         assert!(gain("expression-100", "mid-gain").abs() < 0.05);
+        assert_eq!(csv.lines().count(), 16);
+    }
+
+    #[test]
+    fn tone_control_probe_is_a_broad_two_hundred_hertz_shelf() {
+        let (measurements, csv) = with_analysis_stack(tone_control_probe);
+        let gain = |probe, metric| {
+            measurements
+                .iter()
+                .find(|measurement| measurement.probe == probe && measurement.metric == metric)
+                .unwrap()
+                .value
+        };
+        assert!(gain("tone-minus-9", "high-gain") < -8.5);
+        assert!(gain("tone-minus-9", "low-gain") > -4.0);
+        assert!(gain("tone-plus-9", "high-gain") > 8.5);
+        assert!(gain("tone-neutral", "mid-gain").abs() < 0.001);
         assert_eq!(csv.lines().count(), 16);
     }
 }

@@ -17,7 +17,7 @@ lower + pedal -> T1 transformer -----+                                     |
                                                                            +-> V4A sum
 percussion amplifier ------------------------------------------------------+      |
                                                                                   v
-                                                            preamplifier + expression
+                                                 preamp + expression + tone + V3B + T3
                                                                                   |
                                                             integrated Leslie + output
 ```
@@ -44,11 +44,16 @@ paths. Percussion does not pass through either matching transformer or the
 scanner; it joins the non-vibrato and scanner-return channels at the V4A sum.
 
 The console electronics place a reduced V4A stage before the capacitive swell
-network and a reduced V4B/output stage after it. The expression network exposes
-its section capacitance and low-frequency corner to the laboratory so future
+network and a reduced V4B stage after it. The expression network exposes its
+section capacitance and low-frequency corner to the laboratory so future
 reference captures can replace provisional response coefficients.
 
-## Version 0.11.0 limitations
+After V4B, the AO-28 tone control applies a broad shelf above 200 Hz. A reduced
+V3B/12BH7 stage drives T3, whose magnetic state is independent from the T1/T2
+input matching transformers. Plugin output level remains outside this physical
+console path as a host-facing master control.
+
+## Version 0.12.0 limitations
 
 - The classic B-3 pedal contact and resistor-panel topology is present. The
   L20 pedal-filter coefficient and console matching-network constants remain

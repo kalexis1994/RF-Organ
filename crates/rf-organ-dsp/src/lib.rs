@@ -22,7 +22,7 @@ pub use pedal::{PEDAL_DRAWBAR_COUNT, PEDAL_FIRST_NOTE, PEDAL_KEY_COUNT};
 pub use percussion::{PercussionDecay, PercussionHarmonic, PercussionVolume};
 pub use scanner::{ScannerMode, ScannerVibrato};
 pub use tonewheel::{TONEWHEEL_COUNT, gear_frequency};
-pub use transformer::MatchingTransformer;
+pub use transformer::{MatchingTransformer, TransformerDiagnostics};
 
 use manual::Manual;
 use pedal::Pedalboard;
@@ -53,6 +53,7 @@ pub struct OrganEngine {
     upper_transformer: MatchingTransformer,
     lower_pedal_transformer: MatchingTransformer,
     electronics: ConsoleElectronics,
+    output_transformer: MatchingTransformer,
     scanner: ScannerVibrato,
     percussion: Percussion,
     leslie: Leslie,
@@ -79,6 +80,7 @@ impl OrganEngine {
             upper_transformer: MatchingTransformer::new(sample_rate),
             lower_pedal_transformer: MatchingTransformer::new(sample_rate),
             electronics: ConsoleElectronics::new(sample_rate),
+            output_transformer: MatchingTransformer::new(sample_rate),
             scanner: ScannerVibrato::new(sample_rate),
             percussion: Percussion::new(sample_rate),
             leslie: Leslie::new(sample_rate),
@@ -221,11 +223,12 @@ impl OrganEngine {
     pub fn set_transformer(&mut self, drive: f32, hysteresis: f32) -> bool {
         let upper_valid = self.upper_transformer.set(drive, hysteresis);
         let lower_pedal_valid = self.lower_pedal_transformer.set(drive, hysteresis);
-        upper_valid && lower_pedal_valid
+        let output_valid = self.output_transformer.set(drive, hysteresis);
+        upper_valid && lower_pedal_valid && output_valid
     }
 
-    pub fn set_console(&mut self, drive: f32, bass: f32, treble: f32) -> bool {
-        self.electronics.set(drive, bass, treble)
+    pub fn set_console(&mut self, drive: f32, bass: f32, tone: f32) -> bool {
+        self.electronics.set(drive, bass, tone)
     }
 
     pub fn set_expression_character(&mut self, value: f32) -> bool {
@@ -299,7 +302,8 @@ impl OrganEngine {
             .percussion
             .process(self.upper.harmonic_sample(wheels, percussion_bus));
         let console = self.route_ao28_inputs(upper, lower, pedals, percussion);
-        let organ = self.electronics.process(console, self.expression) * self.output_level;
+        let console = self.electronics.process(console, self.expression);
+        let organ = self.output_transformer.process(console) * self.output_level;
         self.leslie.process(organ)
     }
 
@@ -325,6 +329,7 @@ impl OrganEngine {
         self.upper_transformer.reset();
         self.lower_pedal_transformer.reset();
         self.electronics.reset(1.0);
+        self.output_transformer.reset();
         self.scanner.reset();
         self.percussion.reset();
         self.leslie.reset();
@@ -453,5 +458,17 @@ mod tests {
         let separate = upper.route_ao28_inputs(0.4, 0.0, 0.0, 0.0)
             + lower.route_ao28_inputs(0.0, 0.4, 0.0, 0.0);
         assert_eq!(both, separate);
+    }
+
+    #[test]
+    fn t3_receives_the_summed_console_output() {
+        let mut engine = OrganEngine::new(48_000.0).expect("valid engine");
+        assert!(engine.note_on(60, 1.0));
+        for _ in 0..4096 {
+            engine.next_sample();
+        }
+        assert!(engine.output_transformer.diagnostics().magnetization.abs() > 1.0e-6);
+        engine.reset();
+        assert_eq!(engine.output_transformer.diagnostics().magnetization, 0.0);
     }
 }

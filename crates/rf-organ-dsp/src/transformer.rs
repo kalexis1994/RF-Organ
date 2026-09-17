@@ -1,10 +1,20 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+/// Reduced magnetic model shared by the AO-28 T1/T2 input matching
+/// transformers and the T3 output transformer. Each instance owns its own
+/// magnetization state.
 pub struct MatchingTransformer {
     sample_rate: f32,
     drive: f32,
     hysteresis: f32,
     magnetization: f32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct TransformerDiagnostics {
+    pub drive: f32,
+    pub hysteresis: f32,
+    pub magnetization: f32,
 }
 
 impl MatchingTransformer {
@@ -42,6 +52,14 @@ impl MatchingTransformer {
 
     pub fn reset(&mut self) {
         self.magnetization = 0.0;
+    }
+
+    pub const fn diagnostics(&self) -> TransformerDiagnostics {
+        TransformerDiagnostics {
+            drive: self.drive,
+            hysteresis: self.hysteresis,
+            magnetization: self.magnetization,
+        }
     }
 }
 
