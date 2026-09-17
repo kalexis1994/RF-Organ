@@ -5,3 +5,5 @@
 mod browser;
 #[cfg(any(target_arch = "wasm32", test))]
 mod client;
+#[cfg(any(target_arch = "wasm32", test))]
+mod view;

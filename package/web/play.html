@@ -17,7 +17,6 @@
       <section class="performance panel">
         <label>Output<input id="output" data-parameter="0" type="range" min="0" max="1.5" step="0.01" disabled /></label>
         <label>Expression<input id="expression" data-parameter="1" type="range" min="0" max="1" step="0.001" disabled /></label>
-        <div class="rotary-state" aria-hidden="true"><span></span><b>ROTARY</b></div>
         <label>Rotary<select id="rotary-mode" data-parameter="16" disabled><option value="0">Off</option><option value="1">Brake</option><option value="2">Chorale</option><option value="3">Tremolo</option></select></label>
         <label>Mix<input id="rotary-mix" data-parameter="17" type="range" min="0" max="1" step="0.001" disabled /></label>
         <label>Inertia<input id="rotor-inertia" data-parameter="18" type="range" min="0" max="1" step="0.001" disabled /></label>
@@ -71,11 +70,41 @@
           <label>8'<input id="p8" data-parameter="34" type="range" min="0" max="8" step="1" disabled /></label>
         </article>
         <article class="panel cabinet">
-          <div><p class="eyebrow">INTEGRATED</p><h2>Rotary Cabinet</h2></div>
-          <label>Mic Distance<input id="mic-distance" data-parameter="41" type="range" min="0" max="1" step="0.001" disabled /></label>
-          <label>Width<input id="stereo-width" data-parameter="42" type="range" min="0" max="1" step="0.001" disabled /></label>
-          <label>Reflections<input id="reflections" data-parameter="43" type="range" min="0" max="1" step="0.001" disabled /></label>
-          <label>Horn / Drum<input id="rotor-balance" data-parameter="44" type="range" min="-1" max="1" step="0.001" disabled /></label>
+          <div class="cabinet-main">
+            <div><p class="eyebrow">INTEGRATED</p><h2>Rotary Cabinet</h2></div>
+            <div class="cabinet-controls">
+              <label>Mic Distance<input id="mic-distance" data-parameter="41" type="range" min="0.12" max="1.7" step="0.005" disabled /></label>
+              <label>Mic Spacing<input id="mic-spacing" data-parameter="42" type="range" min="0" max="0.4" step="0.005" disabled /></label>
+              <label>Reflections<input id="reflections" data-parameter="43" type="range" min="0" max="1" step="0.001" disabled /></label>
+              <label>Horn / Drum<input id="rotor-balance" data-parameter="44" type="range" min="-1" max="1" step="0.001" disabled /></label>
+            </div>
+          </div>
+          <figure class="rotary-figure">
+            <svg
+              id="rotary-view"
+              class="rotary-view"
+              viewBox="70 38 80 110"
+              role="img"
+              aria-label="The cabinet from above. The horn and the drum turn against each other about one axis, and the microphone pair stands in front of them."
+            >
+              <rect class="body" x="77" y="53" width="66" height="56" rx="6" />
+              <circle id="horn-sweep" class="sweep" cx="110" cy="81" r="17" />
+              <circle id="drum-sweep" class="sweep" cx="110" cy="81" r="11.4" />
+              <g transform="translate(110 81)">
+                <g id="drum-rotor">
+                  <rect class="drum-port" x="-3.4" y="7.6" width="6.8" height="5.6" rx="1.4" />
+                </g>
+                <g id="horn-rotor">
+                  <path class="horn-mouth" d="M-2.6 5 L-6.4 17 L6.4 17 L2.6 5 Z" />
+                </g>
+              </g>
+              <circle class="pivot" cx="110" cy="81" r="1.6" />
+              <line id="mic-axis" class="mic-axis" x1="110" y1="81" x2="110" y2="114" />
+              <circle id="mic-left" class="mic" cx="95.75" cy="114" r="4" />
+              <circle id="mic-right" class="mic" cx="124.25" cy="114" r="4" />
+            </svg>
+            <figcaption id="mic-readout">35 cm</figcaption>
+          </figure>
         </article>
       </section>
 
@@ -91,6 +120,19 @@
           <label>Bass Trim<input id="console-bass" data-parameter="38" type="range" min="-1" max="1" step="0.001" disabled /></label>
           <label>AO-28 Tone<input id="console-treble" data-parameter="39" type="range" min="-1" max="1" step="0.001" disabled /></label>
           <label>Swell Character<input id="swell-character" data-parameter="40" type="range" min="0" max="1" step="0.001" disabled /></label>
+        </div>
+      </details>
+
+      <details class="panel advanced">
+        <summary>Microphone placement and rotor stops</summary>
+        <p class="note">Placement is in the units a tape measure uses. A stop angle of 360 degrees is the documented "Rnd" setting, which stops that rotor somewhere new each time.</p>
+        <div class="advanced-grid">
+          <label>Mic Offset<input id="mic-offset" data-parameter="51" type="range" min="-0.5" max="0.5" step="0.005" disabled /></label>
+          <label>Mic Pattern<input id="mic-pattern" data-parameter="52" type="range" min="0" max="1" step="0.01" disabled /></label>
+          <label>Horn Stop Angle<input id="horn-stop-angle" data-parameter="55" type="range" min="0" max="360" step="1" disabled /></label>
+          <label>Drum Stop Angle<input id="drum-stop-angle" data-parameter="56" type="range" min="0" max="360" step="1" disabled /></label>
+          <label>Horn Radius<input id="horn-radius" data-parameter="53" type="range" min="0.05" max="0.4" step="0.001" disabled /></label>
+          <label>Drum Radius<input id="drum-radius" data-parameter="54" type="range" min="0.05" max="0.3" step="0.001" disabled /></label>
         </div>
       </details>
 

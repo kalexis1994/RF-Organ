@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 use crate::client::{Client, PROTOCOL, host_lighting};
+use crate::view;
 use js_sys::{JSON, Object};
+use rf_organ_dsp::{Rotary, RotaryMode, StopAngle};
 use serde_json::{Value, json};
 use std::{cell::RefCell, rc::Rc};
 use wasm_bindgen::{JsCast, prelude::*};
@@ -10,7 +12,7 @@ use web_sys::{
 };
 
 const PLUGIN_ID: &str = "org.rackforge.organ";
-const CONTROL_IDS: [&str; 51] = [
+const CONTROL_IDS: [&str; 57] = [
     "output",
     "expression",
     "u16",
@@ -53,7 +55,7 @@ const CONTROL_IDS: [&str; 51] = [
     "console-treble",
     "swell-character",
     "mic-distance",
-    "stereo-width",
+    "mic-spacing",
     "reflections",
     "rotor-balance",
     "t1-drive-trim",
@@ -62,14 +64,36 @@ const CONTROL_IDS: [&str; 51] = [
     "t2-memory-trim",
     "t3-drive-trim",
     "t3-memory-trim",
+    "mic-offset",
+    "mic-pattern",
+    "horn-radius",
+    "drum-radius",
+    "horn-stop-angle",
+    "drum-stop-angle",
 ];
 
+/// Steps of the display's own rotor model per second.
+///
+/// The model is the engine's, clocked here by the browser instead of by the
+/// audio device, so what the panel draws and what the cabinet does cannot
+/// drift apart: same speeds, same ramps, same stop angles. A step is far
+/// finer than a frame, and a frame takes as many as the clock says have
+/// passed.
+const VIEW_STEPS_PER_SECOND: f32 = 600.0;
+/// How much of a frame the display will make up for at once. A tab that was
+/// in the background comes back where it left off rather than spinning
+/// through the minutes it missed.
+const VIEW_MAX_FRAME_SECONDS: f64 = 0.1;
 struct App {
     window: Window,
     document: Document,
     origin: String,
     connected: bool,
     client: Client,
+    /// The rotor model behind the cabinet view, and the clock reading it was
+    /// last advanced at.
+    rotary: Box<Rotary>,
+    drawn_at: Option<f64>,
 }
 
 type Shared = Rc<RefCell<App>>;
@@ -138,6 +162,72 @@ impl App {
                     _ => "tremolo",
                 },
             );
+    }
+
+    /// Advances the cabinet view by however much time has passed and draws
+    /// where the two rotors are now.
+    fn draw_cabinet(&mut self, now: f64) {
+        let mode = RotaryMode::from_index(self.client.display(16) as u8).unwrap_or_default();
+        if mode != self.rotary.mode() {
+            self.rotary.set_mode(mode);
+        }
+        let _ = self
+            .rotary
+            .set_acceleration(self.client.display(18).clamp(0.0, 1.0) as f32);
+        let _ = self.rotary.set_rotor_radii(
+            self.client.display(53) as f32,
+            self.client.display(54) as f32,
+        );
+        if let (Some(horn), Some(drum)) = (
+            StopAngle::from_degrees(self.client.display(55) as f32),
+            StopAngle::from_degrees(self.client.display(56) as f32),
+        ) {
+            let _ = self.rotary.set_stop_angles(horn, drum);
+        }
+
+        let elapsed = self
+            .drawn_at
+            .map_or(0.0, |before| (now - before).max(0.0) / 1000.0)
+            .min(VIEW_MAX_FRAME_SECONDS);
+        self.drawn_at = Some(now);
+        let steps = (elapsed * f64::from(VIEW_STEPS_PER_SECOND)) as usize;
+        for _ in 0..steps {
+            self.rotary.process(0.0);
+        }
+
+        let state = self.rotary.diagnostics();
+        let frame = view::frame(self.rotary.geometry());
+        let turn = |element: &str, degrees: f32, scale: f64| {
+            let _ = self.element(element).set_attribute(
+                "transform",
+                &format!("rotate({degrees:.2}) scale({scale:.4})"),
+            );
+        };
+        turn("horn-rotor", state.horn_angle_degrees, frame.horn_scale);
+        turn("drum-rotor", state.drum_angle_degrees, frame.drum_scale);
+        let sweep = |element: &str, radius: f64| {
+            let _ = self
+                .element(element)
+                .set_attribute("r", &format!("{radius:.2}"));
+        };
+        sweep("horn-sweep", frame.horn_sweep);
+        sweep("drum-sweep", frame.drum_sweep);
+        let place = |element: &str, at: (f64, f64)| {
+            let capsule = self.element(element);
+            let _ = capsule.set_attribute("cx", &format!("{:.2}", at.0));
+            let _ = capsule.set_attribute("cy", &format!("{:.2}", at.1));
+        };
+        place("mic-left", frame.left_mic);
+        place("mic-right", frame.right_mic);
+        let axis = self.element("mic-axis");
+        let _ = axis.set_attribute("x2", &format!("{:.2}", frame.axis_end.0));
+        let _ = axis.set_attribute("y2", &format!("{:.2}", frame.axis_end.1));
+        let (x, y, width, height) = frame.view_box;
+        let _ = self
+            .element("rotary-view")
+            .set_attribute("viewBox", &format!("{x:.2} {y:.2} {width:.2} {height:.2}"));
+        self.element("mic-readout")
+            .set_text_content(Some(&format!("{:.0} cm", frame.distance_cm)));
     }
 
     fn send(&self, message: &Value) -> Result<(), JsValue> {
@@ -226,6 +316,8 @@ pub fn start() -> Result<(), JsValue> {
         origin,
         connected: false,
         client: Client::default(),
+        rotary: Box::new(Rotary::new(VIEW_STEPS_PER_SECOND)),
+        drawn_at: None,
     }));
     control_events(&app)?;
     program_events(&app)?;
@@ -293,6 +385,30 @@ pub fn start() -> Result<(), JsValue> {
         .window
         .add_event_listener_with_callback("message", callback.as_ref().unchecked_ref())?;
     callback.forget();
+
+    // The cabinet view redraws with the browser, not with the message pump:
+    // a rotor turns continuously and a twice-a-second refresh would show it
+    // stepping.
+    let frames = app.clone();
+    let next = Rc::new(RefCell::new(None::<Closure<dyn FnMut(f64)>>));
+    let again = next.clone();
+    *next.borrow_mut() = Some(Closure::<dyn FnMut(f64)>::new(move |now: f64| {
+        {
+            let mut app = frames.borrow_mut();
+            app.draw_cabinet(now);
+        }
+        if let Some(callback) = again.borrow().as_ref() {
+            let _ = frames
+                .borrow()
+                .window
+                .request_animation_frame(callback.as_ref().unchecked_ref());
+        }
+    }));
+    if let Some(callback) = next.borrow().as_ref() {
+        app.borrow()
+            .window
+            .request_animation_frame(callback.as_ref().unchecked_ref())?;
+    }
 
     let timer = app.clone();
     let callback = Closure::<dyn FnMut()>::new(move || timer.borrow_mut().pump(true));

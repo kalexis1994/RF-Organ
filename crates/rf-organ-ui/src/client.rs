@@ -1,13 +1,18 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+use rf_organ_dsp::{
+    DRUM_RADIUS_RANGE_M, HORN_RADIUS_RANGE_M, MIC_DISTANCE_RANGE_M, MIC_OFFSET_MAX_M,
+    MIC_SPACING_MAX_M, StopAngle,
+};
 use serde_json::{Value, json};
 
 pub const PROTOCOL: &str = "rackforge.plugin.web@1";
-pub const PARAMETERS: usize = 51;
+pub const PARAMETERS: usize = 57;
 pub const DEFAULTS: [f64; PARAMETERS] = [
     0.72, 1.0, 8.0, 8.0, 8.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.55, 0.45, 0.2, 0.38, 0.32, 0.0, 0.82,
     0.5, 0.0, 0.0, 1.0, 1.0, 1.0, 8.0, 8.0, 8.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 8.0, 0.0, 1.0, 0.0,
-    0.32, 0.0, 0.0, 0.55, 0.35, 0.75, 0.22, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+    0.32, 0.0, 0.0, 0.55, 0.35, 0.3, 0.22, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.5, 0.18, 0.12,
+    0.0, 0.0,
 ];
 
 #[derive(Clone, Debug, PartialEq)]
@@ -53,16 +58,28 @@ impl Default for Client {
     }
 }
 
+/// A range the engine itself defines, so that moving one cannot leave the
+/// surface checking against the old one.
+fn engine_range(range: (f32, f32)) -> std::ops::RangeInclusive<f64> {
+    f64::from(range.0)..=f64::from(range.1)
+}
+
 pub fn valid(index: usize, value: f64) -> bool {
     value.is_finite()
         && match index {
             0 => (0.0..=1.5).contains(&value),
-            1 | 11..=15 | 17..=18 | 37 | 40..=43 => (0.0..=1.0).contains(&value),
+            1 | 11..=15 | 17..=18 | 37 | 40 | 43 | 52 => (0.0..=1.0).contains(&value),
             2..=10 | 24..=34 => value.fract() == 0.0 && (0.0..=8.0).contains(&value),
             16 => value.fract() == 0.0 && (0.0..=3.0).contains(&value),
             19 => value.fract() == 0.0 && (0.0..=6.0).contains(&value),
             20..=23 | 35..=36 => [0.0, 1.0].contains(&value),
             38..=39 | 44 | 45..=50 => (-1.0..=1.0).contains(&value),
+            41 => engine_range(MIC_DISTANCE_RANGE_M).contains(&value),
+            42 => (0.0..=f64::from(MIC_SPACING_MAX_M)).contains(&value),
+            51 => value.abs() <= f64::from(MIC_OFFSET_MAX_M),
+            53 => engine_range(HORN_RADIUS_RANGE_M).contains(&value),
+            54 => engine_range(DRUM_RADIUS_RANGE_M).contains(&value),
+            55..=56 => StopAngle::from_degrees(value as f32).is_some(),
             _ => false,
         }
 }

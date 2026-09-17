@@ -158,7 +158,15 @@ slow speed takes a tenth of the time braking from fast does, and the drum takes
 several times longer than the horn either way. A mode switch waits briefly
 before the rotor responds, as a relay and a clutch do.
 
-## Version 0.26.0 limitations
+The play surface draws the cabinet from above. It does not animate on a
+timer: it runs a second copy of the engine's own rotor model, clocked by the
+browser rather than by the audio device, so the speeds, the ramps and the stop
+angles it shows are the ones the audio is using. Its frame follows the
+microphones, so moving them back zooms out instead of pushing them off the
+edge. The parameter table the surface validates against is the engine's, not a
+copy of it; a range that moves in the DSP moves there too.
+
+## Version 0.27.0 limitations
 
 - The classic B-3 pedal contact and resistor-panel topology is present. The
   L20 pedal-filter coefficient and console matching-network constants remain
