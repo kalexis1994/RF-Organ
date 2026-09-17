@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
   "id": "org.rackforge.organ",
-  "version": "0.29.0",
-  "state_version": 10
+  "version": "0.30.0",
+  "state_version": 11
 }

@@ -8,12 +8,14 @@ use rackforge_plugin_sdk::{
     MIDI2_KIND_NOTE_OFF, MIDI2_KIND_NOTE_ON, MidiEvent, MidiEvent2, ParameterEvent, Processor,
     export_processor,
 };
-use rf_organ_dsp::{MIC_DISTANCE_RANGE_M, MIC_SPACING_MAX_M, OrganEngine, OrganPart, RotaryMode};
+use rf_organ_dsp::{
+    LEVEL_SILENT_DB, MIC_DISTANCE_RANGE_M, MIC_SPACING_MAX_M, OrganEngine, OrganPart, RotaryMode,
+};
 pub use settings::{PARAMETER_COUNT, Settings, presets};
 
 pub const MAX_FRAMES: u32 = 4096;
 pub const MAX_EVENTS: usize = 256;
-pub const STATE_VERSION: u32 = 10;
+pub const STATE_VERSION: u32 = 11;
 pub const STATE_BYTES_V1: usize = 8 + 19 * 8;
 pub const STATE_BYTES_V2: usize = 8 + 24 * 8;
 pub const STATE_BYTES_V3: usize = 8 + 37 * 8;
@@ -23,7 +25,17 @@ pub const STATE_BYTES_V6: usize = 8 + 51 * 8;
 pub const STATE_BYTES_V7: usize = 8 + 55 * 8;
 pub const STATE_BYTES_V8: usize = 8 + 57 * 8;
 pub const STATE_BYTES_V9: usize = 8 + 58 * 8;
+pub const STATE_BYTES_V10: usize = 8 + 60 * 8;
 pub const STATE_BYTES: usize = 8 + PARAMETER_COUNT * 8;
+
+/// A gain as decibels, with nothing at all reported as the silence the
+/// volumes bottom out at.
+fn decibels_of(gain: f64) -> f64 {
+    if gain <= 0.0 {
+        return f64::from(LEVEL_SILENT_DB);
+    }
+    (20.0 * gain.log10()).max(f64::from(LEVEL_SILENT_DB))
+}
 
 #[derive(Default)]
 pub struct RfOrganProcessor {
@@ -213,6 +225,7 @@ impl Processor for RfOrganProcessor {
             STATE_BYTES_V7,
             STATE_BYTES_V8,
             STATE_BYTES_V9,
+            STATE_BYTES_V10,
             STATE_BYTES,
         ]
         .contains(&state.len())
@@ -231,6 +244,7 @@ impl Processor for RfOrganProcessor {
             (7, STATE_BYTES_V7) => 55,
             (8, STATE_BYTES_V8) => 57,
             (9, STATE_BYTES_V9) => 58,
+            (10, STATE_BYTES_V10) => 60,
             (STATE_VERSION, STATE_BYTES) => PARAMETER_COUNT,
             _ => return false,
         };
@@ -238,6 +252,10 @@ impl Processor for RfOrganProcessor {
             return false;
         }
         let mut settings = Settings::default();
+        // Up to version ten the horn and the drum shared one bipolar balance
+        // between them. They have a volume each now, as Hammond documents
+        // them, so the old control has to be split rather than read.
+        let mut balance = None;
         for index in 0..fields as u32 {
             let offset = 8 + index as usize * 8;
             let value = f64::from_le_bytes(
@@ -254,9 +272,20 @@ impl Processor for RfOrganProcessor {
                     f64::from(near) + value * f64::from(far - near)
                 }
                 (..=6, 42) => value * f64::from(MIC_SPACING_MAX_M),
+                (..=10, 44) => {
+                    balance = Some(value);
+                    decibels_of(1.0 + value.min(0.0))
+                }
                 _ => value,
             };
             let Some(updated) = settings.with_parameter(index, value) else {
+                return false;
+            };
+            settings = updated;
+        }
+        if let Some(balance) = balance {
+            let Some(updated) = settings.with_parameter(60, decibels_of(1.0 - balance.max(0.0)))
+            else {
                 return false;
             };
             settings = updated;
@@ -406,6 +435,49 @@ mod tests {
         let mut restored = RfOrganProcessor::default();
         assert!(restored.load_state(&bytes));
         assert_eq!(restored.settings, source.settings);
+    }
+
+    /// The one balance that used to sit between the horn and the drum has to
+    /// come back as the two volumes it stood for: turning it toward the drum
+    /// meant turning the horn down, and the other way round.
+    #[test]
+    fn the_old_balance_becomes_two_volumes() {
+        let source = RfOrganProcessor {
+            settings: Settings::default(),
+            ..RfOrganProcessor::default()
+        };
+        let mut current = [0_u8; STATE_BYTES];
+        assert_eq!(source.save_state(&mut current), Some(STATE_BYTES));
+
+        for (balance, horn, drum) in [
+            (0.0_f64, 0.0_f64, 0.0_f64),
+            (-0.5, -6.020_6, 0.0),
+            (0.5, 0.0, -6.020_6),
+            (-1.0, f64::from(LEVEL_SILENT_DB), 0.0),
+            (1.0, 0.0, f64::from(LEVEL_SILENT_DB)),
+        ] {
+            let mut legacy = [0_u8; STATE_BYTES_V10];
+            legacy.copy_from_slice(&current[..STATE_BYTES_V10]);
+            legacy[4..8].copy_from_slice(&10_u32.to_le_bytes());
+            let offset = 8 + 44 * 8;
+            legacy[offset..offset + 8].copy_from_slice(&balance.to_le_bytes());
+
+            let mut restored = RfOrganProcessor::default();
+            assert!(
+                restored.load_state(&legacy),
+                "balance {balance} was refused"
+            );
+            assert!(
+                (restored.settings.rotary_horn_level - horn).abs() < 1.0e-3,
+                "balance {balance} gave the horn {}",
+                restored.settings.rotary_horn_level
+            );
+            assert!(
+                (restored.settings.rotary_drum_level - drum).abs() < 1.0e-3,
+                "balance {balance} gave the drum {}",
+                restored.settings.rotary_drum_level
+            );
+        }
     }
 
     #[test]

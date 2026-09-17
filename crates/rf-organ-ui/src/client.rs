@@ -1,19 +1,19 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 use rf_organ_dsp::{
-    DRUM_RADIUS_RANGE_M, HORN_RADIUS_RANGE_M, MIC_DISTANCE_RANGE_M, MIC_OFFSET_MAX_M,
-    MIC_SPACING_MAX_M, MainsFrequency, MicrophoneType, SUB_LEVEL_RANGE_DB, SUB_LEVEL_SILENT_DB,
+    DRUM_RADIUS_RANGE_M, HORN_RADIUS_RANGE_M, LEVEL_RANGE_DB, LEVEL_SILENT_DB,
+    MIC_DISTANCE_RANGE_M, MIC_OFFSET_MAX_M, MIC_SPACING_MAX_M, MainsFrequency, MicrophoneType,
     StopAngle,
 };
 use serde_json::{Value, json};
 
 pub const PROTOCOL: &str = "rackforge.plugin.web@1";
-pub const PARAMETERS: usize = 60;
+pub const PARAMETERS: usize = 61;
 pub const DEFAULTS: [f64; PARAMETERS] = [
     0.72, 1.0, 8.0, 8.0, 8.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.55, 0.45, 0.2, 0.38, 0.32, 0.0, 0.82,
     0.5, 0.0, 0.0, 1.0, 1.0, 1.0, 8.0, 8.0, 8.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 8.0, 0.0, 1.0, 0.0,
     0.32, 0.0, 0.0, 0.55, 0.35, 0.3, 0.22, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.5, 0.18, 0.12,
-    0.0, 0.0, 1.0, -9.0, 1.0,
+    0.0, 0.0, 1.0, -9.0, 1.0, 0.0,
 ];
 
 #[derive(Clone, Debug, PartialEq)]
@@ -74,7 +74,10 @@ pub fn valid(index: usize, value: f64) -> bool {
             16 => value.fract() == 0.0 && (0.0..=3.0).contains(&value),
             19 => value.fract() == 0.0 && (0.0..=6.0).contains(&value),
             20..=23 | 35..=36 => [0.0, 1.0].contains(&value),
-            38..=39 | 44 | 45..=50 => (-1.0..=1.0).contains(&value),
+            38..=39 | 45..=50 => (-1.0..=1.0).contains(&value),
+            44 | 58 | 60 => {
+                (f64::from(LEVEL_SILENT_DB)..=f64::from(LEVEL_RANGE_DB.1)).contains(&value)
+            }
             41 => engine_range(MIC_DISTANCE_RANGE_M).contains(&value),
             42 => (0.0..=f64::from(MIC_SPACING_MAX_M)).contains(&value),
             51 => value.abs() <= f64::from(MIC_OFFSET_MAX_M),
@@ -82,9 +85,6 @@ pub fn valid(index: usize, value: f64) -> bool {
             54 => engine_range(DRUM_RADIUS_RANGE_M).contains(&value),
             55..=56 => StopAngle::from_degrees(value as f32).is_some(),
             57 => value.fract() == 0.0 && MainsFrequency::from_index(value as u8).is_some(),
-            58 => {
-                (f64::from(SUB_LEVEL_SILENT_DB)..=f64::from(SUB_LEVEL_RANGE_DB.1)).contains(&value)
-            }
             59 => value.fract() == 0.0 && MicrophoneType::from_index(value as u8).is_some(),
             _ => false,
         }

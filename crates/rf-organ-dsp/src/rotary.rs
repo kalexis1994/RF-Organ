@@ -121,13 +121,15 @@ const DYNAMIC_TOP_HZ: f32 = 11_000.0;
 /// roll-off every real capsule has under it.
 const PROXIMITY_MAX_LIFT: f32 = 0.8;
 
-/// How loud the unmodulated bass may be.
+/// How loud each of the three microphone channels may be.
 ///
-/// Hammond gives the three microphone volumes as decibels from silence to
-/// unity. Where the woofer's own sound sits among them is not a number it
-/// publishes, so the default here is provisional.
-pub const SUB_LEVEL_RANGE_DB: (f32, f32) = (-76.0, 0.0);
-pub const SUB_LEVEL_SILENT_DB: f32 = -80.0;
+/// Hammond gives all three as decibels from unity down through -76 to
+/// silence: one for the horn's pair, one for the drum's pair, and one for the
+/// woofer's own sound underneath them. Where that last one sits by default is
+/// not a number it publishes, so the default here is provisional; the other
+/// two start at unity, which is where a volume with nothing to say sits.
+pub const LEVEL_RANGE_DB: (f32, f32) = (-76.0, 0.0);
+pub const LEVEL_SILENT_DB: f32 = -80.0;
 pub const SUB_LEVEL_DEFAULT_DB: f32 = -9.0;
 /// The woofer's sound reaches the drum's pair of microphones and, less of it,
 /// the horn's. Hammond says which one hears it and which one barely does, not
@@ -137,7 +139,7 @@ const SUB_INTO_HORN: f32 = 0.25;
 
 /// Decibels to a gain, with the bottom of the range meaning silence.
 fn from_decibels(decibels: f32) -> f32 {
-    if decibels <= SUB_LEVEL_SILENT_DB {
+    if decibels <= LEVEL_SILENT_DB {
         return 0.0;
     }
     // exp10(db / 20) without a library: 10^x is e^(x ln 10).
@@ -665,7 +667,9 @@ pub struct Rotary {
     horn_radius: f32,
     drum_radius: f32,
     reflections: f32,
-    horn_drum_balance: f32,
+    /// The three microphone volumes, as gains.
+    horn_gain: f32,
+    drum_gain: f32,
     mains: MainsFrequency,
     capsule: MicrophoneType,
     sub_gain: f32,
@@ -727,7 +731,8 @@ impl Rotary {
             horn_radius: HORN_RADIUS_DEFAULT_M,
             drum_radius: DRUM_RADIUS_DEFAULT_M,
             reflections: 0.22,
-            horn_drum_balance: 0.0,
+            horn_gain: 1.0,
+            drum_gain: 1.0,
             mains: MainsFrequency::Sixty,
             capsule: MicrophoneType::Condenser,
             sub_gain: from_decibels(SUB_LEVEL_DEFAULT_DB),
@@ -745,22 +750,9 @@ impl Rotary {
         cabinet
     }
 
-    /// Which capsule the pair is, and how loud the woofer's own unmodulated
-    /// bass is under them. Hammond gives that level in decibels, from unity
-    /// down to silence.
+    /// Which capsule the pair is.
     pub fn set_microphone_type(&mut self, capsule: MicrophoneType) {
         self.capsule = capsule;
-    }
-
-    pub fn set_sub_level(&mut self, decibels: f32) -> bool {
-        if !decibels.is_finite()
-            || decibels > SUB_LEVEL_RANGE_DB.1
-            || decibels < SUB_LEVEL_SILENT_DB
-        {
-            return false;
-        }
-        self.sub_gain = from_decibels(decibels);
-        true
     }
 
     /// Which supply the cabinet's motors are running from. Changing it while
@@ -859,12 +851,26 @@ impl Rotary {
         true
     }
 
-    pub fn set_cabinet(&mut self, reflections: f32, horn_drum_balance: f32) -> bool {
-        if !unit(reflections) || !bipolar(horn_drum_balance) {
+    pub fn set_cabinet(&mut self, reflections: f32) -> bool {
+        if !unit(reflections) {
             return false;
         }
         self.reflections = reflections;
-        self.horn_drum_balance = horn_drum_balance;
+        true
+    }
+
+    /// The three microphone volumes, in decibels: the horn's pair, the drum's
+    /// pair, and the woofer's own sound underneath them.
+    pub fn set_levels(&mut self, horn_db: f32, drum_db: f32, sub_db: f32) -> bool {
+        let sane = |decibels: f32| {
+            decibels.is_finite() && decibels <= LEVEL_RANGE_DB.1 && decibels >= LEVEL_SILENT_DB
+        };
+        if !sane(horn_db) || !sane(drum_db) || !sane(sub_db) {
+            return false;
+        }
+        self.horn_gain = from_decibels(horn_db);
+        self.drum_gain = from_decibels(drum_db);
+        self.sub_gain = from_decibels(sub_db);
         true
     }
 
@@ -997,16 +1003,7 @@ impl Rotary {
         let horn_right = self.horn_tone_right * (0.55 + 0.35 * horn_facing_right)
             + horn_high_right * (0.20 + 0.80 * horn_facing_right);
 
-        let horn_gain = if self.horn_drum_balance < 0.0 {
-            1.0 + self.horn_drum_balance
-        } else {
-            1.0
-        };
-        let drum_gain = if self.horn_drum_balance > 0.0 {
-            1.0 - self.horn_drum_balance
-        } else {
-            1.0
-        };
+        let (horn_gain, drum_gain) = (self.horn_gain, self.drum_gain);
         let mut wet_left =
             horn_gain * horn_left + drum_gain * drum_left * (0.66 + 0.34 * drum_facing_left);
         let mut wet_right =
@@ -1126,10 +1123,6 @@ fn unit(value: f32) -> bool {
     value.is_finite() && (0.0..=1.0).contains(&value)
 }
 
-fn bipolar(value: f32) -> bool {
-    value.is_finite() && (-1.0..=1.0).contains(&value)
-}
-
 fn one_pole(frequency: f32, sample_rate: f32) -> f32 {
     let normalized = TAU * frequency / sample_rate;
     normalized / (1.0 + normalized)
@@ -1217,7 +1210,7 @@ mod tests {
             (-6.0, 0.501_187_2),
             (-20.0, 0.1),
             (-40.0, 0.01),
-            (SUB_LEVEL_RANGE_DB.0, 1.584_893_2e-4),
+            (LEVEL_RANGE_DB.0, 1.584_893_2e-4),
         ] {
             let found = from_decibels(decibels);
             assert!(
@@ -1225,7 +1218,7 @@ mod tests {
                 "{decibels} dB gave {found} against {gain}"
             );
         }
-        assert_eq!(from_decibels(SUB_LEVEL_SILENT_DB), 0.0);
+        assert_eq!(from_decibels(LEVEL_SILENT_DB), 0.0);
         assert_eq!(from_decibels(-200.0), 0.0);
     }
 
@@ -1238,8 +1231,8 @@ mod tests {
         let swing = |decibels: f32| {
             let mut rotary = Rotary::new(rate);
             assert!(rotary.set_mix(1.0));
-            assert!(rotary.set_cabinet(0.0, 0.0));
-            assert!(rotary.set_sub_level(decibels));
+            assert!(rotary.set_cabinet(0.0));
+            assert!(rotary.set_levels(0.0, 0.0, decibels));
             rotary.set_mode(RotaryMode::Tremolo);
             for index in 0..(rate as usize * 12) {
                 rotary.process((index as f32 * 0.03).sin());
@@ -1259,7 +1252,7 @@ mod tests {
             }
             loudest / quietest.max(1.0e-9)
         };
-        let alone = swing(SUB_LEVEL_SILENT_DB);
+        let alone = swing(LEVEL_SILENT_DB);
         let with_woofer = swing(0.0);
         assert!(
             with_woofer < alone,
@@ -1275,8 +1268,8 @@ mod tests {
         let bass = |distance_m: f32, pattern: f32| {
             let mut rotary = Rotary::new(48_000.0);
             assert!(rotary.set_mix(1.0));
-            assert!(rotary.set_cabinet(0.0, 0.0));
-            assert!(rotary.set_sub_level(SUB_LEVEL_SILENT_DB));
+            assert!(rotary.set_cabinet(0.0));
+            assert!(rotary.set_levels(0.0, 0.0, LEVEL_SILENT_DB));
             assert!(rotary.set_microphones(MicrophoneArray {
                 distance_m,
                 spacing_m: 0.0,
@@ -1443,7 +1436,7 @@ mod tests {
     fn no_spacing_leaves_no_stereo() {
         let mut rotary = Rotary::new(48_000.0);
         assert!(rotary.set_mix(1.0));
-        assert!(rotary.set_cabinet(0.0, 0.0));
+        assert!(rotary.set_cabinet(0.0));
         assert!(rotary.set_microphones(MicrophoneArray {
             distance_m: 0.4,
             spacing_m: 0.0,
@@ -1496,8 +1489,8 @@ mod tests {
         live_cabinet.set_mode(RotaryMode::Brake);
         assert!(dry_cabinet.set_mix(1.0));
         assert!(live_cabinet.set_mix(1.0));
-        assert!(dry_cabinet.set_cabinet(0.0, 0.0));
-        assert!(live_cabinet.set_cabinet(1.0, 0.0));
+        assert!(dry_cabinet.set_cabinet(0.0));
+        assert!(live_cabinet.set_cabinet(1.0));
         let mut difference = 0.0;
         for index in 0..2048 {
             let input = if index == 0 { 1.0 } else { 0.0 };

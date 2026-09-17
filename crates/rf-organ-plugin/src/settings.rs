@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 use rf_organ_dsp::{
     DRAWBAR_COUNT, DRUM_RADIUS_DEFAULT_M, DRUM_RADIUS_RANGE_M, HORN_RADIUS_DEFAULT_M,
-    HORN_RADIUS_RANGE_M, MIC_DISTANCE_DEFAULT_M, MIC_DISTANCE_RANGE_M, MIC_OFFSET_MAX_M,
-    MIC_PATTERN_DEFAULT, MIC_SPACING_DEFAULT_M, MIC_SPACING_MAX_M, MainsFrequency, MicrophoneArray,
-    MicrophoneType, OrganEngine, OrganPart, PEDAL_DRAWBAR_COUNT, PercussionDecay,
-    PercussionHarmonic, PercussionVolume, RotaryMode, SUB_LEVEL_DEFAULT_DB, SUB_LEVEL_RANGE_DB,
-    SUB_LEVEL_SILENT_DB, ScannerMode, StopAngle, TransformerUnit,
+    HORN_RADIUS_RANGE_M, LEVEL_RANGE_DB, LEVEL_SILENT_DB, MIC_DISTANCE_DEFAULT_M,
+    MIC_DISTANCE_RANGE_M, MIC_OFFSET_MAX_M, MIC_PATTERN_DEFAULT, MIC_SPACING_DEFAULT_M,
+    MIC_SPACING_MAX_M, MainsFrequency, MicrophoneArray, MicrophoneType, OrganEngine, OrganPart,
+    PEDAL_DRAWBAR_COUNT, PercussionDecay, PercussionHarmonic, PercussionVolume, RotaryMode,
+    SUB_LEVEL_DEFAULT_DB, ScannerMode, StopAngle, TransformerUnit,
 };
 
-pub const PARAMETER_COUNT: usize = 60;
+pub const PARAMETER_COUNT: usize = 61;
 /// Bipolar per-transformer calibration trims, ordered T1, T2, T3.
 pub const TRANSFORMER_TRIM_FIRST: u32 = 45;
 pub const DRAWBAR_FIRST: u32 = 2;
@@ -66,7 +66,9 @@ pub struct Settings {
     pub rotary_sub_level: f64,
     pub rotary_microphone_type: MicrophoneType,
     pub rotary_reflections: f64,
-    pub rotary_horn_drum_balance: f64,
+    /// The horn's and the drum's microphone volumes, in decibels.
+    pub rotary_horn_level: f64,
+    pub rotary_drum_level: f64,
     pub transformer_trims: [[f64; 2]; 3],
 }
 
@@ -109,7 +111,8 @@ impl Default for Settings {
             rotary_sub_level: SUB_LEVEL_DEFAULT_DB as f64,
             rotary_microphone_type: MicrophoneType::Condenser,
             rotary_reflections: 0.22,
-            rotary_horn_drum_balance: 0.0,
+            rotary_horn_level: 0.0,
+            rotary_drum_level: 0.0,
             transformer_trims: [[0.0; 2]; 3],
         }
     }
@@ -157,13 +160,10 @@ impl Settings {
             )
             && finite_range(self.rotary_horn_stop_angle, 0.0, 360.0)
             && finite_range(self.rotary_drum_stop_angle, 0.0, 360.0)
-            && finite_range(
-                self.rotary_sub_level,
-                SUB_LEVEL_SILENT_DB as f64,
-                SUB_LEVEL_RANGE_DB.1 as f64,
-            )
+            && level(self.rotary_sub_level)
             && unit(self.rotary_reflections)
-            && bipolar(self.rotary_horn_drum_balance)
+            && level(self.rotary_horn_level)
+            && level(self.rotary_drum_level)
             && self
                 .transformer_trims
                 .iter()
@@ -212,7 +212,7 @@ impl Settings {
             41 => self.rotary_mic_distance,
             42 => self.rotary_mic_spacing,
             43 => self.rotary_reflections,
-            44 => self.rotary_horn_drum_balance,
+            44 => self.rotary_horn_level,
             45..=50 => {
                 let trim = (index - TRANSFORMER_TRIM_FIRST) as usize;
                 self.transformer_trims[trim / 2][trim % 2]
@@ -225,6 +225,7 @@ impl Settings {
             56 => self.rotary_drum_stop_angle,
             57 => f64::from(self.rotary_mains as u8),
             58 => self.rotary_sub_level,
+            60 => self.rotary_drum_level,
             59 => f64::from(self.rotary_microphone_type as u8),
             _ => return None,
         })
@@ -284,7 +285,7 @@ impl Settings {
             41 => self.rotary_mic_distance = value,
             42 => self.rotary_mic_spacing = value,
             43 => self.rotary_reflections = value,
-            44 => self.rotary_horn_drum_balance = value,
+            44 => self.rotary_horn_level = value,
             45..=50 => {
                 let trim = (index - TRANSFORMER_TRIM_FIRST) as usize;
                 self.transformer_trims[trim / 2][trim % 2] = value;
@@ -299,6 +300,7 @@ impl Settings {
                 self.rotary_mains = MainsFrequency::from_index(value as u8)?;
             }
             58 => self.rotary_sub_level = value,
+            60 => self.rotary_drum_level = value,
             59 if value.fract() == 0.0 => {
                 self.rotary_microphone_type = MicrophoneType::from_index(value as u8)?;
             }
@@ -341,9 +343,11 @@ impl Settings {
         engine.set_rotary_mode(self.rotary_mode);
         let _ = engine.set_rotary_mix(self.rotary_mix as f32);
         let _ = engine.set_rotary_acceleration(self.rotary_acceleration as f32);
-        let _ = engine.set_rotary_cabinet(
-            self.rotary_reflections as f32,
-            self.rotary_horn_drum_balance as f32,
+        let _ = engine.set_rotary_cabinet(self.rotary_reflections as f32);
+        let _ = engine.set_rotary_levels(
+            self.rotary_horn_level as f32,
+            self.rotary_drum_level as f32,
+            self.rotary_sub_level as f32,
         );
         let _ = engine.set_rotary_microphones(MicrophoneArray {
             distance_m: self.rotary_mic_distance as f32,
@@ -363,7 +367,6 @@ impl Settings {
         }
         engine.set_rotary_mains(self.rotary_mains);
         engine.set_rotary_microphone_type(self.rotary_microphone_type);
-        let _ = engine.set_rotary_sub_level(self.rotary_sub_level as f32);
         engine.set_scanner_mode(self.scanner_mode);
         engine.set_scanner_manuals(self.upper_scanner, self.lower_scanner);
         engine.set_percussion_enabled(self.percussion_enabled);
@@ -411,7 +414,7 @@ pub fn presets() -> [(&'static str, &'static str, &'static str, Settings); 8] {
                 rotary_mic_distance: 0.25,
                 rotary_mic_spacing: 0.38,
                 rotary_reflections: 0.16,
-                rotary_horn_drum_balance: 0.12,
+                rotary_drum_level: -1.1,
                 ..straight
             },
         ),
@@ -494,11 +497,20 @@ pub fn presets() -> [(&'static str, &'static str, &'static str, Settings); 8] {
                 rotary_mic_distance: 0.45,
                 rotary_mic_spacing: 0.32,
                 rotary_reflections: 0.3,
-                rotary_horn_drum_balance: -0.08,
+                rotary_horn_level: -0.7,
                 ..straight
             },
         ),
     ]
+}
+
+/// One of the three microphone volumes: decibels from unity down to silence.
+fn level(value: f64) -> bool {
+    finite_range(
+        value,
+        f64::from(LEVEL_SILENT_DB),
+        f64::from(LEVEL_RANGE_DB.1),
+    )
 }
 
 fn unit(value: f64) -> bool {

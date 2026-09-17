@@ -24,10 +24,10 @@ pub use pedal::{PEDAL_DRAWBAR_COUNT, PEDAL_FIRST_NOTE, PEDAL_KEY_COUNT};
 pub use percussion::{PercussionDecay, PercussionHarmonic, PercussionVolume};
 pub use rotary::{
     DRUM_RADIUS_DEFAULT_M, DRUM_RADIUS_RANGE_M, HORN_RADIUS_DEFAULT_M, HORN_RADIUS_RANGE_M,
-    MIC_DISTANCE_DEFAULT_M, MIC_DISTANCE_RANGE_M, MIC_OFFSET_MAX_M, MIC_PATTERN_DEFAULT,
-    MIC_SPACING_DEFAULT_M, MIC_SPACING_MAX_M, MainsFrequency, MicrophoneArray, MicrophoneType,
-    Rotary, RotaryDiagnostics, RotaryGeometry, RotaryMode, SUB_LEVEL_DEFAULT_DB,
-    SUB_LEVEL_RANGE_DB, SUB_LEVEL_SILENT_DB, StopAngle,
+    LEVEL_RANGE_DB, LEVEL_SILENT_DB, MIC_DISTANCE_DEFAULT_M, MIC_DISTANCE_RANGE_M,
+    MIC_OFFSET_MAX_M, MIC_PATTERN_DEFAULT, MIC_SPACING_DEFAULT_M, MIC_SPACING_MAX_M,
+    MainsFrequency, MicrophoneArray, MicrophoneType, Rotary, RotaryDiagnostics, RotaryGeometry,
+    RotaryMode, SUB_LEVEL_DEFAULT_DB, StopAngle,
 };
 pub use scanner::{ScannerMode, ScannerVibrato};
 pub use tonewheel::{TONEWHEEL_COUNT, gear_frequency, gear_teeth};
@@ -357,8 +357,13 @@ impl OrganEngine {
         self.rotary.set_acceleration(value)
     }
 
-    pub fn set_rotary_cabinet(&mut self, reflections: f32, horn_drum_balance: f32) -> bool {
-        self.rotary.set_cabinet(reflections, horn_drum_balance)
+    pub fn set_rotary_cabinet(&mut self, reflections: f32) -> bool {
+        self.rotary.set_cabinet(reflections)
+    }
+
+    /// The three microphone volumes, in decibels.
+    pub fn set_rotary_levels(&mut self, horn_db: f32, drum_db: f32, sub_db: f32) -> bool {
+        self.rotary.set_levels(horn_db, drum_db, sub_db)
     }
 
     pub fn set_rotary_microphones(&mut self, array: MicrophoneArray) -> bool {
@@ -379,10 +384,6 @@ impl OrganEngine {
 
     pub fn set_rotary_microphone_type(&mut self, capsule: MicrophoneType) {
         self.rotary.set_microphone_type(capsule);
-    }
-
-    pub fn set_rotary_sub_level(&mut self, decibels: f32) -> bool {
-        self.rotary.set_sub_level(decibels)
     }
 
     pub fn next_sample(&mut self) -> [f32; 2] {

@@ -3,9 +3,9 @@
 use crate::captures::{C_NOTE, CHARACTER, F_NOTE, Level, note_frequency};
 use crate::signal::{decay_time, decibels, peak, rms, zero_crossing_frequency};
 use rf_organ_dsp::{
-    ConsoleElectronics, DRAWBAR_COUNT, MANUAL_FIRST_NOTE, MANUAL_KEY_COUNT, MainsFrequency,
-    MatchingTransformer, MicrophoneArray, MicrophoneType, OrganEngine, OrganPart, PercussionDecay,
-    PercussionHarmonic, PercussionVolume, Rotary, RotaryGeometry, RotaryMode, SUB_LEVEL_SILENT_DB,
+    ConsoleElectronics, DRAWBAR_COUNT, LEVEL_SILENT_DB, MANUAL_FIRST_NOTE, MANUAL_KEY_COUNT,
+    MainsFrequency, MatchingTransformer, MicrophoneArray, MicrophoneType, OrganEngine, OrganPart,
+    PercussionDecay, PercussionHarmonic, PercussionVolume, Rotary, RotaryGeometry, RotaryMode,
     ScannerMode, ScannerVibrato, StopAngle, TransformerUnit, compartment_companions, drawbar_wheel,
     gear_frequency,
 };
@@ -1482,9 +1482,9 @@ fn rotary_doppler_probe() -> (Vec<Measurement>, String) {
     );
     let mut measurements = Vec::new();
 
-    for (probe, carrier, balance, horn) in [
-        ("rotary-horn", 2_000.0_f64, 1.0_f32, true),
-        ("rotary-drum", 400.0_f64, -1.0_f32, false),
+    for (probe, carrier, horn) in [
+        ("rotary-horn", 2_000.0_f64, true),
+        ("rotary-drum", 400.0_f64, false),
     ] {
         let mut rotary = Rotary::new(SAMPLE_RATE as f32);
         assert!(rotary.set_mix(1.0));
@@ -1493,8 +1493,13 @@ fn rotary_doppler_probe() -> (Vec<Measurement>, String) {
         // silent: this probe is about the path from one mouth to the
         // microphones, and the woofer's own bass arrives unmodulated, which
         // would dilute the very deviation being measured.
-        assert!(rotary.set_cabinet(0.0, balance));
-        assert!(rotary.set_sub_level(SUB_LEVEL_SILENT_DB));
+        assert!(rotary.set_cabinet(0.0));
+        let (horn_db, drum_db) = if horn {
+            (0.0, LEVEL_SILENT_DB)
+        } else {
+            (LEVEL_SILENT_DB, 0.0)
+        };
+        assert!(rotary.set_levels(horn_db, drum_db, LEVEL_SILENT_DB));
         assert!(rotary.set_microphones(MicrophoneArray::default()));
         rotary.set_mode(RotaryMode::Tremolo);
 
@@ -1813,8 +1818,8 @@ fn rotary_capsule_probe() -> Vec<Measurement> {
     let sweep_depth = |sub_db: f32| {
         let mut rotary = Rotary::new(SAMPLE_RATE as f32);
         assert!(rotary.set_mix(1.0));
-        assert!(rotary.set_cabinet(0.0, 0.0));
-        assert!(rotary.set_sub_level(sub_db));
+        assert!(rotary.set_cabinet(0.0));
+        assert!(rotary.set_levels(0.0, 0.0, sub_db));
         rotary.set_mode(RotaryMode::Tremolo);
         let tone = |index: usize| ((index as f64 * TAU * 200.0 / SAMPLE_RATE as f64).sin()) as f32;
         for index in 0..SAMPLE_RATE * 12 {
@@ -1835,8 +1840,8 @@ fn rotary_capsule_probe() -> Vec<Measurement> {
     let band = |frequency: f64, distance_m: f32, pattern: f32, capsule| {
         let mut rotary = Rotary::new(SAMPLE_RATE as f32);
         assert!(rotary.set_mix(1.0));
-        assert!(rotary.set_cabinet(0.0, 0.0));
-        assert!(rotary.set_sub_level(SUB_LEVEL_SILENT_DB));
+        assert!(rotary.set_cabinet(0.0));
+        assert!(rotary.set_levels(0.0, 0.0, LEVEL_SILENT_DB));
         rotary.set_microphone_type(capsule);
         assert!(rotary.set_microphones(MicrophoneArray {
             distance_m,
@@ -1868,7 +1873,7 @@ fn rotary_capsule_probe() -> Vec<Measurement> {
         Measurement {
             probe: "rotary-cabinet",
             metric: "sweep-depth-woofer-silent",
-            value: sweep_depth(SUB_LEVEL_SILENT_DB),
+            value: sweep_depth(LEVEL_SILENT_DB),
             unit: "dB",
         },
         Measurement {

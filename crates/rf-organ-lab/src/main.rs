@@ -372,7 +372,7 @@ fn configure(engine: &mut OrganEngine, scenario: Scenario) {
     let _ = engine.set_transformer(captures::CHARACTER.0, captures::CHARACTER.1);
     let _ = engine.set_console(0.32, 0.0, 0.0);
     let _ = engine.set_expression_character(0.55);
-    let _ = engine.set_rotary_cabinet(0.22, 0.0);
+    let _ = engine.set_rotary_cabinet(0.22);
     match scenario {
         Scenario::Direct => {}
         Scenario::Percussion => {
@@ -447,7 +447,7 @@ fn render_rotary_impulse() -> Vec<f32> {
     let mut rotary = Rotary::new(SAMPLE_RATE as f32);
     rotary.set_mode(RotaryMode::Brake);
     let _ = rotary.set_mix(1.0);
-    let _ = rotary.set_cabinet(1.0, 0.0);
+    let _ = rotary.set_cabinet(1.0);
     let frames = SAMPLE_RATE as usize / 2;
     let mut output = Vec::with_capacity(frames * 2);
     for frame in 0..frames {

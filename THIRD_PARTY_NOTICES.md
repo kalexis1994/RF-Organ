@@ -82,6 +82,12 @@ switch can be delayed by up to a second before the rotor responds; and a time
 means the time to cross the whole speed range, so a shorter move takes
 proportionally less and the rate is what stays constant.
 
+Version 0.30.0 gives the horn and the drum a volume each, which is how that
+manual has them: three microphone volumes in decibels, from unity down through
+-76 to silence, one for each of the horn's pair, the drum's pair and the
+woofer. Before this the first two shared one bipolar balance between them,
+which could only ever turn one of them down.
+
 Version 0.29.0 adds the woofer and the capsules, both from the microphone page
 of the same manual. The woofer's sound is described there as dry and
 unmodulated, as not leaving the cabinet directly, and as being picked up by the
@@ -96,10 +102,6 @@ lifts the bass as it nears a source, by an amount the distance and the pattern
 decide, so RF-Organ derives it rather than choosing it, and bounds it because a
 real capsule rolls off underneath. The presence and the top that separate the
 two characters are provisional, and the laboratory reports what they come to.
-
-Two of the three microphone volumes that manual documents are not modelled as
-separate decibel controls: the horn's and the drum's are a single bipolar
-balance between them.
 
 Version 0.28.0 adds the supply the motors run from. This one is not from a
 Hammond document: the speeds are, and the rest is how an alternating-current

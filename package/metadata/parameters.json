@@ -494,11 +494,11 @@
     },
     {
       "index": 44,
-      "id": "rotary-horn-drum-balance",
-      "name": "Horn / Drum Balance",
+      "id": "rotary-horn-level",
+      "name": "Horn Level",
       "page": "rotary",
       "order": 6,
-      "kind": { "type": "float", "minimum": -1.0, "maximum": 1.0, "default": 0.0, "step": 0.001 },
+      "kind": { "type": "float", "minimum": -80.0, "maximum": 0.0, "default": 0.0, "step": 0.5, "unit": "dB" },
       "flags": { "automatable": true },
       "suggested_control": "knob"
     },
@@ -665,6 +665,16 @@
       },
       "flags": { "automatable": true },
       "suggested_control": "list"
+    },
+    {
+      "index": 60,
+      "id": "rotary-drum-level",
+      "name": "Drum Level",
+      "page": "rotary",
+      "order": 14,
+      "kind": { "type": "float", "minimum": -80.0, "maximum": 0.0, "default": 0.0, "step": 0.5, "unit": "dB" },
+      "flags": { "automatable": true },
+      "suggested_control": "knob"
     }
   ],
   "semantic_controls": [
