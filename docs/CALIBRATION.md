@@ -393,6 +393,20 @@ with the angle set to the same value and photograph or mark where the horn
 ends up. What matters is the spread across repetitions, not the absolute
 angle, since zero here means the mouth facing the microphones.
 
+## Supply protocol
+
+The `fifty-hertz-` and `supply-ratio` rows of `measurements.csv` settle the
+cabinet on each supply and read the speeds off it. On 50 Hz the horn runs
+333.3 rpm fast and 33.3 slow against its rated 400 and 40, and the drum 283.3
+against 340: a ratio of 0.8333 for both, which is 50 over 60 and nothing else.
+There is no fitting here and no measurement to compare against, because there
+is nothing provisional in it - a synchronous motor's shaft speed is the
+supply's frequency over its pole pairs, and the ratio follows.
+
+What is worth measuring on a real cabinet is the part this does not claim:
+whether a given cabinet was re-belted for its market, and what its motors
+actually reach under load, which is not exactly the synchronous speed.
+
 ## Sample rate and cost
 
 Every other probe in this document runs at 48 kHz. The sweep checks that the

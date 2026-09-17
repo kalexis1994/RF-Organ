@@ -3,10 +3,11 @@
 use crate::captures::{C_NOTE, CHARACTER, F_NOTE, Level, note_frequency};
 use crate::signal::{decay_time, decibels, peak, rms, zero_crossing_frequency};
 use rf_organ_dsp::{
-    ConsoleElectronics, DRAWBAR_COUNT, MANUAL_FIRST_NOTE, MANUAL_KEY_COUNT, MatchingTransformer,
-    MicrophoneArray, OrganEngine, OrganPart, PercussionDecay, PercussionHarmonic, PercussionVolume,
-    Rotary, RotaryGeometry, RotaryMode, ScannerMode, ScannerVibrato, StopAngle, TransformerUnit,
-    compartment_companions, drawbar_wheel, gear_frequency,
+    ConsoleElectronics, DRAWBAR_COUNT, MANUAL_FIRST_NOTE, MANUAL_KEY_COUNT, MainsFrequency,
+    MatchingTransformer, MicrophoneArray, OrganEngine, OrganPart, PercussionDecay,
+    PercussionHarmonic, PercussionVolume, Rotary, RotaryGeometry, RotaryMode, ScannerMode,
+    ScannerVibrato, StopAngle, TransformerUnit, compartment_companions, drawbar_wheel,
+    gear_frequency,
 };
 use std::f64::consts::{PI, TAU};
 use std::fmt::Write as _;
@@ -84,6 +85,7 @@ fn analyze_inner() -> Result<Artifacts, String> {
     measurements.extend(doppler);
     let (stop, rotary_stop_angle) = rotary_stop_probe();
     measurements.extend(stop);
+    measurements.extend(rotary_supply_probe());
     Ok(Artifacts {
         measurements: measurement_csv(&measurements),
         percussion_envelope,
@@ -1733,6 +1735,65 @@ fn rotary_stop_probe() -> (Vec<Measurement>, String) {
         },
     ]);
     (measurements, csv)
+}
+
+/// What the supply does to the speeds.
+///
+/// The rotors are belted to alternating-current motors, which turn at the
+/// supply's frequency over their pole pairs, so every speed a cabinet reaches
+/// is in proportion to the supply it is plugged into. The quoted speeds belong
+/// to sixty cycles; this reports what the same cabinet does on fifty, which
+/// has to be five sixths of them, and how much sooner it gets there, since the
+/// belt ramps at the rate it always did over a shorter range.
+fn rotary_supply_probe() -> Vec<Measurement> {
+    let settle = |mains: MainsFrequency, mode: RotaryMode| {
+        let mut rotary = Rotary::new(SAMPLE_RATE as f32);
+        rotary.set_mains(mains);
+        rotary.set_mode(mode);
+        for _ in 0..SAMPLE_RATE * 14 {
+            rotary.process(0.0);
+        }
+        let state = rotary.diagnostics();
+        (
+            f64::from(state.horn_speed_rpm),
+            f64::from(state.drum_speed_rpm),
+        )
+    };
+    let (rated_horn, rated_drum) = settle(MainsFrequency::Sixty, RotaryMode::Tremolo);
+    let (exported_horn, exported_drum) = settle(MainsFrequency::Fifty, RotaryMode::Tremolo);
+    let (slow_horn, _) = settle(MainsFrequency::Fifty, RotaryMode::Chorale);
+    vec![
+        Measurement {
+            probe: "rotary-horn",
+            metric: "fifty-hertz-tremolo",
+            value: exported_horn,
+            unit: "rpm",
+        },
+        Measurement {
+            probe: "rotary-horn",
+            metric: "fifty-hertz-chorale",
+            value: slow_horn,
+            unit: "rpm",
+        },
+        Measurement {
+            probe: "rotary-horn",
+            metric: "supply-ratio",
+            value: exported_horn / rated_horn,
+            unit: "ratio",
+        },
+        Measurement {
+            probe: "rotary-drum",
+            metric: "fifty-hertz-tremolo",
+            value: exported_drum,
+            unit: "rpm",
+        },
+        Measurement {
+            probe: "rotary-drum",
+            metric: "supply-ratio",
+            value: exported_drum / rated_drum,
+            unit: "ratio",
+        },
+    ]
 }
 
 fn clean_engine() -> Result<OrganEngine, String> {

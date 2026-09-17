@@ -3,7 +3,7 @@
 use crate::client::{Client, PROTOCOL, host_lighting};
 use crate::view;
 use js_sys::{JSON, Object};
-use rf_organ_dsp::{Rotary, RotaryMode, StopAngle};
+use rf_organ_dsp::{MainsFrequency, Rotary, RotaryMode, StopAngle};
 use serde_json::{Value, json};
 use std::{cell::RefCell, rc::Rc};
 use wasm_bindgen::{JsCast, prelude::*};
@@ -12,7 +12,7 @@ use web_sys::{
 };
 
 const PLUGIN_ID: &str = "org.rackforge.organ";
-const CONTROL_IDS: [&str; 57] = [
+const CONTROL_IDS: [&str; 58] = [
     "output",
     "expression",
     "u16",
@@ -70,6 +70,7 @@ const CONTROL_IDS: [&str; 57] = [
     "drum-radius",
     "horn-stop-angle",
     "drum-stop-angle",
+    "mains-frequency",
 ];
 
 /// Steps of the display's own rotor model per second.
@@ -183,6 +184,9 @@ impl App {
             StopAngle::from_degrees(self.client.display(56) as f32),
         ) {
             let _ = self.rotary.set_stop_angles(horn, drum);
+        }
+        if let Some(mains) = MainsFrequency::from_index(self.client.display(57) as u8) {
+            self.rotary.set_mains(mains);
         }
 
         let elapsed = self

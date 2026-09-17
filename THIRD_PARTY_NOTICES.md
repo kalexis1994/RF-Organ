@@ -82,6 +82,18 @@ switch can be delayed by up to a second before the rotor responds; and a time
 means the time to cross the whole speed range, so a shorter move takes
 proportionally less and the rate is what stays constant.
 
+Version 0.28.0 adds the supply the motors run from. This one is not from a
+Hammond document: the speeds are, and the rest is how an alternating-current
+motor works, which is that its shaft turns at the supply's frequency over its
+pole pairs. So the speeds a cabinet is quoted at belong to the supply it was
+built for, and the same cabinet on another supply turns in proportion - five
+sixths of everything on fifty cycles against sixty. What RF-Organ models is
+one cabinet on either supply, which is a real thing that happens to a cabinet
+that travels; it is not the two cabinets a manufacturer would sell into the
+two markets, because an exported one was re-belted or re-motored to reach its
+rated speeds there. The console's own generator is left at concert pitch and
+does not follow this switch.
+
 Version 0.26.0 adds the stop angle from the same description: each rotor has
 one, documented as a whole degree from 0 to 359 or "Rnd" for a random angle,
 and the brake time is documented specifically as the time to stop from the

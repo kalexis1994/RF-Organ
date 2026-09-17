@@ -2,12 +2,12 @@
 use rf_organ_dsp::{
     DRAWBAR_COUNT, DRUM_RADIUS_DEFAULT_M, DRUM_RADIUS_RANGE_M, HORN_RADIUS_DEFAULT_M,
     HORN_RADIUS_RANGE_M, MIC_DISTANCE_DEFAULT_M, MIC_DISTANCE_RANGE_M, MIC_OFFSET_MAX_M,
-    MIC_PATTERN_DEFAULT, MIC_SPACING_DEFAULT_M, MIC_SPACING_MAX_M, MicrophoneArray, OrganEngine,
-    OrganPart, PEDAL_DRAWBAR_COUNT, PercussionDecay, PercussionHarmonic, PercussionVolume,
-    RotaryMode, ScannerMode, StopAngle, TransformerUnit,
+    MIC_PATTERN_DEFAULT, MIC_SPACING_DEFAULT_M, MIC_SPACING_MAX_M, MainsFrequency, MicrophoneArray,
+    OrganEngine, OrganPart, PEDAL_DRAWBAR_COUNT, PercussionDecay, PercussionHarmonic,
+    PercussionVolume, RotaryMode, ScannerMode, StopAngle, TransformerUnit,
 };
 
-pub const PARAMETER_COUNT: usize = 57;
+pub const PARAMETER_COUNT: usize = 58;
 /// Bipolar per-transformer calibration trims, ordered T1, T2, T3.
 pub const TRANSFORMER_TRIM_FIRST: u32 = 45;
 pub const DRAWBAR_FIRST: u32 = 2;
@@ -57,6 +57,9 @@ pub struct Settings {
     /// of the circle standing for a random angle, as Hammond encodes it.
     pub rotary_horn_stop_angle: f64,
     pub rotary_drum_stop_angle: f64,
+    /// The supply the cabinet's motors run from, which is what its rated
+    /// speeds are rated against.
+    pub rotary_mains: MainsFrequency,
     pub rotary_reflections: f64,
     pub rotary_horn_drum_balance: f64,
     pub transformer_trims: [[f64; 2]; 3],
@@ -97,6 +100,7 @@ impl Default for Settings {
             rotary_drum_radius: DRUM_RADIUS_DEFAULT_M as f64,
             rotary_horn_stop_angle: 0.0,
             rotary_drum_stop_angle: 0.0,
+            rotary_mains: MainsFrequency::Sixty,
             rotary_reflections: 0.22,
             rotary_horn_drum_balance: 0.0,
             transformer_trims: [[0.0; 2]; 3],
@@ -207,6 +211,7 @@ impl Settings {
             54 => self.rotary_drum_radius,
             55 => self.rotary_horn_stop_angle,
             56 => self.rotary_drum_stop_angle,
+            57 => f64::from(self.rotary_mains as u8),
             _ => return None,
         })
     }
@@ -276,6 +281,9 @@ impl Settings {
             54 => self.rotary_drum_radius = value,
             55 => self.rotary_horn_stop_angle = value,
             56 => self.rotary_drum_stop_angle = value,
+            57 if value.fract() == 0.0 => {
+                self.rotary_mains = MainsFrequency::from_index(value as u8)?;
+            }
             _ => return None,
         }
         self.valid().then_some(self)
@@ -335,6 +343,7 @@ impl Settings {
         ) {
             let _ = engine.set_rotary_stop_angles(horn, drum);
         }
+        engine.set_rotary_mains(self.rotary_mains);
         engine.set_scanner_mode(self.scanner_mode);
         engine.set_scanner_manuals(self.upper_scanner, self.lower_scanner);
         engine.set_percussion_enabled(self.percussion_enabled);

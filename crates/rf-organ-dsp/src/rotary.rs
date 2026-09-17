@@ -38,6 +38,52 @@ const fn rpm_to_hz(rpm: f32) -> f32 {
 /// left to aim.
 const RESTING_HZ: f32 = 1.0e-4;
 
+/// The supply the cabinet's motors are running from.
+///
+/// A rotor is belted to an alternating-current motor, and such a motor turns
+/// at the supply's frequency divided by its pole pairs. The speeds quoted for
+/// a cabinet are the ones its motors reach on the supply it was built for, so
+/// the same cabinet on a different supply turns in that proportion: a
+/// sixty-cycle cabinet plugged into fifty cycles runs at five sixths of every
+/// speed it is rated for, which is a little under three semitones less
+/// modulation and a noticeably lazier tremolo.
+///
+/// This models one cabinet on either supply, not the two cabinets a
+/// manufacturer would sell into the two markets: an exported one was re-belted
+/// or re-motored to reach its rated speeds there.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[repr(u8)]
+pub enum MainsFrequency {
+    Fifty = 0,
+    #[default]
+    Sixty = 1,
+}
+
+impl MainsFrequency {
+    pub const fn from_index(index: u8) -> Option<Self> {
+        match index {
+            0 => Some(Self::Fifty),
+            1 => Some(Self::Sixty),
+            _ => None,
+        }
+    }
+
+    pub const fn hertz(self) -> f32 {
+        match self {
+            Self::Fifty => 50.0,
+            Self::Sixty => 60.0,
+        }
+    }
+
+    /// What the rated speeds become on this supply.
+    fn scale(self) -> f32 {
+        self.hertz() / RATED_MAINS_HZ
+    }
+}
+
+/// The supply the quoted speeds belong to.
+const RATED_MAINS_HZ: f32 = 60.0;
+
 /// Where a rotor is asked to come to rest. Hammond documents the setting as
 /// 0 to 359 degrees or "Rnd", which stops it at a random angle. Zero is the
 /// mouth pointing at the microphones.
@@ -362,8 +408,11 @@ struct Rotor {
     rate_hz_per_second: f32,
     /// Samples still to wait before the speed starts changing.
     delay_frames: u32,
+    /// Rated speeds, on the supply the cabinet was built for.
     slow_hz: f32,
     fast_hz: f32,
+    /// What the supply in use does to them.
+    supply: f32,
     rise_seconds: f32,
     fall_seconds: f32,
     brake_seconds: f32,
@@ -391,6 +440,7 @@ impl Rotor {
             delay_frames: 0,
             slow_hz: rpm_to_hz(slow_rpm),
             fast_hz: rpm_to_hz(fast_rpm),
+            supply: 1.0,
             rise_seconds: rise,
             fall_seconds: fall,
             brake_seconds: brake,
@@ -467,6 +517,18 @@ impl Rotor {
         })
     }
 
+    /// The speeds this rotor actually reaches on the supply it is running
+    /// from. The rate it ramps at does not change with the supply - the belt
+    /// and the motor are the same - so a cabinet on fifty cycles reaches its
+    /// speeds sooner, having less of a range to cross.
+    fn slow(&self) -> f32 {
+        self.slow_hz * self.supply
+    }
+
+    fn fast(&self) -> f32 {
+        self.fast_hz * self.supply
+    }
+
     /// Seconds this rotor would need to cross its whole range at the rate it
     /// is ramping at now.
     const fn transition_seconds(&self) -> f32 {
@@ -528,6 +590,7 @@ pub struct Rotary {
     drum_radius: f32,
     reflections: f32,
     horn_drum_balance: f32,
+    mains: MainsFrequency,
     /// Drawn on only when a rotor is asked to stop at a random angle, so a
     /// render with fixed angles stays bit-identical run to run.
     entropy: u32,
@@ -573,8 +636,28 @@ impl Rotary {
             drum_radius: DRUM_RADIUS_DEFAULT_M,
             reflections: 0.22,
             horn_drum_balance: 0.0,
+            mains: MainsFrequency::Sixty,
             entropy: 0x9e37_79b9,
         }
+    }
+
+    /// Which supply the cabinet's motors are running from. Changing it while
+    /// the rotors are turning re-aims them, the way re-plugging a cabinet
+    /// would.
+    pub fn set_mains(&mut self, mains: MainsFrequency) {
+        if mains == self.mains {
+            return;
+        }
+        self.mains = mains;
+        self.horn.supply = mains.scale();
+        self.drum.supply = mains.scale();
+        let mode = self.mode;
+        self.mode = RotaryMode::Off;
+        self.set_mode(mode);
+    }
+
+    pub const fn mains(&self) -> MainsFrequency {
+        self.mains
     }
 
     /// Where each rotor comes to rest when the cabinet is stopped.
@@ -607,8 +690,8 @@ impl Rotary {
         self.mode = mode;
         let (horn, drum) = match mode {
             RotaryMode::Off | RotaryMode::Brake => (0.0, 0.0),
-            RotaryMode::Chorale => (self.horn.slow_hz, self.drum.slow_hz),
-            RotaryMode::Tremolo => (self.horn.fast_hz, self.drum.fast_hz),
+            RotaryMode::Chorale => (self.horn.slow(), self.drum.slow()),
+            RotaryMode::Tremolo => (self.horn.fast(), self.drum.fast()),
         };
         let (horn_roll, drum_roll) = (self.roll(), self.roll());
         self.horn.aim(horn, self.sample_rate, horn_roll);
@@ -933,6 +1016,36 @@ mod tests {
                 assert!(
                     (expected.0..expected.1).contains(&seconds),
                     "the stop took {seconds}s from {mode:?}"
+                );
+            }
+        }
+    }
+
+    /// A cabinet on fifty cycles turns at five sixths of every speed it is
+    /// rated for, and reaches them sooner, because the belt and the motor
+    /// ramp at the rate they always did over a shorter range.
+    #[test]
+    fn the_supply_sets_the_speeds() {
+        let mut sixty = Rotary::new(48_000.0);
+        let mut fifty = Rotary::new(48_000.0);
+        fifty.set_mains(MainsFrequency::Fifty);
+        assert_eq!(fifty.mains(), MainsFrequency::Fifty);
+        for mode in [RotaryMode::Chorale, RotaryMode::Tremolo] {
+            sixty.set_mode(mode);
+            fifty.set_mode(mode);
+            for _ in 0..(48_000 * 14) {
+                sixty.process(0.0);
+                fifty.process(0.0);
+            }
+            let rated = sixty.diagnostics();
+            let exported = fifty.diagnostics();
+            for (rated, exported) in [
+                (rated.horn_speed_rpm, exported.horn_speed_rpm),
+                (rated.drum_speed_rpm, exported.drum_speed_rpm),
+            ] {
+                assert!(
+                    (exported / rated - 50.0 / 60.0).abs() < 1.0e-3,
+                    "{exported} rpm against {rated} in {mode:?}"
                 );
             }
         }

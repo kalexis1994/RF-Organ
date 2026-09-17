@@ -166,7 +166,7 @@ microphones, so moving them back zooms out instead of pushing them off the
 edge. The parameter table the surface validates against is the engine's, not a
 copy of it; a range that moves in the DSP moves there too.
 
-## Version 0.27.0 limitations
+## Version 0.28.0 limitations
 
 - The classic B-3 pedal contact and resistor-panel topology is present. The
   L20 pedal-filter coefficient and console matching-network constants remain
@@ -197,6 +197,14 @@ copy of it; a range that moves in the DSP moves there too.
   range; before 0.21.0 the horn ramped in 0.35 s, which is under the 0.8 s
   floor a cabinet can manage. Placement and stop angle are no longer
   abstractions: both are in the units Hammond specifies them in.
+- The rotors are belted to alternating-current motors, so the supply sets
+  every speed they reach: on 50 Hz the cabinet turns at five sixths of its
+  rated speeds and reaches them sooner, because the belt ramps at the rate it
+  always did over a shorter range. The console's generator does not follow
+  that switch and stays at concert pitch, which is a choice and not a
+  consequence: a Hammond sold into a 50 Hz market was geared to play at pitch
+  there, and modelling a console running flat on the wrong supply would be a
+  separate thing to build.
 - A stop has to end at the documented angle and take the documented time, and
   a rotor slowing at a fixed rate cannot do both, because the angle it covers
   is whatever its speed makes it. What the engine holds fixed is the time and

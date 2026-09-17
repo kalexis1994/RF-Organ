@@ -621,6 +621,23 @@
       "kind": { "type": "float", "minimum": 0.0, "maximum": 360.0, "default": 0.0, "step": 1.0, "unit": "deg" },
       "flags": { "automatable": true },
       "suggested_control": "knob"
+    },
+    {
+      "index": 57,
+      "id": "rotary-mains-frequency",
+      "name": "Mains Supply",
+      "page": "rotary",
+      "order": 11,
+      "kind": {
+        "type": "enum",
+        "default": 1,
+        "choices": [
+          { "value": 0, "name": "50 Hz" },
+          { "value": 1, "name": "60 Hz" }
+        ]
+      },
+      "flags": { "automatable": true },
+      "suggested_control": "list"
     }
   ],
   "semantic_controls": [

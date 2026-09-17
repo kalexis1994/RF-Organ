@@ -125,7 +125,7 @@
 
       <details class="panel advanced">
         <summary>Microphone placement and rotor stops</summary>
-        <p class="note">Placement is in the units a tape measure uses. A stop angle of 360 degrees is the documented "Rnd" setting, which stops that rotor somewhere new each time.</p>
+        <p class="note">Placement is in the units a tape measure uses. A stop angle of 360 degrees is the documented "Rnd" setting, which stops that rotor somewhere new each time. The rotors are belted to alternating-current motors, so the supply they run from sets every speed they reach: the same cabinet on 50 Hz turns at five sixths of what it is rated for.</p>
         <div class="advanced-grid">
           <label>Mic Offset<input id="mic-offset" data-parameter="51" type="range" min="-0.5" max="0.5" step="0.005" disabled /></label>
           <label>Mic Pattern<input id="mic-pattern" data-parameter="52" type="range" min="0" max="1" step="0.01" disabled /></label>
@@ -133,6 +133,7 @@
           <label>Drum Stop Angle<input id="drum-stop-angle" data-parameter="56" type="range" min="0" max="360" step="1" disabled /></label>
           <label>Horn Radius<input id="horn-radius" data-parameter="53" type="range" min="0.05" max="0.4" step="0.001" disabled /></label>
           <label>Drum Radius<input id="drum-radius" data-parameter="54" type="range" min="0.05" max="0.3" step="0.001" disabled /></label>
+          <label>Mains Supply<select id="mains-frequency" data-parameter="57" disabled><option value="0">50 Hz</option><option value="1">60 Hz</option></select></label>
         </div>
       </details>
 
