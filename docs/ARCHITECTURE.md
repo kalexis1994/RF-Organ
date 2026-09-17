@@ -166,7 +166,7 @@ microphones, so moving them back zooms out instead of pushing them off the
 edge. The parameter table the surface validates against is the engine's, not a
 copy of it; a range that moves in the DSP moves there too.
 
-## Version 0.30.0 limitations
+## Version 0.31.0 limitations
 
 - The classic B-3 pedal contact and resistor-panel topology is present. The
   L20 pedal-filter coefficient and console matching-network constants remain
@@ -197,6 +197,10 @@ copy of it; a range that moves in the DSP moves there too.
   range; before 0.21.0 the horn ramped in 0.35 s, which is under the 0.8 s
   floor a cabinet can manage. Placement and stop angle are no longer
   abstractions: both are in the units Hammond specifies them in.
+- Each pair of microphones has its own distance, spacing and offset, which is
+  how Hammond lists them. The bass a capsule gains for being close therefore
+  belongs to the pair rather than to the output channel: each pair has its own
+  corner, set by its own distance.
 - The horn's pair, the drum's pair and the woofer each have their own volume
   in decibels, which is the set Hammond documents. What is still an
   approximation is above them, not among them: the drum's microphones are

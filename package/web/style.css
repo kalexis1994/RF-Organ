@@ -89,6 +89,8 @@ input:disabled, select:disabled { opacity: .45; }
 .rotary-view .horn-mouth { fill: var(--rotor, #7d6852); }
 .rotary-view .drum-port { fill: #6d5a45; }
 .rotary-view .mic { fill: #191410; stroke: var(--gold); stroke-width: 1.4; }
+.rotary-view .mic.drum { stroke: #7f9a6a; }
+.rotary-view .mic-axis.drum { stroke: #34402c; }
 .rotary-view .mic-axis { stroke: #3d3126; stroke-width: .8; stroke-dasharray: 3 3; }
 .rotary-figure figcaption { color: var(--muted); font-size: .7rem; letter-spacing: .1em; }
 [data-rotary="chorale"] .rotary-view { --rotor: #d3ad63; }

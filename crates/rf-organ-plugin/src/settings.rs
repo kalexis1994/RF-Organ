@@ -3,12 +3,12 @@ use rf_organ_dsp::{
     DRAWBAR_COUNT, DRUM_RADIUS_DEFAULT_M, DRUM_RADIUS_RANGE_M, HORN_RADIUS_DEFAULT_M,
     HORN_RADIUS_RANGE_M, LEVEL_RANGE_DB, LEVEL_SILENT_DB, MIC_DISTANCE_DEFAULT_M,
     MIC_DISTANCE_RANGE_M, MIC_OFFSET_MAX_M, MIC_PATTERN_DEFAULT, MIC_SPACING_DEFAULT_M,
-    MIC_SPACING_MAX_M, MainsFrequency, MicrophoneArray, MicrophoneType, OrganEngine, OrganPart,
-    PEDAL_DRAWBAR_COUNT, PercussionDecay, PercussionHarmonic, PercussionVolume, RotaryMode,
-    SUB_LEVEL_DEFAULT_DB, ScannerMode, StopAngle, TransformerUnit,
+    MIC_SPACING_MAX_M, MainsFrequency, MicrophoneArray, MicrophonePair, MicrophoneType,
+    OrganEngine, OrganPart, PEDAL_DRAWBAR_COUNT, PercussionDecay, PercussionHarmonic,
+    PercussionVolume, RotaryMode, SUB_LEVEL_DEFAULT_DB, ScannerMode, StopAngle, TransformerUnit,
 };
 
-pub const PARAMETER_COUNT: usize = 61;
+pub const PARAMETER_COUNT: usize = 64;
 /// Bipolar per-transformer calibration trims, ordered T1, T2, T3.
 pub const TRANSFORMER_TRIM_FIRST: u32 = 45;
 pub const DRAWBAR_FIRST: u32 = 2;
@@ -45,9 +45,12 @@ pub struct Settings {
     pub console_treble: f64,
     pub expression_character: f64,
     /// Microphone placement in metres, as a tape measure would give it.
-    pub rotary_mic_distance: f64,
-    pub rotary_mic_spacing: f64,
-    pub rotary_mic_offset: f64,
+    pub rotary_horn_mic_distance: f64,
+    pub rotary_horn_mic_spacing: f64,
+    pub rotary_horn_mic_offset: f64,
+    pub rotary_drum_mic_distance: f64,
+    pub rotary_drum_mic_spacing: f64,
+    pub rotary_drum_mic_offset: f64,
     /// Omnidirectional at zero, cardioid at a half, figure of eight at one.
     pub rotary_mic_pattern: f64,
     /// The radius each rotor's mouth turns at, in metres. Undocumented, so it
@@ -99,9 +102,12 @@ impl Default for Settings {
             console_bass: 0.0,
             console_treble: 0.0,
             expression_character: 0.55,
-            rotary_mic_distance: MIC_DISTANCE_DEFAULT_M as f64,
-            rotary_mic_spacing: MIC_SPACING_DEFAULT_M as f64,
-            rotary_mic_offset: 0.0,
+            rotary_horn_mic_distance: MIC_DISTANCE_DEFAULT_M as f64,
+            rotary_horn_mic_spacing: MIC_SPACING_DEFAULT_M as f64,
+            rotary_horn_mic_offset: 0.0,
+            rotary_drum_mic_distance: MIC_DISTANCE_DEFAULT_M as f64,
+            rotary_drum_mic_spacing: MIC_SPACING_DEFAULT_M as f64,
+            rotary_drum_mic_offset: 0.0,
             rotary_mic_pattern: MIC_PATTERN_DEFAULT as f64,
             rotary_horn_radius: HORN_RADIUS_DEFAULT_M as f64,
             rotary_drum_radius: DRUM_RADIUS_DEFAULT_M as f64,
@@ -136,16 +142,15 @@ impl Settings {
             && bipolar(self.console_bass)
             && bipolar(self.console_treble)
             && unit(self.expression_character)
-            && finite_range(
-                self.rotary_mic_distance,
-                MIC_DISTANCE_RANGE_M.0 as f64,
-                MIC_DISTANCE_RANGE_M.1 as f64,
+            && placement(
+                self.rotary_horn_mic_distance,
+                self.rotary_horn_mic_spacing,
+                self.rotary_horn_mic_offset,
             )
-            && finite_range(self.rotary_mic_spacing, 0.0, MIC_SPACING_MAX_M as f64)
-            && finite_range(
-                self.rotary_mic_offset,
-                -(MIC_OFFSET_MAX_M as f64),
-                MIC_OFFSET_MAX_M as f64,
+            && placement(
+                self.rotary_drum_mic_distance,
+                self.rotary_drum_mic_spacing,
+                self.rotary_drum_mic_offset,
             )
             && unit(self.rotary_mic_pattern)
             && finite_range(
@@ -209,15 +214,18 @@ impl Settings {
             38 => self.console_bass,
             39 => self.console_treble,
             40 => self.expression_character,
-            41 => self.rotary_mic_distance,
-            42 => self.rotary_mic_spacing,
+            41 => self.rotary_horn_mic_distance,
+            42 => self.rotary_horn_mic_spacing,
             43 => self.rotary_reflections,
             44 => self.rotary_horn_level,
             45..=50 => {
                 let trim = (index - TRANSFORMER_TRIM_FIRST) as usize;
                 self.transformer_trims[trim / 2][trim % 2]
             }
-            51 => self.rotary_mic_offset,
+            51 => self.rotary_horn_mic_offset,
+            61 => self.rotary_drum_mic_distance,
+            62 => self.rotary_drum_mic_spacing,
+            63 => self.rotary_drum_mic_offset,
             52 => self.rotary_mic_pattern,
             53 => self.rotary_horn_radius,
             54 => self.rotary_drum_radius,
@@ -282,15 +290,18 @@ impl Settings {
             38 => self.console_bass = value,
             39 => self.console_treble = value,
             40 => self.expression_character = value,
-            41 => self.rotary_mic_distance = value,
-            42 => self.rotary_mic_spacing = value,
+            41 => self.rotary_horn_mic_distance = value,
+            42 => self.rotary_horn_mic_spacing = value,
             43 => self.rotary_reflections = value,
             44 => self.rotary_horn_level = value,
             45..=50 => {
                 let trim = (index - TRANSFORMER_TRIM_FIRST) as usize;
                 self.transformer_trims[trim / 2][trim % 2] = value;
             }
-            51 => self.rotary_mic_offset = value,
+            51 => self.rotary_horn_mic_offset = value,
+            61 => self.rotary_drum_mic_distance = value,
+            62 => self.rotary_drum_mic_spacing = value,
+            63 => self.rotary_drum_mic_offset = value,
             52 => self.rotary_mic_pattern = value,
             53 => self.rotary_horn_radius = value,
             54 => self.rotary_drum_radius = value,
@@ -350,9 +361,16 @@ impl Settings {
             self.rotary_sub_level as f32,
         );
         let _ = engine.set_rotary_microphones(MicrophoneArray {
-            distance_m: self.rotary_mic_distance as f32,
-            spacing_m: self.rotary_mic_spacing as f32,
-            offset_m: self.rotary_mic_offset as f32,
+            horn: MicrophonePair {
+                distance_m: self.rotary_horn_mic_distance as f32,
+                spacing_m: self.rotary_horn_mic_spacing as f32,
+                offset_m: self.rotary_horn_mic_offset as f32,
+            },
+            drum: MicrophonePair {
+                distance_m: self.rotary_drum_mic_distance as f32,
+                spacing_m: self.rotary_drum_mic_spacing as f32,
+                offset_m: self.rotary_drum_mic_offset as f32,
+            },
             pattern: self.rotary_mic_pattern as f32,
         });
         let _ = engine.set_rotary_rotor_radii(
@@ -393,8 +411,8 @@ pub fn presets() -> [(&'static str, &'static str, &'static str, Settings); 8] {
                 rotary_mode: RotaryMode::Chorale,
                 scanner_mode: ScannerMode::Chorus3,
                 upper_scanner: true,
-                rotary_mic_distance: 0.9,
-                rotary_mic_spacing: 0.24,
+                rotary_horn_mic_distance: 0.9,
+                rotary_horn_mic_spacing: 0.24,
                 ..straight
             },
         ),
@@ -411,8 +429,8 @@ pub fn presets() -> [(&'static str, &'static str, &'static str, Settings); 8] {
                 percussion_harmonic: PercussionHarmonic::Third,
                 percussion_volume: PercussionVolume::Normal,
                 percussion_decay: PercussionDecay::Fast,
-                rotary_mic_distance: 0.25,
-                rotary_mic_spacing: 0.38,
+                rotary_horn_mic_distance: 0.25,
+                rotary_horn_mic_spacing: 0.38,
                 rotary_reflections: 0.16,
                 rotary_drum_level: -1.1,
                 ..straight
@@ -429,8 +447,8 @@ pub fn presets() -> [(&'static str, &'static str, &'static str, Settings); 8] {
                 percussion_harmonic: PercussionHarmonic::Third,
                 percussion_volume: PercussionVolume::Normal,
                 percussion_decay: PercussionDecay::Fast,
-                rotary_mic_distance: 0.5,
-                rotary_mic_spacing: 0.28,
+                rotary_horn_mic_distance: 0.5,
+                rotary_horn_mic_spacing: 0.28,
                 ..straight
             },
         ),
@@ -471,8 +489,8 @@ pub fn presets() -> [(&'static str, &'static str, &'static str, Settings); 8] {
                 rotary_mode: RotaryMode::Tremolo,
                 transformer_drive: 0.66,
                 console_drive: 0.52,
-                rotary_mic_distance: 0.22,
-                rotary_mic_spacing: 0.36,
+                rotary_horn_mic_distance: 0.22,
+                rotary_horn_mic_spacing: 0.36,
                 rotary_reflections: 0.26,
                 ..straight
             },
@@ -494,8 +512,8 @@ pub fn presets() -> [(&'static str, &'static str, &'static str, Settings); 8] {
                 pedal_drawbars: [8, 8],
                 upper_scanner: true,
                 lower_scanner: true,
-                rotary_mic_distance: 0.45,
-                rotary_mic_spacing: 0.32,
+                rotary_horn_mic_distance: 0.45,
+                rotary_horn_mic_spacing: 0.32,
                 rotary_reflections: 0.3,
                 rotary_horn_level: -0.7,
                 ..straight
@@ -511,6 +529,20 @@ fn level(value: f64) -> bool {
         f64::from(LEVEL_SILENT_DB),
         f64::from(LEVEL_RANGE_DB.1),
     )
+}
+
+/// One pair of microphones, inside the ranges Hammond publishes for it.
+fn placement(distance: f64, spacing: f64, offset: f64) -> bool {
+    finite_range(
+        distance,
+        f64::from(MIC_DISTANCE_RANGE_M.0),
+        f64::from(MIC_DISTANCE_RANGE_M.1),
+    ) && finite_range(spacing, 0.0, f64::from(MIC_SPACING_MAX_M))
+        && finite_range(
+            offset,
+            -f64::from(MIC_OFFSET_MAX_M),
+            f64::from(MIC_OFFSET_MAX_M),
+        )
 }
 
 fn unit(value: f64) -> bool {

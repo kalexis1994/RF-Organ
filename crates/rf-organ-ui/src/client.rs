@@ -8,12 +8,12 @@ use rf_organ_dsp::{
 use serde_json::{Value, json};
 
 pub const PROTOCOL: &str = "rackforge.plugin.web@1";
-pub const PARAMETERS: usize = 61;
+pub const PARAMETERS: usize = 64;
 pub const DEFAULTS: [f64; PARAMETERS] = [
     0.72, 1.0, 8.0, 8.0, 8.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.55, 0.45, 0.2, 0.38, 0.32, 0.0, 0.82,
     0.5, 0.0, 0.0, 1.0, 1.0, 1.0, 8.0, 8.0, 8.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 8.0, 0.0, 1.0, 0.0,
     0.32, 0.0, 0.0, 0.55, 0.35, 0.3, 0.22, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.5, 0.18, 0.12,
-    0.0, 0.0, 1.0, -9.0, 1.0, 0.0,
+    0.0, 0.0, 1.0, -9.0, 1.0, 0.0, 0.35, 0.3, 0.0,
 ];
 
 #[derive(Clone, Debug, PartialEq)]
@@ -78,9 +78,9 @@ pub fn valid(index: usize, value: f64) -> bool {
             44 | 58 | 60 => {
                 (f64::from(LEVEL_SILENT_DB)..=f64::from(LEVEL_RANGE_DB.1)).contains(&value)
             }
-            41 => engine_range(MIC_DISTANCE_RANGE_M).contains(&value),
-            42 => (0.0..=f64::from(MIC_SPACING_MAX_M)).contains(&value),
-            51 => value.abs() <= f64::from(MIC_OFFSET_MAX_M),
+            41 | 61 => engine_range(MIC_DISTANCE_RANGE_M).contains(&value),
+            42 | 62 => (0.0..=f64::from(MIC_SPACING_MAX_M)).contains(&value),
+            51 | 63 => value.abs() <= f64::from(MIC_OFFSET_MAX_M),
             53 => engine_range(HORN_RADIUS_RANGE_M).contains(&value),
             54 => engine_range(DRUM_RADIUS_RANGE_M).contains(&value),
             55..=56 => StopAngle::from_degrees(value as f32).is_some(),

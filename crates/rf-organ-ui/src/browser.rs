@@ -3,7 +3,9 @@
 use crate::client::{Client, PROTOCOL, host_lighting};
 use crate::view;
 use js_sys::{JSON, Object};
-use rf_organ_dsp::{MainsFrequency, Rotary, RotaryMode, StopAngle};
+use rf_organ_dsp::{
+    MainsFrequency, MicrophoneArray, MicrophonePair, Rotary, RotaryMode, StopAngle,
+};
 use serde_json::{Value, json};
 use std::{cell::RefCell, rc::Rc};
 use wasm_bindgen::{JsCast, prelude::*};
@@ -12,7 +14,7 @@ use web_sys::{
 };
 
 const PLUGIN_ID: &str = "org.rackforge.organ";
-const CONTROL_IDS: [&str; 61] = [
+const CONTROL_IDS: [&str; 64] = [
     "output",
     "expression",
     "u16",
@@ -54,8 +56,8 @@ const CONTROL_IDS: [&str; 61] = [
     "console-bass",
     "console-treble",
     "swell-character",
-    "mic-distance",
-    "mic-spacing",
+    "horn-mic-distance",
+    "horn-mic-spacing",
     "reflections",
     "horn-level",
     "t1-drive-trim",
@@ -64,7 +66,7 @@ const CONTROL_IDS: [&str; 61] = [
     "t2-memory-trim",
     "t3-drive-trim",
     "t3-memory-trim",
-    "mic-offset",
+    "horn-mic-offset",
     "mic-pattern",
     "horn-radius",
     "drum-radius",
@@ -74,6 +76,9 @@ const CONTROL_IDS: [&str; 61] = [
     "sub-level",
     "mic-type",
     "drum-level",
+    "drum-mic-distance",
+    "drum-mic-spacing",
+    "drum-mic-offset",
 ];
 
 /// Steps of the display's own rotor model per second.
@@ -191,6 +196,19 @@ impl App {
         if let Some(mains) = MainsFrequency::from_index(self.client.display(57) as u8) {
             self.rotary.set_mains(mains);
         }
+        let _ = self.rotary.set_microphones(MicrophoneArray {
+            horn: MicrophonePair {
+                distance_m: self.client.display(41) as f32,
+                spacing_m: self.client.display(42) as f32,
+                offset_m: self.client.display(51) as f32,
+            },
+            drum: MicrophonePair {
+                distance_m: self.client.display(61) as f32,
+                spacing_m: self.client.display(62) as f32,
+                offset_m: self.client.display(63) as f32,
+            },
+            pattern: self.client.display(52) as f32,
+        });
 
         let elapsed = self
             .drawn_at
@@ -219,22 +237,35 @@ impl App {
         };
         sweep("horn-sweep", frame.horn_sweep);
         sweep("drum-sweep", frame.drum_sweep);
-        let place = |element: &str, at: (f64, f64)| {
+        for (element, at) in [
+            "horn-mic-left",
+            "horn-mic-right",
+            "drum-mic-left",
+            "drum-mic-right",
+        ]
+        .into_iter()
+        .zip(frame.microphones)
+        {
             let capsule = self.element(element);
             let _ = capsule.set_attribute("cx", &format!("{:.2}", at.0));
             let _ = capsule.set_attribute("cy", &format!("{:.2}", at.1));
-        };
-        place("mic-left", frame.left_mic);
-        place("mic-right", frame.right_mic);
-        let axis = self.element("mic-axis");
-        let _ = axis.set_attribute("x2", &format!("{:.2}", frame.axis_end.0));
-        let _ = axis.set_attribute("y2", &format!("{:.2}", frame.axis_end.1));
+        }
+        for (element, end) in [
+            ("horn-mic-axis", frame.horn_axis),
+            ("drum-mic-axis", frame.drum_axis),
+        ] {
+            let axis = self.element(element);
+            let _ = axis.set_attribute("x2", &format!("{:.2}", end.0));
+            let _ = axis.set_attribute("y2", &format!("{:.2}", end.1));
+        }
         let (x, y, width, height) = frame.view_box;
         let _ = self
             .element("rotary-view")
             .set_attribute("viewBox", &format!("{x:.2} {y:.2} {width:.2} {height:.2}"));
-        self.element("mic-readout")
-            .set_text_content(Some(&format!("{:.0} cm", frame.distance_cm)));
+        self.element("mic-readout").set_text_content(Some(&format!(
+            "horn {:.0} / drum {:.0} cm",
+            frame.horn_distance_cm, frame.drum_distance_cm
+        )));
     }
 
     fn send(&self, message: &Value) -> Result<(), JsValue> {

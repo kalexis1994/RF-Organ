@@ -73,8 +73,8 @@
           <div class="cabinet-main">
             <div><p class="eyebrow">INTEGRATED</p><h2>Rotary Cabinet</h2></div>
             <div class="cabinet-controls">
-              <label>Mic Distance<input id="mic-distance" data-parameter="41" type="range" min="0.12" max="1.7" step="0.005" disabled /></label>
-              <label>Mic Spacing<input id="mic-spacing" data-parameter="42" type="range" min="0" max="0.4" step="0.005" disabled /></label>
+              <label>Horn Distance<input id="horn-mic-distance" data-parameter="41" type="range" min="0.12" max="1.7" step="0.005" disabled /></label>
+              <label>Drum Distance<input id="drum-mic-distance" data-parameter="61" type="range" min="0.12" max="1.7" step="0.005" disabled /></label>
               <label>Reflections<input id="reflections" data-parameter="43" type="range" min="0" max="1" step="0.001" disabled /></label>
               <label>Horn Level<input id="horn-level" data-parameter="44" type="range" min="-80" max="0" step="0.5" disabled /></label>
               <label>Drum Level<input id="drum-level" data-parameter="60" type="range" min="-80" max="0" step="0.5" disabled /></label>
@@ -100,9 +100,12 @@
                 </g>
               </g>
               <circle class="pivot" cx="110" cy="81" r="1.6" />
-              <line id="mic-axis" class="mic-axis" x1="110" y1="81" x2="110" y2="114" />
-              <circle id="mic-left" class="mic" cx="95.75" cy="114" r="4" />
-              <circle id="mic-right" class="mic" cx="124.25" cy="114" r="4" />
+              <line id="horn-mic-axis" class="mic-axis" x1="110" y1="81" x2="110" y2="114" />
+              <line id="drum-mic-axis" class="mic-axis drum" x1="110" y1="81" x2="110" y2="114" />
+              <circle id="horn-mic-left" class="mic" cx="95.75" cy="114" r="4" />
+              <circle id="horn-mic-right" class="mic" cx="124.25" cy="114" r="4" />
+              <circle id="drum-mic-left" class="mic drum" cx="95.75" cy="114" r="4" />
+              <circle id="drum-mic-right" class="mic drum" cx="124.25" cy="114" r="4" />
             </svg>
             <figcaption id="mic-readout">35 cm</figcaption>
           </figure>
@@ -128,7 +131,10 @@
         <summary>Microphone placement and rotor stops</summary>
         <p class="note">Placement is in the units a tape measure uses. A stop angle of 360 degrees is the documented "Rnd" setting, which stops that rotor somewhere new each time. The rotors are belted to alternating-current motors, so the supply they run from sets every speed they reach: the same cabinet on 50 Hz turns at five sixths of what it is rated for. Sub Bass is the woofer's own unmodulated output, which never enters a rotor and is heard mostly by the drum's pair of microphones.</p>
         <div class="advanced-grid">
-          <label>Mic Offset<input id="mic-offset" data-parameter="51" type="range" min="-0.5" max="0.5" step="0.005" disabled /></label>
+          <label>Horn Spacing<input id="horn-mic-spacing" data-parameter="42" type="range" min="0" max="0.4" step="0.005" disabled /></label>
+          <label>Drum Spacing<input id="drum-mic-spacing" data-parameter="62" type="range" min="0" max="0.4" step="0.005" disabled /></label>
+          <label>Horn Offset<input id="horn-mic-offset" data-parameter="51" type="range" min="-0.5" max="0.5" step="0.005" disabled /></label>
+          <label>Drum Offset<input id="drum-mic-offset" data-parameter="63" type="range" min="-0.5" max="0.5" step="0.005" disabled /></label>
           <label>Mic Pattern<input id="mic-pattern" data-parameter="52" type="range" min="0" max="1" step="0.01" disabled /></label>
           <label>Horn Stop Angle<input id="horn-stop-angle" data-parameter="55" type="range" min="0" max="360" step="1" disabled /></label>
           <label>Drum Stop Angle<input id="drum-stop-angle" data-parameter="56" type="range" min="0" max="360" step="1" disabled /></label>

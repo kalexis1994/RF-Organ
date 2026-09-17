@@ -26,8 +26,8 @@ pub use rotary::{
     DRUM_RADIUS_DEFAULT_M, DRUM_RADIUS_RANGE_M, HORN_RADIUS_DEFAULT_M, HORN_RADIUS_RANGE_M,
     LEVEL_RANGE_DB, LEVEL_SILENT_DB, MIC_DISTANCE_DEFAULT_M, MIC_DISTANCE_RANGE_M,
     MIC_OFFSET_MAX_M, MIC_PATTERN_DEFAULT, MIC_SPACING_DEFAULT_M, MIC_SPACING_MAX_M,
-    MainsFrequency, MicrophoneArray, MicrophoneType, Rotary, RotaryDiagnostics, RotaryGeometry,
-    RotaryMode, SUB_LEVEL_DEFAULT_DB, StopAngle,
+    MainsFrequency, MicrophoneArray, MicrophonePair, MicrophoneType, Rotary, RotaryDiagnostics,
+    RotaryGeometry, RotaryMode, RotaryPlacement, SUB_LEVEL_DEFAULT_DB, StopAngle,
 };
 pub use scanner::{ScannerMode, ScannerVibrato};
 pub use tonewheel::{TONEWHEEL_COUNT, gear_frequency, gear_teeth};

@@ -352,14 +352,59 @@ pub enum RotaryMode {
 /// measure and a microphone cabinet use.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct MicrophoneArray {
+    /// Hammond gives a distance, a width and a centre for each rotor, not one
+    /// of each for the cabinet: a pair on the horn and a pair on the drum are
+    /// two decisions an engineer makes separately.
+    pub horn: MicrophonePair,
+    pub drum: MicrophonePair,
+    /// Omnidirectional at zero, cardioid at a half, figure of eight at one.
+    /// This one is the cabinet's, like the capsule it goes with.
+    pub pattern: f32,
+}
+
+/// Where one rotor's pair of microphones stands, in metres.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MicrophonePair {
     /// In front of the cabinet.
     pub distance_m: f32,
-    /// Between the pair.
+    /// Between the two.
     pub spacing_m: f32,
-    /// Of the pair's centre from the rotor's pivot.
+    /// Of the pair's centre from the rotor's pivot. Hammond's own note is
+    /// that a positive value on the horn and a negative one on the drum
+    /// emphasise the different directions the two baffles approach from; that
+    /// is advice to whoever is placing them, not something the cabinet does
+    /// on its own.
     pub offset_m: f32,
-    /// Omnidirectional at zero, cardioid at a half, figure of eight at one.
-    pub pattern: f32,
+}
+
+impl MicrophonePair {
+    fn sane(&self) -> bool {
+        let (near, far) = MIC_DISTANCE_RANGE_M;
+        self.distance_m.is_finite()
+            && self.spacing_m.is_finite()
+            && self.offset_m.is_finite()
+            && (near..=far).contains(&self.distance_m)
+            && (0.0..=MIC_SPACING_MAX_M).contains(&self.spacing_m)
+            && self.offset_m.abs() <= MIC_OFFSET_MAX_M
+    }
+
+    const fn placement(&self) -> RotaryPlacement {
+        RotaryPlacement {
+            distance_m: self.distance_m,
+            half_width_m: 0.5 * self.spacing_m,
+            centre_m: self.offset_m,
+        }
+    }
+}
+
+impl Default for MicrophonePair {
+    fn default() -> Self {
+        Self {
+            distance_m: MIC_DISTANCE_DEFAULT_M,
+            spacing_m: MIC_SPACING_DEFAULT_M,
+            offset_m: 0.0,
+        }
+    }
 }
 
 pub const MIC_DISTANCE_DEFAULT_M: f32 = 0.35;
@@ -369,9 +414,8 @@ pub const MIC_PATTERN_DEFAULT: f32 = 0.5;
 impl Default for MicrophoneArray {
     fn default() -> Self {
         Self {
-            distance_m: MIC_DISTANCE_DEFAULT_M,
-            spacing_m: MIC_SPACING_DEFAULT_M,
-            offset_m: 0.0,
+            horn: MicrophonePair::default(),
+            drum: MicrophonePair::default(),
             pattern: MIC_PATTERN_DEFAULT,
         }
     }
@@ -379,14 +423,17 @@ impl Default for MicrophoneArray {
 
 /// The four stands: the horn's pair, then the drum's pair on the other side of
 /// the offset.
-fn stands(distance: f32, spacing: f32, offset: f32) -> [Placement; 4] {
-    let half = 0.5 * spacing;
-    [
-        Placement::new(distance, offset + half),
-        Placement::new(distance, offset - half),
-        Placement::new(distance, -offset + half),
-        Placement::new(distance, -offset - half),
-    ]
+fn stands(array: MicrophoneArray) -> [Placement; 4] {
+    let pair = |pair: MicrophonePair| {
+        let half = 0.5 * pair.spacing_m;
+        [
+            Placement::new(pair.distance_m, pair.offset_m + half),
+            Placement::new(pair.distance_m, pair.offset_m - half),
+        ]
+    };
+    let [horn_left, horn_right] = pair(array.horn);
+    let [drum_left, drum_right] = pair(array.drum);
+    [horn_left, horn_right, drum_left, drum_right]
 }
 
 /// The cabinet's geometry, in metres, for tools that need to predict what it
@@ -396,11 +443,17 @@ pub struct RotaryGeometry {
     pub horn_radius_m: f32,
     pub drum_radius_m: f32,
     pub sound_speed_m_per_s: f32,
-    /// Microphone placement: in front of the cabinet, half the spacing
-    /// between the pair, and the pair's offset from the pivot.
-    pub mic_distance_m: f32,
-    pub mic_half_width_m: f32,
-    pub mic_centre_m: f32,
+    /// Where each rotor's pair of microphones stands.
+    pub horn: RotaryPlacement,
+    pub drum: RotaryPlacement,
+}
+
+/// One pair of microphones, as the cabinet sees them.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct RotaryPlacement {
+    pub distance_m: f32,
+    pub half_width_m: f32,
+    pub centre_m: f32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -672,6 +725,7 @@ pub struct Rotary {
     drum_gain: f32,
     mains: MainsFrequency,
     capsule: MicrophoneType,
+    array: MicrophoneArray,
     sub_gain: f32,
     /// Where the woofer's own sound reaches each of the four microphones. It
     /// does not turn with anything, so these do not change until a stand
@@ -680,8 +734,11 @@ pub struct Rotary {
     /// One capsule's worth of filtering per output channel: the bass a
     /// directional capsule lifts as it nears the cabinet, and what a dynamic
     /// one does to the top.
-    proximity: [f32; 2],
-    proximity_coefficient: f32,
+    /// Horn left and right, then drum left and right: a capsule's bass lift
+    /// belongs to the pair it is in, because it is the distance to what that
+    /// pair is pointed at which sets it.
+    proximity: [f32; 4],
+    proximity_coefficient: [f32; 2],
     proximity_lift: f32,
     presence_coefficient: f32,
     top_coefficient: f32,
@@ -726,7 +783,7 @@ impl Rotary {
             cabinet_right: DelayLine::new(),
             horn_tone_left: 0.0,
             horn_tone_right: 0.0,
-            places: stands(MIC_DISTANCE_DEFAULT_M, MIC_SPACING_DEFAULT_M, 0.0),
+            places: stands(MicrophoneArray::default()),
             pattern: MIC_PATTERN_DEFAULT,
             horn_radius: HORN_RADIUS_DEFAULT_M,
             drum_radius: DRUM_RADIUS_DEFAULT_M,
@@ -735,10 +792,11 @@ impl Rotary {
             drum_gain: 1.0,
             mains: MainsFrequency::Sixty,
             capsule: MicrophoneType::Condenser,
+            array: MicrophoneArray::default(),
             sub_gain: from_decibels(SUB_LEVEL_DEFAULT_DB),
             sub_paths: [(1.0, 1.0); 4],
-            proximity: [0.0; 2],
-            proximity_coefficient: 0.0,
+            proximity: [0.0; 4],
+            proximity_coefficient: [0.0; 2],
             proximity_lift: 0.0,
             presence_coefficient: one_pole(DYNAMIC_PRESENCE_HZ, sample_rate),
             top_coefficient: one_pole(DYNAMIC_TOP_HZ, sample_rate),
@@ -874,27 +932,15 @@ impl Rotary {
         true
     }
 
-    /// Moves the microphone stands, in metres, and chooses their pattern from
-    /// omnidirectional at zero through cardioid at a half to a figure of eight
-    /// at one.
-    ///
-    /// `offset` slides the pair away from the pivot, and it slides the horn's
-    /// pair and the drum's pair in opposite directions: a cabinet's two rotors
-    /// turn against each other, so a placement that catches the horn coming
-    /// toward you catches the drum going away.
+    /// Moves the four microphone stands, in metres, and chooses what the
+    /// capsules pick up, from omnidirectional at zero through cardioid at a
+    /// half to a figure of eight at one.
     pub fn set_microphones(&mut self, array: MicrophoneArray) -> bool {
-        let (near, far) = MIC_DISTANCE_RANGE_M;
-        if !(near..=far).contains(&array.distance_m)
-            || !(0.0..=MIC_SPACING_MAX_M).contains(&array.spacing_m)
-            || array.offset_m.abs() > MIC_OFFSET_MAX_M
-            || !unit(array.pattern)
-            || !array.distance_m.is_finite()
-            || !array.spacing_m.is_finite()
-            || !array.offset_m.is_finite()
-        {
+        if !array.horn.sane() || !array.drum.sane() || !unit(array.pattern) {
             return false;
         }
-        self.places = stands(array.distance_m, array.spacing_m, array.offset_m);
+        self.places = stands(array);
+        self.array = array;
         self.pattern = array.pattern;
         self.settle_fixed_paths();
         true
@@ -916,11 +962,18 @@ impl Rotary {
         // bottom: below roughly the speed of sound over the circumference of
         // the distance, the response rises. An omnidirectional capsule reads
         // pressure alone and does none of this, which is why the pattern is
-        // in it.
-        let path = microphone_path(self.places[0], 0.0, 0.0, 1.0, samples_per_metre, 0.0);
-        let corner = SOUND_SPEED_M_PER_S / (TAU * path.length.max(0.05));
-        let x = TAU * corner / self.sample_rate;
-        self.proximity_coefficient = x / (1.0 + x);
+        // in it. Each pair stands at its own distance, so each has its own
+        // corner.
+        for (slot, place) in self
+            .proximity_coefficient
+            .iter_mut()
+            .zip([self.places[0], self.places[2]])
+        {
+            let path = microphone_path(place, 0.0, 0.0, 1.0, samples_per_metre, 0.0);
+            let corner = SOUND_SPEED_M_PER_S / (TAU * path.length.max(0.05));
+            let x = TAU * corner / self.sample_rate;
+            *slot = x / (1.0 + x);
+        }
         self.proximity_lift = PROXIMITY_MAX_LIFT * self.pattern;
     }
 
@@ -1003,11 +1056,26 @@ impl Rotary {
         let horn_right = self.horn_tone_right * (0.55 + 0.35 * horn_facing_right)
             + horn_high_right * (0.20 + 0.80 * horn_facing_right);
 
+        // Each pair gains its own bass for being where it is.
+        let lift = self.proximity_lift;
+        let mut near = |slot: usize, coefficient: f32, value: f32| {
+            let bass = &mut self.proximity[slot];
+            *bass += coefficient * (value - *bass);
+            value + lift * *bass
+        };
+        let [horn_corner, drum_corner] = self.proximity_coefficient;
+        let horn_left = near(0, horn_corner, horn_left);
+        let horn_right = near(1, horn_corner, horn_right);
+        let drum_left = near(2, drum_corner, drum_left * (0.66 + 0.34 * drum_facing_left));
+        let drum_right = near(
+            3,
+            drum_corner,
+            drum_right * (0.66 + 0.34 * drum_facing_right),
+        );
+
         let (horn_gain, drum_gain) = (self.horn_gain, self.drum_gain);
-        let mut wet_left =
-            horn_gain * horn_left + drum_gain * drum_left * (0.66 + 0.34 * drum_facing_left);
-        let mut wet_right =
-            horn_gain * horn_right + drum_gain * drum_right * (0.66 + 0.34 * drum_facing_right);
+        let mut wet_left = horn_gain * horn_left + drum_gain * drum_left;
+        let mut wet_right = horn_gain * horn_right + drum_gain * drum_right;
         // Where the microphones meet, so does the image: no width, no stereo.
 
         // The woofer's own sound never enters a rotor. It leaves the cabinet
@@ -1029,23 +1097,18 @@ impl Rotary {
             wet_right += self.sub_gain * sub_right;
         }
 
-        // What the capsules make of all that.
-        let capsule = self.capsule;
-        let lift = self.proximity_lift;
-        let coefficient = self.proximity_coefficient;
-        for (channel, value) in [&mut wet_left, &mut wet_right].into_iter().enumerate() {
-            let bass = &mut self.proximity[channel];
-            *bass += coefficient * (*value - *bass);
-            let mut voiced = *value + lift * *bass;
-            if capsule == MicrophoneType::Dynamic {
+        // What the capsule's own character makes of all that. The bass a
+        // capsule gains by being close is already in, pair by pair.
+        if self.capsule == MicrophoneType::Dynamic {
+            for (channel, value) in [&mut wet_left, &mut wet_right].into_iter().enumerate() {
                 let presence = &mut self.presence[channel];
-                *presence += self.presence_coefficient * (voiced - *presence);
-                voiced += DYNAMIC_PRESENCE_LIFT * (voiced - *presence);
+                *presence += self.presence_coefficient * (*value - *presence);
+                let mut voiced = *value + DYNAMIC_PRESENCE_LIFT * (*value - *presence);
                 let top = &mut self.top[channel];
                 *top += self.top_coefficient * (voiced - *top);
                 voiced = *top;
+                *value = voiced;
             }
-            *value = voiced;
         }
 
         self.cabinet_left.push(wet_left);
@@ -1075,9 +1138,8 @@ impl Rotary {
             horn_radius_m: self.horn_radius,
             drum_radius_m: self.drum_radius,
             sound_speed_m_per_s: SOUND_SPEED_M_PER_S,
-            mic_distance_m: self.places[0].distance,
-            mic_half_width_m: 0.5 * (self.places[0].lateral - self.places[1].lateral),
-            mic_centre_m: 0.5 * (self.places[0].lateral + self.places[1].lateral),
+            horn: self.array.horn.placement(),
+            drum: self.array.drum.placement(),
         }
     }
 
@@ -1105,7 +1167,7 @@ impl Rotary {
         self.cabinet_right.clear();
         self.horn_tone_left = 0.0;
         self.horn_tone_right = 0.0;
-        self.proximity = [0.0; 2];
+        self.proximity = [0.0; 4];
         self.presence = [0.0; 2];
         self.top = [0.0; 2];
     }
@@ -1270,10 +1332,14 @@ mod tests {
             assert!(rotary.set_mix(1.0));
             assert!(rotary.set_cabinet(0.0));
             assert!(rotary.set_levels(0.0, 0.0, LEVEL_SILENT_DB));
-            assert!(rotary.set_microphones(MicrophoneArray {
+            let stand = MicrophonePair {
                 distance_m,
                 spacing_m: 0.0,
                 offset_m: 0.0,
+            };
+            assert!(rotary.set_microphones(MicrophoneArray {
+                horn: stand,
+                drum: stand,
                 pattern,
             }));
             rotary.set_mode(RotaryMode::Brake);
@@ -1381,48 +1447,97 @@ mod tests {
         let mut rotary = Rotary::new(48_000.0);
         let (near, far) = MIC_DISTANCE_RANGE_M;
         assert!(rotary.set_microphones(MicrophoneArray {
-            distance_m: near,
-            spacing_m: 0.0,
-            offset_m: 0.0,
+            horn: MicrophonePair {
+                distance_m: near,
+                spacing_m: 0.0,
+                offset_m: 0.0,
+            },
+            drum: MicrophonePair {
+                distance_m: near,
+                spacing_m: 0.0,
+                offset_m: 0.0,
+            },
             pattern: 0.0,
         }));
         let close = rotary.geometry();
-        assert!((close.mic_distance_m - near).abs() < 1.0e-6);
-        assert_eq!(close.mic_half_width_m, 0.0);
+        assert!((close.horn.distance_m - near).abs() < 1.0e-6);
+        assert_eq!(close.horn.half_width_m, 0.0);
         assert!(rotary.set_microphones(MicrophoneArray {
-            distance_m: far,
-            spacing_m: MIC_SPACING_MAX_M,
-            offset_m: MIC_OFFSET_MAX_M,
+            horn: MicrophonePair {
+                distance_m: far,
+                spacing_m: MIC_SPACING_MAX_M,
+                offset_m: MIC_OFFSET_MAX_M,
+            },
+            drum: MicrophonePair {
+                distance_m: far,
+                spacing_m: MIC_SPACING_MAX_M,
+                offset_m: MIC_OFFSET_MAX_M,
+            },
             pattern: 1.0,
         }));
         let wide = rotary.geometry();
-        assert!((wide.mic_distance_m - far).abs() < 1.0e-6);
-        assert!((wide.mic_half_width_m - 0.5 * MIC_SPACING_MAX_M).abs() < 1.0e-6);
-        assert!((wide.mic_centre_m - MIC_OFFSET_MAX_M).abs() < 1.0e-6);
-        for refused in [
-            MicrophoneArray {
+        assert!((wide.horn.distance_m - far).abs() < 1.0e-6);
+        assert!((wide.horn.half_width_m - 0.5 * MIC_SPACING_MAX_M).abs() < 1.0e-6);
+        assert!((wide.horn.centre_m - MIC_OFFSET_MAX_M).abs() < 1.0e-6);
+        // A stand outside the documented ranges is refused, and it is refused
+        // whichever rotor it belongs to.
+        let outside = [
+            MicrophonePair {
                 distance_m: far + 0.01,
-                ..MicrophoneArray::default()
+                ..MicrophonePair::default()
             },
-            MicrophoneArray {
+            MicrophonePair {
                 distance_m: 0.0,
-                ..MicrophoneArray::default()
+                ..MicrophonePair::default()
             },
-            MicrophoneArray {
+            MicrophonePair {
                 spacing_m: MIC_SPACING_MAX_M + 0.01,
-                ..MicrophoneArray::default()
+                ..MicrophonePair::default()
             },
-            MicrophoneArray {
+            MicrophonePair {
                 offset_m: -MIC_OFFSET_MAX_M - 0.01,
-                ..MicrophoneArray::default()
+                ..MicrophonePair::default()
             },
-            MicrophoneArray {
-                pattern: 1.1,
-                ..MicrophoneArray::default()
-            },
-        ] {
-            assert!(!rotary.set_microphones(refused), "{refused:?}");
+        ];
+        for stand in outside {
+            for refused in [
+                MicrophoneArray {
+                    horn: stand,
+                    ..MicrophoneArray::default()
+                },
+                MicrophoneArray {
+                    drum: stand,
+                    ..MicrophoneArray::default()
+                },
+            ] {
+                assert!(!rotary.set_microphones(refused), "{refused:?}");
+            }
         }
+        assert!(!rotary.set_microphones(MicrophoneArray {
+            pattern: 1.1,
+            ..MicrophoneArray::default()
+        }));
+
+        // The two pairs are independent, which is the whole point of them
+        // being two.
+        assert!(rotary.set_microphones(MicrophoneArray {
+            horn: MicrophonePair {
+                distance_m: 0.25,
+                spacing_m: 0.1,
+                offset_m: 0.2,
+            },
+            drum: MicrophonePair {
+                distance_m: 1.1,
+                spacing_m: 0.36,
+                offset_m: -0.4,
+            },
+            pattern: 0.5,
+        }));
+        let split = rotary.geometry();
+        assert!((split.horn.distance_m - 0.25).abs() < 1.0e-6);
+        assert!((split.drum.distance_m - 1.1).abs() < 1.0e-6);
+        assert!((split.horn.centre_m - 0.2).abs() < 1.0e-6);
+        assert!((split.drum.centre_m + 0.4).abs() < 1.0e-6);
         assert!(!rotary.set_rotor_radii(HORN_RADIUS_RANGE_M.1 + 0.01, DRUM_RADIUS_DEFAULT_M));
         assert!(!rotary.set_rotor_radii(HORN_RADIUS_DEFAULT_M, 0.0));
         assert!(rotary.set_rotor_radii(0.2, 0.1));
@@ -1437,10 +1552,14 @@ mod tests {
         let mut rotary = Rotary::new(48_000.0);
         assert!(rotary.set_mix(1.0));
         assert!(rotary.set_cabinet(0.0));
-        assert!(rotary.set_microphones(MicrophoneArray {
+        let together = MicrophonePair {
             distance_m: 0.4,
             spacing_m: 0.0,
             offset_m: 0.0,
+        };
+        assert!(rotary.set_microphones(MicrophoneArray {
+            horn: together,
+            drum: together,
             ..MicrophoneArray::default()
         }));
         rotary.set_mode(RotaryMode::Tremolo);
@@ -1453,23 +1572,45 @@ mod tests {
         assert!(worst < 1.0e-6, "channels differ by {worst}");
     }
 
-    /// Moving the pair off centre moves the horn's microphones one way and
-    /// the drum's the other, so the two rotors are never emphasised from the
-    /// same side at once.
+    /// The two pairs are placed separately. Hammond's own advice is to put
+    /// the horn's off one way and the drum's off the other, so that the two
+    /// baffles are caught approaching from different sides; that is a
+    /// placement somebody chooses, not one the cabinet imposes, and both
+    /// choices have to be available.
     #[test]
-    fn the_offset_separates_the_rotors() {
+    fn each_pair_stands_where_it_was_put() {
         let mut rotary = Rotary::new(48_000.0);
         assert!(rotary.set_microphones(MicrophoneArray {
-            distance_m: 0.4,
-            spacing_m: 0.2,
-            offset_m: 0.3,
+            horn: MicrophonePair {
+                distance_m: 0.4,
+                spacing_m: 0.2,
+                offset_m: 0.3,
+            },
+            drum: MicrophonePair {
+                distance_m: 0.4,
+                spacing_m: 0.2,
+                offset_m: -0.3,
+            },
             ..MicrophoneArray::default()
         }));
         let geometry = rotary.geometry();
-        assert!(geometry.mic_centre_m > 0.0);
-        let horn_left = geometry.mic_centre_m + geometry.mic_half_width_m;
-        let drum_left = -geometry.mic_centre_m + geometry.mic_half_width_m;
-        assert!(horn_left > drum_left);
+        assert!(geometry.horn.centre_m > 0.0);
+        assert!(geometry.drum.centre_m < 0.0);
+
+        // And the same way, if that is what is asked for.
+        assert!(rotary.set_microphones(MicrophoneArray {
+            horn: MicrophonePair {
+                offset_m: 0.3,
+                ..MicrophonePair::default()
+            },
+            drum: MicrophonePair {
+                offset_m: 0.3,
+                ..MicrophonePair::default()
+            },
+            ..MicrophoneArray::default()
+        }));
+        let geometry = rotary.geometry();
+        assert_eq!(geometry.horn.centre_m, geometry.drum.centre_m);
     }
 
     #[test]

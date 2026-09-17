@@ -15,7 +15,7 @@ pub use settings::{PARAMETER_COUNT, Settings, presets};
 
 pub const MAX_FRAMES: u32 = 4096;
 pub const MAX_EVENTS: usize = 256;
-pub const STATE_VERSION: u32 = 11;
+pub const STATE_VERSION: u32 = 12;
 pub const STATE_BYTES_V1: usize = 8 + 19 * 8;
 pub const STATE_BYTES_V2: usize = 8 + 24 * 8;
 pub const STATE_BYTES_V3: usize = 8 + 37 * 8;
@@ -26,6 +26,7 @@ pub const STATE_BYTES_V7: usize = 8 + 55 * 8;
 pub const STATE_BYTES_V8: usize = 8 + 57 * 8;
 pub const STATE_BYTES_V9: usize = 8 + 58 * 8;
 pub const STATE_BYTES_V10: usize = 8 + 60 * 8;
+pub const STATE_BYTES_V11: usize = 8 + 61 * 8;
 pub const STATE_BYTES: usize = 8 + PARAMETER_COUNT * 8;
 
 /// A gain as decibels, with nothing at all reported as the silence the
@@ -226,6 +227,7 @@ impl Processor for RfOrganProcessor {
             STATE_BYTES_V8,
             STATE_BYTES_V9,
             STATE_BYTES_V10,
+            STATE_BYTES_V11,
             STATE_BYTES,
         ]
         .contains(&state.len())
@@ -245,6 +247,7 @@ impl Processor for RfOrganProcessor {
             (8, STATE_BYTES_V8) => 57,
             (9, STATE_BYTES_V9) => 58,
             (10, STATE_BYTES_V10) => 60,
+            (11, STATE_BYTES_V11) => 61,
             (STATE_VERSION, STATE_BYTES) => PARAMETER_COUNT,
             _ => return false,
         };
@@ -256,6 +259,12 @@ impl Processor for RfOrganProcessor {
         // between them. They have a volume each now, as Hammond documents
         // them, so the old control has to be split rather than read.
         let mut balance = None;
+        // Up to version eleven the two pairs of microphones shared one
+        // distance, one spacing and one offset, and the drum's offset was the
+        // horn's negated. They stand separately now, as Hammond places them,
+        // so an older state has to put the drum's pair where that shared
+        // setting had it.
+        let mut shared_stand = [None; 3];
         for index in 0..fields as u32 {
             let offset = 8 + index as usize * 8;
             let value = f64::from_le_bytes(
@@ -277,6 +286,26 @@ impl Processor for RfOrganProcessor {
                     decibels_of(1.0 + value.min(0.0))
                 }
                 _ => value,
+            };
+            // Whatever that conversion arrived at is what the drum's pair
+            // should inherit, so it is recorded after the conversion and not
+            // before it.
+            if version <= 11 {
+                match index {
+                    41 => shared_stand[0] = Some(value),
+                    42 => shared_stand[1] = Some(value),
+                    51 => shared_stand[2] = Some(-value),
+                    _ => {}
+                }
+            }
+            let Some(updated) = settings.with_parameter(index, value) else {
+                return false;
+            };
+            settings = updated;
+        }
+        for (index, value) in [61, 62, 63].into_iter().zip(shared_stand) {
+            let Some(value) = value else {
+                continue;
             };
             let Some(updated) = settings.with_parameter(index, value) else {
                 return false;
@@ -520,9 +549,14 @@ mod tests {
             }
         };
         let (near, far) = MIC_DISTANCE_RANGE_M;
+        // Both pairs get what the one shared stand had.
+        let distance = f64::from(near) + 0.35 * f64::from(far - near);
+        let spacing = 0.75 * f64::from(MIC_SPACING_MAX_M);
         let migrated = Settings {
-            rotary_mic_distance: f64::from(near) + 0.35 * f64::from(far - near),
-            rotary_mic_spacing: 0.75 * f64::from(MIC_SPACING_MAX_M),
+            rotary_horn_mic_distance: distance,
+            rotary_horn_mic_spacing: spacing,
+            rotary_drum_mic_distance: distance,
+            rotary_drum_mic_spacing: spacing,
             ..Settings::default()
         };
 
@@ -540,7 +574,8 @@ mod tests {
         place_in_units(&mut version_six);
         assert!(restored.load_state(&version_six));
         assert_eq!(restored.settings, migrated);
-        assert_eq!(restored.settings.rotary_mic_offset, 0.0);
+        assert_eq!(restored.settings.rotary_horn_mic_offset, 0.0);
+        assert_eq!(restored.settings.rotary_drum_mic_offset, 0.0);
     }
 
     #[test]

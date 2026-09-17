@@ -464,8 +464,8 @@
     },
     {
       "index": 41,
-      "id": "rotary-mic-distance",
-      "name": "Mic Distance",
+      "id": "rotary-horn-mic-distance",
+      "name": "Horn Mic Distance",
       "page": "rotary",
       "order": 3,
       "kind": { "type": "float", "minimum": 0.12, "maximum": 1.7, "default": 0.35, "step": 0.005, "unit": "m" },
@@ -474,8 +474,8 @@
     },
     {
       "index": 42,
-      "id": "rotary-mic-spacing",
-      "name": "Mic Spacing",
+      "id": "rotary-horn-mic-spacing",
+      "name": "Horn Mic Spacing",
       "page": "rotary",
       "order": 4,
       "kind": { "type": "float", "minimum": 0.0, "maximum": 0.4, "default": 0.3, "step": 0.005, "unit": "m" },
@@ -564,8 +564,8 @@
     },
     {
       "index": 51,
-      "id": "rotary-mic-offset",
-      "name": "Mic Offset",
+      "id": "rotary-horn-mic-offset",
+      "name": "Horn Mic Offset",
       "page": "rotary",
       "order": 7,
       "kind": { "type": "float", "minimum": -0.5, "maximum": 0.5, "default": 0.0, "step": 0.005, "unit": "m" },
@@ -673,6 +673,36 @@
       "page": "rotary",
       "order": 14,
       "kind": { "type": "float", "minimum": -80.0, "maximum": 0.0, "default": 0.0, "step": 0.5, "unit": "dB" },
+      "flags": { "automatable": true },
+      "suggested_control": "knob"
+    },
+    {
+      "index": 61,
+      "id": "rotary-drum-mic-distance",
+      "name": "Drum Mic Distance",
+      "page": "rotary",
+      "order": 15,
+      "kind": { "type": "float", "minimum": 0.12, "maximum": 1.7, "default": 0.35, "step": 0.005, "unit": "m" },
+      "flags": { "automatable": true },
+      "suggested_control": "knob"
+    },
+    {
+      "index": 62,
+      "id": "rotary-drum-mic-spacing",
+      "name": "Drum Mic Spacing",
+      "page": "rotary",
+      "order": 16,
+      "kind": { "type": "float", "minimum": 0.0, "maximum": 0.4, "default": 0.3, "step": 0.005, "unit": "m" },
+      "flags": { "automatable": true },
+      "suggested_control": "knob"
+    },
+    {
+      "index": 63,
+      "id": "rotary-drum-mic-offset",
+      "name": "Drum Mic Offset",
+      "page": "rotary",
+      "order": 17,
+      "kind": { "type": "float", "minimum": -0.5, "maximum": 0.5, "default": 0.0, "step": 0.005, "unit": "m" },
       "flags": { "automatable": true },
       "suggested_control": "knob"
     }

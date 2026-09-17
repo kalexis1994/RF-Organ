@@ -4,10 +4,10 @@ use crate::captures::{C_NOTE, CHARACTER, F_NOTE, Level, note_frequency};
 use crate::signal::{decay_time, decibels, peak, rms, zero_crossing_frequency};
 use rf_organ_dsp::{
     ConsoleElectronics, DRAWBAR_COUNT, LEVEL_SILENT_DB, MANUAL_FIRST_NOTE, MANUAL_KEY_COUNT,
-    MainsFrequency, MatchingTransformer, MicrophoneArray, MicrophoneType, OrganEngine, OrganPart,
-    PercussionDecay, PercussionHarmonic, PercussionVolume, Rotary, RotaryGeometry, RotaryMode,
-    ScannerMode, ScannerVibrato, StopAngle, TransformerUnit, compartment_companions, drawbar_wheel,
-    gear_frequency,
+    MainsFrequency, MatchingTransformer, MicrophoneArray, MicrophonePair, MicrophoneType,
+    OrganEngine, OrganPart, PercussionDecay, PercussionHarmonic, PercussionVolume, Rotary,
+    RotaryGeometry, RotaryMode, RotaryPlacement, ScannerMode, ScannerVibrato, StopAngle,
+    TransformerUnit, compartment_companions, drawbar_wheel, gear_frequency,
 };
 use std::f64::consts::{PI, TAU};
 use std::fmt::Write as _;
@@ -1411,10 +1411,15 @@ struct GeometryPrediction {
     arrival_span_us: f64,
 }
 
-fn predict(geometry: RotaryGeometry, radius: f32, rotor_hz: f64) -> GeometryPrediction {
+fn predict(
+    geometry: RotaryGeometry,
+    place: RotaryPlacement,
+    radius: f32,
+    rotor_hz: f64,
+) -> GeometryPrediction {
     const STEPS: usize = 4096;
-    let distance = f64::from(geometry.mic_distance_m);
-    let half_width = f64::from(geometry.mic_half_width_m);
+    let distance = f64::from(place.distance_m);
+    let half_width = f64::from(place.half_width_m);
     let speed = f64::from(geometry.sound_speed_m_per_s);
     let radius = f64::from(radius);
     let angular = TAU * rotor_hz;
@@ -1517,12 +1522,12 @@ fn rotary_doppler_probe() -> (Vec<Measurement>, String) {
             f64::from(state.drum_speed_hz)
         };
         let geometry = rotary.geometry();
-        let radius = if horn {
-            geometry.horn_radius_m
+        let (radius, place) = if horn {
+            (geometry.horn_radius_m, geometry.horn)
         } else {
-            geometry.drum_radius_m
+            (geometry.drum_radius_m, geometry.drum)
         };
-        let prediction = predict(geometry, radius, rotor_hz);
+        let prediction = predict(geometry, place, radius, rotor_hz);
 
         // Demodulate both channels against the carrier: the drift of the
         // resulting phase is the Doppler shift, and its magnitude is the level.
@@ -1843,10 +1848,14 @@ fn rotary_capsule_probe() -> Vec<Measurement> {
         assert!(rotary.set_cabinet(0.0));
         assert!(rotary.set_levels(0.0, 0.0, LEVEL_SILENT_DB));
         rotary.set_microphone_type(capsule);
-        assert!(rotary.set_microphones(MicrophoneArray {
+        let stand = MicrophonePair {
             distance_m,
             spacing_m: 0.0,
             offset_m: 0.0,
+        };
+        assert!(rotary.set_microphones(MicrophoneArray {
+            horn: stand,
+            drum: stand,
             pattern,
         }));
         rotary.set_mode(RotaryMode::Brake);

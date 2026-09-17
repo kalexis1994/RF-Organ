@@ -82,6 +82,15 @@ switch can be delayed by up to a second before the rotor responds; and a time
 means the time to cross the whole speed range, so a shorter move takes
 proportionally less and the rate is what stays constant.
 
+Version 0.31.0 gives them a stand each as well. That manual's width, centre
+and distance are all listed per rotor, and RF-Organ had one of each shared
+between the two pairs, with the drum's centre wired to the negative of the
+horn's. The negation came from a note in the manual - that a positive value on
+the horn and a negative one on the drum emphasise the different directions the
+baffles approach from - which is advice to whoever is placing the microphones,
+not something the cabinet does on its own. Both pairs stand where they are put
+now, and that advice is available rather than enforced.
+
 Version 0.30.0 gives the horn and the drum a volume each, which is how that
 manual has them: three microphone volumes in decibels, from unity down through
 -76 to silence, one for each of the horn's pair, the drum's pair and the
