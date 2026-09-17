@@ -186,6 +186,14 @@ fn compare_suite(model: &Path, reference: &Path, destination: &Path) -> Result<(
         destination.join("console-fit-candidates.csv"),
         reports.console_fit_candidates,
     )?;
+    fs::write(
+        destination.join("taper-comparison.csv"),
+        reports.taper_comparison,
+    )?;
+    fs::write(
+        destination.join("taper-fit-candidates.csv"),
+        reports.taper_fit_candidates,
+    )?;
     println!(
         "RF_ORGAN_LAB_COMPARED model={} reference={} path={}",
         model.display(),
@@ -230,6 +238,11 @@ fn render_suite(destination: &Path, trims: captures::Trims) -> Result<(), Box<dy
             wav::encode_f32(&samples, 2, SAMPLE_RATE)?,
         )?;
     }
+    let sweep = captures::render_taper_sweep();
+    fs::write(
+        destination.join(format!("{}.wav", captures::TAPER_CAPTURE)),
+        wav::encode_f32(&sweep, 2, SAMPLE_RATE)?,
+    )?;
     let impulse = render_rotary_impulse();
     fs::write(
         destination.join("rotary-cabinet-impulse.wav"),

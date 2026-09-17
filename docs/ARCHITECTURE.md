@@ -166,7 +166,7 @@ microphones, so moving them back zooms out instead of pushing them off the
 edge. The parameter table the surface validates against is the engine's, not a
 copy of it; a range that moves in the DSP moves there too.
 
-## Version 0.34.0 limitations
+## Version 0.35.0 limitations
 
 - The classic B-3 pedal contact and resistor-panel topology is present. The
   L20 pedal-filter coefficient and console matching-network constants remain
@@ -192,6 +192,13 @@ copy of it; a range that moves in the DSP moves there too.
   describes it as rising with the number of notes held and exposes a control
   for that rate. The laboratory reports leakage against note count, which is
   where that gap will be closed.
+- The generator's per-wheel taper is every wheel at unity, which no real
+  generator is. It is a table rather than a constant because what replaces it
+  is a measurement: the laboratory renders a chromatic sweep, the comparator
+  reads a reference recording of the same sweep against it, and the fit it
+  emits is the table. Fitting the model against itself returns unity exactly,
+  which is what keeps the console's own frequency response out of a table that
+  is supposed to describe 91 wheels.
 - Leakage grows faster than what is played, at a rate that is a control of
   its own, which is how Hammond describes it. Measured against the notes that
   caused it, the leakage climbs 7.2 dB between one note and eight; with the

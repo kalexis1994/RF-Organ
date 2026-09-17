@@ -297,7 +297,8 @@ impl TonewheelBank {
                 eccentric_rotation_cosine,
                 frequency,
                 increment,
-                level: 1.0,
+                // Whatever the generator's own filters leave of this wheel.
+                level: crate::taper::TAPER[index],
             };
         }
         Self {

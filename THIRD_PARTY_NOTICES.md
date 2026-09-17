@@ -71,6 +71,25 @@ licence applies to them. Their subject is the drawbar layout every tonewheel
 console shares - two brown, four white and three black - which Hammond's
 manual refers to when it calls the 2 2/3' the first black drawbar.
 
+## Generator taper
+
+Version 0.35.0 does not add a taper. It adds the table the taper goes in, and
+the machinery that fills it from a real instrument, and it says plainly that
+the table is currently every wheel at unity.
+
+What the taper physically is, the service manual does give: "there are filters
+consisting of small transformers and condensers associated with certain
+frequencies", each having "a single tapped winding" whose tap is grounded, so
+that the side "connected to the corresponding magnet coil through a condenser,
+forms a resonant circuit for the fundamental frequency of that coil", which
+"tends to emphasize the fundamental and suppress harmonics". Which wheels carry
+one appears only in two figures, and the scans of those figures cannot be read.
+
+So `crates/rf-organ-dsp/src/taper.rs` holds 91 unity entries and says why, and
+`rf-organ-lab compare` produces the replacement from a chromatic capture of a
+console. A real generator is not flat here; RF-Organ is, and says so rather
+than inventing a curve that would sound like a measurement.
+
 ## Leakage rate documentation
 
 Version 0.34.0 takes the growth of the leakage from the XK-7 manual, which

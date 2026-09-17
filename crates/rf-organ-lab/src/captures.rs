@@ -7,9 +7,9 @@
 //! in `docs/CALIBRATION.md` lines up with the generated files.
 
 use rf_organ_dsp::{
-    DRAWBAR_COUNT, MANUAL_FIRST_NOTE, MatchingTransformer, OrganEngine, OrganPart,
-    PEDAL_DRAWBAR_COUNT, PercussionDecay, PercussionHarmonic, PercussionVolume, RotaryMode,
-    ScannerMode, TransformerUnit, drawbar_wheel, gear_frequency,
+    DRAWBAR_COUNT, MANUAL_FIRST_NOTE, MANUAL_KEY_COUNT, MatchingTransformer, OrganEngine,
+    OrganPart, PEDAL_DRAWBAR_COUNT, PercussionDecay, PercussionHarmonic, PercussionVolume,
+    RotaryMode, ScannerMode, TransformerUnit, drawbar_wheel, gear_frequency,
 };
 use std::f64::consts::{PI, TAU};
 
@@ -39,6 +39,20 @@ pub const PHRASE_CAPTURES: [&str; 9] = [
     "09-pedal-16ft-8ft",
 ];
 pub const IMPULSE_CAPTURE: &str = "rotary-cabinet-impulse";
+
+/// The chromatic pass that a per-wheel taper is read off. It is not in
+/// [`capture_names`]: those are phrases, compared to each other whole and
+/// gated as such, and this is a sweep of sixty-one separate notes that is
+/// read one stretch at a time.
+pub const TAPER_CAPTURE: &str = "generator-taper-sweep";
+/// Seconds each key is held, and the silence after it. Long enough for a
+/// steady reading, short enough that the whole manual fits in a file somebody
+/// will actually record.
+pub const TAPER_KEY_SECONDS: f64 = 0.2;
+pub const TAPER_GAP_SECONDS: f64 = 0.05;
+/// The drawbar the sweep uses. Eight foot is the fundamental, so the wheel
+/// under each key is the one that key is named after.
+pub const TAPER_BUS: usize = 2;
 /// Key struck in the percussion captures, and the registration behind it. The
 /// 888 registration puts nothing on the 2 2/3' bus, so the third-harmonic
 /// percussion stands alone in the spectrum at three times the 8' frequency.
@@ -419,6 +433,54 @@ pub fn capture_names() -> Vec<&'static str> {
         .chain(EXPRESSION_CAPTURES.iter().map(|capture| capture.id))
         .chain([IMPULSE_CAPTURE])
         .collect()
+}
+
+/// Renders the chromatic pass a taper is read off: every key of the upper
+/// manual in turn, on the eight foot alone, each held for the same time with
+/// the same silence after it.
+///
+/// Everything that could colour one key differently from another is turned
+/// off - no vibrato, no percussion, no rotary, no leakage, no drive wobble,
+/// the console flat and the expression wide open - so that what is left
+/// between one key and the next is the generator.
+pub fn render_taper_sweep() -> Vec<f32> {
+    let rate = SAMPLE_RATE as f64;
+    let held = (TAPER_KEY_SECONDS * rate) as usize;
+    let gap = (TAPER_GAP_SECONDS * rate) as usize;
+    let mut engine = OrganEngine::new(SAMPLE_RATE as f32).expect("valid engine");
+    for drawbar in 0..DRAWBAR_COUNT {
+        let position = if drawbar == TAPER_BUS { 8 } else { 0 };
+        let _ = engine.set_manual_drawbar(OrganPart::Upper, drawbar, position);
+        let _ = engine.set_manual_drawbar(OrganPart::Lower, drawbar, 0);
+    }
+    for drawbar in 0..PEDAL_DRAWBAR_COUNT {
+        let _ = engine.set_manual_drawbar(OrganPart::Pedal, drawbar, 0);
+    }
+    let _ = engine.set_output_level(1.0);
+    let _ = engine.set_expression(1.0);
+    let _ = engine.set_console(0.0, 0.0, 0.0);
+    let _ = engine.set_transformer(CHARACTER.0, CHARACTER.1);
+    let _ = engine.set_leakage(0.0);
+    let _ = engine.set_drive_wobble(0.0);
+    let _ = engine.set_eccentricity(0.0);
+    engine.set_scanner_mode(ScannerMode::Off);
+    engine.set_scanner_manuals(false, false);
+    engine.set_rotary_mode(RotaryMode::Off);
+    engine.set_percussion_enabled(false);
+
+    let mut output = Vec::with_capacity(MANUAL_KEY_COUNT * (held + gap) * 2);
+    for key in 0..MANUAL_KEY_COUNT {
+        let note = MANUAL_FIRST_NOTE + key as u8;
+        let _ = engine.note_on_part(OrganPart::Upper, note, 1.0);
+        for _ in 0..held {
+            output.extend_from_slice(&engine.next_sample());
+        }
+        engine.all_notes_off();
+        for _ in 0..gap {
+            output.extend_from_slice(&engine.next_sample());
+        }
+    }
+    output
 }
 
 /// Renders one expression capture: the pedal parked at a documented

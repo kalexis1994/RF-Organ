@@ -12,6 +12,7 @@ mod pedal;
 mod percussion;
 mod rotary;
 mod scanner;
+mod taper;
 mod tonewheel;
 mod transformer;
 mod vibrato_line;
@@ -31,6 +32,7 @@ pub use rotary::{
     RotaryGeometry, RotaryMode, RotaryPlacement, SUB_LEVEL_DEFAULT_DB, StopAngle,
 };
 pub use scanner::{ScannerMode, ScannerVibrato};
+pub use taper::TAPER;
 pub use tonewheel::{TONEWHEEL_COUNT, gear_frequency, gear_teeth};
 pub use transformer::{MatchingTransformer, TransformerDiagnostics, TransformerUnit};
 pub use vibrato_line::ROTOR_HZ as SCANNER_ROTOR_HZ;

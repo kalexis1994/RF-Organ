@@ -416,6 +416,30 @@ A dynamic capsule reads 2.0 dB below a condenser at 10 kHz and 0.8 dB above it
 at 4 kHz. Both numbers are provisional and describe no particular microphone.
 To measure this properly you would need to know which two Hammond modelled.
 
+## Taper protocol
+
+`generator-taper-sweep.wav` holds every key of the upper manual in turn on the
+eight foot alone, 200 ms each with 50 ms of silence after it, with everything
+that could colour one key differently from another switched off. Record a
+console playing the same thing and `rf-organ-lab compare` writes
+`taper-comparison.csv` and `taper-fit-candidates.csv`: one line per wheel, the
+level to put in `crates/rf-organ-dsp/src/taper.rs`, and a status saying
+whether that wheel was readable at all.
+
+The fit divides the reference by the model rather than by a flat line. That is
+the whole of its correctness: the transformers, the tube stages and the tone
+control colour every wheel too, and they are already in the model's reading,
+so dividing them out is what leaves the generator. A test renders the sweep,
+fits it against itself, and requires every wheel to come back at 1.000000 -
+if the fit returned the console's frequency response instead, that test would
+fail, and the table would have quietly acquired the whole signal chain.
+
+Wheels the sweep cannot reach are left alone rather than guessed: the eight
+foot covers the wheels the manual's keys name and no others, and the candidate
+file says so per wheel. Wheels that read more than 12 dB above or 20 dB below
+the middle of the sweep are refused, because a generator that far out needs a
+service call rather than a table entry.
+
 ## Leakage protocol
 
 The `leakage-` rows of `measurements.csv` play one, two, four and eight notes

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+use crate::captures;
 use crate::captures::{
     C_NOTE, CHARACTER, EXPRESSION_CAPTURES, EXPRESSION_CHARACTER, EXPRESSION_HIGH, EXPRESSION_LOW,
     EXPRESSION_MID, ExpressionCapture, F_NOTE, Level, NO_TRIM, Notes, PERCUSSION_CAPTURES,
@@ -7,8 +8,8 @@ use crate::captures::{
     note_frequency, transformer_capture, transformer_steady_frames, trim_for,
 };
 use crate::wav::{self, Audio};
-use rf_organ_dsp::gear_frequency;
 use rf_organ_dsp::{ConsoleElectronics, PercussionDecay, PercussionVolume};
+use rf_organ_dsp::{MANUAL_FIRST_NOTE, MANUAL_KEY_COUNT, drawbar_wheel, gear_frequency};
 use std::collections::BTreeMap;
 use std::f64::consts::TAU;
 use std::fmt::Write as _;
@@ -16,6 +17,12 @@ use std::fs;
 use std::path::Path;
 
 const SAMPLE_RATE: u32 = 48_000;
+/// How far from the middle of a chromatic sweep a wheel may sit and still be
+/// believed to be a taper rather than a fault, a wrong note or a bad
+/// recording. A generator that really is 20 dB down on one wheel needs a
+/// service call, not a table entry.
+const TAPER_CEILING_DB: f64 = 12.0;
+const TAPER_FLOOR_DB: f64 = -20.0;
 const PEDAL_HARMONICS: [(usize, usize); 8] = [
     (1, 0),
     (2, 12),
@@ -37,6 +44,8 @@ pub struct Reports {
     pub percussion_fit_candidates: String,
     pub expression_comparison: String,
     pub console_fit_candidates: String,
+    pub taper_comparison: String,
+    pub taper_fit_candidates: String,
     pub reference_quality: String,
 }
 
@@ -132,6 +141,7 @@ pub fn compare_directories(model: &Path, reference: &Path) -> Result<Reports, St
         compare_percussion_captures(model, reference, &quality)?;
     let (expression_comparison, console_fit_candidates) =
         compare_expression_captures(model, reference, &quality)?;
+    let (taper_comparison, taper_fit_candidates) = compare_taper_captures(model, reference)?;
     Ok(Reports {
         capture_comparison: report,
         pedal_spectrum_comparison,
@@ -142,8 +152,136 @@ pub fn compare_directories(model: &Path, reference: &Path) -> Result<Reports, St
         percussion_fit_candidates,
         expression_comparison,
         console_fit_candidates,
+        taper_comparison,
+        taper_fit_candidates,
         reference_quality,
     })
+}
+
+/// Reads a per-wheel taper off a chromatic capture.
+///
+/// The sweep holds every key of the upper manual in turn on the eight foot
+/// alone, so each held stretch is one wheel and nothing else. Measuring that
+/// wheel's own frequency in its own stretch gives the level the generator
+/// let through, and the whole list normalised to its own middle is the taper.
+///
+/// Two things this deliberately does not do. It does not touch wheels the
+/// sweep never reached - the eight foot covers the wheels the manual's keys
+/// name and no others - and it does not report a wheel whose stretch was too
+/// quiet or clipped to read. A taper is a table of measurements, and a table
+/// with guesses in it is worse than a short one.
+fn compare_taper_captures(model: &Path, reference: &Path) -> Result<(String, String), String> {
+    let name = format!("{}.wav", captures::TAPER_CAPTURE);
+    let reference_path = reference.join(&name);
+    if !reference_path.is_file() {
+        return Ok((
+            String::from("status\nno taper sweep in the reference directory\n"),
+            String::from("status\nno taper sweep in the reference directory\n"),
+        ));
+    }
+    let model_path = model.join(&name);
+    if !model_path.is_file() {
+        return Err(format!(
+            "model taper sweep is missing: {}",
+            model_path.display()
+        ));
+    }
+    let model_audio = read_audio(&model_path)?;
+    let reference_audio = read_audio(&reference_path)?;
+
+    let mut comparison = String::from(
+        "key,midi_note,wheel,frequency_hz,model_dbfs,reference_dbfs,reference_minus_model_db,status\n",
+    );
+    let mut candidates = String::from("wheel,level,decibels,status\n");
+    let mut levels: Vec<(usize, f64)> = Vec::new();
+    let mut rows: Vec<(usize, u8, usize, f64, f64, f64)> = Vec::new();
+
+    for key in 0..MANUAL_KEY_COUNT {
+        let note = MANUAL_FIRST_NOTE + key as u8;
+        let wheel = drawbar_wheel(key, captures::TAPER_BUS)
+            .ok_or_else(|| format!("no eight foot wheel for key {key}"))?;
+        let frequency = f64::from(gear_frequency(wheel).ok_or_else(|| "missing wheel".to_owned())?);
+        let model_level = taper_stretch(&model_audio, key, frequency)?;
+        let reference_level = taper_stretch(&reference_audio, key, frequency)?;
+        rows.push((key, note, wheel, frequency, model_level, reference_level));
+        // What the taper has to explain is the part the model does not: the
+        // console, the transformers and the stages after the generator colour
+        // every wheel too, and they are already in the model's own reading.
+        // Dividing that out is what makes fitting the model against itself
+        // return the flat table it started with, instead of handing back the
+        // console's frequency response as though the generator had made it.
+        if reference_level.is_finite() && model_level.is_finite() {
+            levels.push((wheel, reference_level - model_level));
+        }
+    }
+
+    // The middle of what was read, so the table says how the wheels differ
+    // from each other rather than how loud the recording was.
+    let mut sorted: Vec<f64> = levels.iter().map(|(_, level)| *level).collect();
+    sorted.sort_by(|a, b| a.partial_cmp(b).expect("finite levels"));
+    let middle = if sorted.is_empty() {
+        0.0
+    } else {
+        sorted[sorted.len() / 2]
+    };
+
+    for (key, note, wheel, frequency, model_level, reference_level) in rows {
+        let excess = reference_level - model_level - middle;
+        let status = if !reference_level.is_finite() || !model_level.is_finite() {
+            "unreadable"
+        } else if excess > TAPER_CEILING_DB {
+            "louder than a taper explains"
+        } else if excess < TAPER_FLOOR_DB {
+            "quieter than a taper explains"
+        } else {
+            "read"
+        };
+        writeln!(
+            &mut comparison,
+            "{key},{note},{wheel},{frequency:.6},{model_level:.6},{reference_level:.6},{:.6},{status}",
+            reference_level - model_level
+        )
+        .expect("string write cannot fail");
+        if status == "read" {
+            let decibels = excess;
+            writeln!(
+                &mut candidates,
+                "{wheel},{:.6},{decibels:.6},read",
+                10.0_f64.powf(decibels / 20.0)
+            )
+            .expect("string write cannot fail");
+        } else {
+            writeln!(&mut candidates, "{wheel},,,{status}").expect("string write cannot fail");
+        }
+    }
+    Ok((comparison, candidates))
+}
+
+/// How loud one wheel was during its own stretch of the sweep, in dBFS, or
+/// not a number when that stretch is not worth reading.
+fn taper_stretch(audio: &Audio, key: usize, frequency: f64) -> Result<f64, String> {
+    let rate = audio.sample_rate as f64;
+    let step = (captures::TAPER_KEY_SECONDS + captures::TAPER_GAP_SECONDS) * rate;
+    let start = (key as f64 * step + 0.25 * captures::TAPER_KEY_SECONDS * rate) as usize;
+    let end = (key as f64 * step + 0.9 * captures::TAPER_KEY_SECONDS * rate) as usize;
+    if end > audio.frames.len() {
+        return Err(format!(
+            "the taper sweep is too short: key {key} needs {end} frames and there are {}",
+            audio.frames.len()
+        ));
+    }
+    let window = &audio.frames[start..end];
+    if window
+        .iter()
+        .any(|frame| frame[0].abs() >= 0.999 || frame[1].abs() >= 0.999)
+    {
+        return Ok(f64::NAN);
+    }
+    let amplitude = spectral_amplitude(window, frequency);
+    if amplitude <= 0.0 {
+        return Ok(f64::NAN);
+    }
+    Ok(decibels(amplitude))
 }
 
 fn compare_pedal_captures(
@@ -1937,6 +2075,63 @@ mod tests {
     }
 
     /// The estimator sees the expression network through the transformers, so
+    /// A taper read off the model itself has to come back flat, because the
+    /// model's taper is flat. Anything else means the fit is handing back the
+    /// console's own frequency response - the transformers, the stages, the
+    /// tone control - and calling it the generator, which would bake the
+    /// whole chain into a table that is supposed to describe 91 wheels.
+    #[test]
+    fn a_taper_fit_of_the_model_against_itself_returns_a_flat_table() {
+        let sweep = captures::render_taper_sweep();
+        let audio = Audio {
+            sample_rate: SAMPLE_RATE,
+            frames: sweep
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .map(|frame| [f64::from(frame[0]), f64::from(frame[1])])
+                .collect(),
+        };
+        let mut read = 0;
+        let mut worst = 0.0_f64;
+        for key in 0..MANUAL_KEY_COUNT {
+            let wheel = drawbar_wheel(key, captures::TAPER_BUS).expect("eight foot wheel");
+            let frequency = f64::from(gear_frequency(wheel).expect("wheel"));
+            let level = taper_stretch(&audio, key, frequency).expect("long enough");
+            assert!(level.is_finite(), "key {key} was unreadable");
+            // Reference against model is the same recording here, so the
+            // excess is exactly zero before any normalising.
+            worst = worst.max((level - level).abs());
+            read += 1;
+        }
+        assert_eq!(read, MANUAL_KEY_COUNT);
+        assert_eq!(worst, 0.0);
+
+        // And through the whole fit, where the normalising happens too.
+        let directory = std::env::temp_dir().join("rf-organ-taper-identity");
+        let _ = fs::create_dir_all(&directory);
+        let path = directory.join(format!("{}.wav", captures::TAPER_CAPTURE));
+        fs::write(
+            &path,
+            wav::encode_f32(&sweep, 2, SAMPLE_RATE).expect("encode"),
+        )
+        .expect("write sweep");
+        let (_, candidates) = compare_taper_captures(&directory, &directory).expect("the fit runs");
+        let mut rows = 0;
+        for line in candidates.lines().skip(1) {
+            let fields = line.split(',').collect::<Vec<_>>();
+            assert_eq!(fields[3], "read", "{line}");
+            let level: f64 = fields[1].parse().expect("level");
+            assert!(
+                (level - 1.0).abs() < 1.0e-6,
+                "the fit found a taper in a flat generator: {line}"
+            );
+            rows += 1;
+        }
+        assert_eq!(rows, MANUAL_KEY_COUNT);
+        let _ = fs::remove_dir_all(&directory);
+    }
+
     /// it is biased. Correcting with the model's own fit has to return the
     /// coefficient the model actually uses whenever reference and model agree.
     #[test]
