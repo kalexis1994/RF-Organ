@@ -416,6 +416,21 @@ A dynamic capsule reads 2.0 dB below a condenser at 10 kHz and 0.8 dB above it
 at 4 kHz. Both numbers are provisional and describe no particular microphone.
 To measure this properly you would need to know which two Hammond modelled.
 
+## Leakage protocol
+
+The `leakage-` rows of `measurements.csv` play one, two, four and eight notes
+and report, for each, the companions' level against the played wheels' own:
+-28.2, -26.8, -24.5 and -21.0 dBc. What matters is that those four differ.
+Leakage that merely followed the notes would keep the same level against them
+and the four would be one number, which is what this reported before the rate
+existed.
+
+A real console gives this up easily. Play one note, record; play eight,
+record; measure each compartment companion against the wheel that keyed it.
+The difference between the two chords is the rate, and it is the only quantity
+here that is not already provisional - the steepness RF-Organ uses was chosen
+to sit in the middle of its control.
+
 ## Drive protocol
 
 `drive-wobble.csv` and the `wobble-` rows of `measurements.csv` hold two notes

@@ -735,6 +735,16 @@
       "kind": { "type": "float", "minimum": 0.0, "maximum": 1.0, "default": 1.0, "step": 0.001 },
       "flags": { "automatable": true },
       "suggested_control": "knob"
+    },
+    {
+      "index": 67,
+      "id": "generator-leakage-boost",
+      "name": "Leakage Boost",
+      "page": "generator",
+      "order": 12,
+      "kind": { "type": "float", "minimum": 0.0, "maximum": 1.0, "default": 0.5, "step": 0.001 },
+      "flags": { "automatable": true },
+      "suggested_control": "knob"
     }
   ],
   "semantic_controls": [

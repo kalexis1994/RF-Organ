@@ -166,7 +166,7 @@ microphones, so moving them back zooms out instead of pushing them off the
 edge. The parameter table the surface validates against is the engine's, not a
 copy of it; a range that moves in the DSP moves there too.
 
-## Version 0.33.0 limitations
+## Version 0.34.0 limitations
 
 - The classic B-3 pedal contact and resistor-panel topology is present. The
   L20 pedal-filter coefficient and console matching-network constants remain
@@ -192,6 +192,11 @@ copy of it; a range that moves in the DSP moves there too.
   describes it as rising with the number of notes held and exposes a control
   for that rate. The laboratory reports leakage against note count, which is
   where that gap will be closed.
+- Leakage grows faster than what is played, at a rate that is a control of
+  its own, which is how Hammond describes it. Measured against the notes that
+  caused it, the leakage climbs 7.2 dB between one note and eight; with the
+  rate at zero it stays within 1.5 dB, which is where this was before. The
+  steepness is provisional.
 - The drive is resiliently coupled at every joint, which is what the service
   manual describes, so the shaft does not turn perfectly evenly and the 91
   wheels geared to it stray together. The depth, the rate the motor's coupling

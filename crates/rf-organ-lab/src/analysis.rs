@@ -721,6 +721,7 @@ fn generator_leakage_probe() -> Result<(Vec<Measurement>, String), String> {
 ",
     );
     let mut measurements = Vec::new();
+    let mut relatives = Vec::new();
     for (name, notes) in CHORDS {
         let mut engine = clean_engine()?;
         assert!(engine.set_leakage(0.2));
@@ -767,6 +768,7 @@ fn generator_leakage_probe() -> Result<(Vec<Measurement>, String), String> {
             decibels(leakage)
         )
         .expect("string write cannot fail");
+        relatives.push(relative);
         measurements.push(Measurement {
             probe: match name {
                 "one" => "leakage-one-note",
@@ -779,6 +781,19 @@ fn generator_leakage_probe() -> Result<(Vec<Measurement>, String), String> {
             unit: "dBc",
         });
     }
+    // Hammond's own control is over "the rate at which the Leakage Tone
+    // increases as more notes are played simultaneously", so the measurement
+    // that matters is not the level at any one chord but how much the level
+    // rises between one note and eight.
+    if let (Some(one), Some(eight)) = (relatives.first(), relatives.last()) {
+        measurements.push(Measurement {
+            probe: "leakage-rise",
+            metric: "one-note-to-eight",
+            value: eight - one,
+            unit: "dB",
+        });
+    }
+
     Ok((measurements, csv))
 }
 
@@ -2226,15 +2241,84 @@ mod tests {
             let paired: usize = fields[2].parse().expect("paired");
             assert!(paired >= keys * 2, "{line}");
         }
-        assert!(value("leakage-eight-notes") > value("leakage-one-note"));
-        for probe in [
+        // It has to rise at every step, not only between the ends: a leakage
+        // that merely tracked the notes being played would keep the same
+        // level against them and this would be flat.
+        let steps = [
             "leakage-one-note",
             "leakage-two-notes",
             "leakage-four-notes",
             "leakage-eight-notes",
-        ] {
+        ];
+        for pair in steps.windows(2) {
+            assert!(
+                value(pair[1]) > value(pair[0]) + 0.5,
+                "{} did not rise over {}: {} against {}",
+                pair[1],
+                pair[0],
+                value(pair[1]),
+                value(pair[0])
+            );
+        }
+        for probe in steps {
             assert!(value(probe) < 0.0, "{probe} leaked at {}", value(probe));
         }
+        let rise = measurements
+            .iter()
+            .find(|measurement| measurement.probe == "leakage-rise")
+            .expect("rise")
+            .value;
+        assert!(
+            (2.0..20.0).contains(&rise),
+            "eight notes leaked {rise} dB over one"
+        );
+    }
+
+    /// With the rate turned off the leakage keeps step with what is played,
+    /// which is what this did before the rate existed. That case has to
+    /// remain reachable, because it is the one a measurement would tell us to
+    /// go back to.
+    #[test]
+    fn the_leakage_rate_can_be_turned_off() {
+        let level = |boost: f32, notes: &[u8]| {
+            let mut engine = clean_engine().unwrap();
+            assert!(engine.set_leakage(0.2));
+            assert!(engine.set_leakage_boost(boost));
+            assert!(engine.set_manual_drawbar(OrganPart::Upper, 2, 8));
+            for note in notes {
+                assert!(engine.note_on_part(OrganPart::Upper, *note, 1.0));
+            }
+            let mut samples = Vec::new();
+            for frame in 0..SAMPLE_RATE * 3 / 4 {
+                let sample = f64::from(engine.next_sample()[0]);
+                if frame >= SAMPLE_RATE / 4 {
+                    samples.push(sample);
+                }
+            }
+            let mut played = 0.0;
+            let mut leaked = 0.0;
+            for note in notes {
+                let key = usize::from(note - MANUAL_FIRST_NOTE);
+                let wheel = drawbar_wheel(key, 2).expect("wheel");
+                let amplitude =
+                    spectral_amplitude(&samples, f64::from(gear_frequency(wheel).expect("wheel")));
+                played += amplitude * amplitude;
+                for companion in compartment_companions(wheel).into_iter().flatten() {
+                    let leak = spectral_amplitude(
+                        &samples,
+                        f64::from(gear_frequency(companion).expect("companion")),
+                    );
+                    leaked += leak * leak;
+                }
+            }
+            decibels(leaked.sqrt() / played.sqrt())
+        };
+        let one = level(0.0, &[48]);
+        let eight = level(0.0, &[36, 40, 43, 47, 48, 52, 55, 59]);
+        assert!(
+            (eight - one).abs() < 1.5,
+            "with the rate off the leakage still moved: {one} to {eight} dBc"
+        );
     }
 
     #[test]

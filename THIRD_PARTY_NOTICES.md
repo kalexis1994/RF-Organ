@@ -71,6 +71,22 @@ licence applies to them. Their subject is the drawbar layout every tonewheel
 console shares - two brown, four white and three black - which Hammond's
 manual refers to when it calls the 2 2/3' the first black drawbar.
 
+## Leakage rate documentation
+
+Version 0.34.0 takes the growth of the leakage from the XK-7 manual, which
+gives a control over "the rate at which the Leakage Tone increases as more
+notes are played simultaneously", with a higher setting causing it to
+"increase at a faster rate". RF-Organ had leakage that grew with what was
+played and therefore stayed at the same level against it, which is not what
+that sentence describes.
+
+The reason there is a rate to set is not in that manual, but it follows from
+the service manual's wiring: what leaks onto a busbar arrives from the whole
+generator through the harness, and every contact that closes gives it another
+way in, while the note a key asked for only grows by that one key. How
+steeply it grows, and where the control sits by default, are not published, so
+both are provisional; that it grows, and that the rate is a control, are not.
+
 ## Generator drive documentation
 
 Version 0.33.0 takes the drive from the Hammond service manual, which

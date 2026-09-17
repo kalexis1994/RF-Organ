@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 use rf_organ_dsp::{
     DRAWBAR_COUNT, DRUM_RADIUS_DEFAULT_M, DRUM_RADIUS_RANGE_M, HORN_RADIUS_DEFAULT_M,
-    HORN_RADIUS_RANGE_M, LEVEL_RANGE_DB, LEVEL_SILENT_DB, MIC_DISTANCE_DEFAULT_M,
-    MIC_DISTANCE_RANGE_M, MIC_OFFSET_MAX_M, MIC_PATTERN_DEFAULT, MIC_SPACING_DEFAULT_M,
-    MIC_SPACING_MAX_M, MainsFrequency, MicrophoneArray, MicrophonePair, MicrophoneType,
-    OrganEngine, OrganPart, PEDAL_DRAWBAR_COUNT, PercussionDecay, PercussionHarmonic,
-    PercussionVolume, RotaryMode, SUB_LEVEL_DEFAULT_DB, ScannerMode, StopAngle, TransformerUnit,
+    HORN_RADIUS_RANGE_M, LEAKAGE_BOOST_DEFAULT, LEVEL_RANGE_DB, LEVEL_SILENT_DB,
+    MIC_DISTANCE_DEFAULT_M, MIC_DISTANCE_RANGE_M, MIC_OFFSET_MAX_M, MIC_PATTERN_DEFAULT,
+    MIC_SPACING_DEFAULT_M, MIC_SPACING_MAX_M, MainsFrequency, MicrophoneArray, MicrophonePair,
+    MicrophoneType, OrganEngine, OrganPart, PEDAL_DRAWBAR_COUNT, PercussionDecay,
+    PercussionHarmonic, PercussionVolume, RotaryMode, SUB_LEVEL_DEFAULT_DB, ScannerMode, StopAngle,
+    TransformerUnit,
 };
 
-pub const PARAMETER_COUNT: usize = 67;
+pub const PARAMETER_COUNT: usize = 68;
 /// Bipolar per-transformer calibration trims, ordered T1, T2, T3.
 pub const TRANSFORMER_TRIM_FIRST: u32 = 45;
 pub const DRAWBAR_FIRST: u32 = 2;
@@ -29,6 +30,8 @@ pub struct Settings {
     /// How far the resiliently coupled drive is allowed to stray from its
     /// nominal speed.
     pub drive_wobble: f64,
+    /// How fast the leakage grows as more keys go down.
+    pub leakage_boost: f64,
     pub transformer_drive: f64,
     pub transformer_hysteresis: f64,
     pub rotary_mode: RotaryMode,
@@ -92,6 +95,7 @@ impl Default for Settings {
             contact_bounce: 0.45,
             leakage: 0.2,
             drive_wobble: 1.0,
+            leakage_boost: LEAKAGE_BOOST_DEFAULT as f64,
             transformer_drive: 0.38,
             transformer_hysteresis: 0.32,
             rotary_mode: RotaryMode::Off,
@@ -145,6 +149,7 @@ impl Settings {
             && unit(self.contact_bounce)
             && unit(self.leakage)
             && unit(self.drive_wobble)
+            && unit(self.leakage_boost)
             && unit(self.transformer_drive)
             && unit(self.transformer_hysteresis)
             && unit(self.rotary_mix)
@@ -240,6 +245,7 @@ impl Settings {
             64 => bool_value(self.rotary_horn_mic_sides),
             65 => bool_value(self.rotary_drum_mic_sides),
             66 => self.drive_wobble,
+            67 => self.leakage_boost,
             52 => self.rotary_mic_pattern,
             53 => self.rotary_horn_radius,
             54 => self.rotary_drum_radius,
@@ -319,6 +325,7 @@ impl Settings {
             64 if value == 0.0 || value == 1.0 => self.rotary_horn_mic_sides = value == 1.0,
             65 if value == 0.0 || value == 1.0 => self.rotary_drum_mic_sides = value == 1.0,
             66 => self.drive_wobble = value,
+            67 => self.leakage_boost = value,
             52 => self.rotary_mic_pattern = value,
             53 => self.rotary_horn_radius = value,
             54 => self.rotary_drum_radius = value,
@@ -354,6 +361,7 @@ impl Settings {
         let _ = engine.set_contact_bounce(self.contact_bounce as f32);
         let _ = engine.set_leakage(self.leakage as f32);
         let _ = engine.set_drive_wobble(self.drive_wobble as f32);
+        let _ = engine.set_leakage_boost(self.leakage_boost as f32);
         let _ = engine.set_transformer(
             self.transformer_drive as f32,
             self.transformer_hysteresis as f32,

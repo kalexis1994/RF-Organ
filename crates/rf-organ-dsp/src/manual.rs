@@ -2,6 +2,13 @@
 use crate::tonewheel::TONEWHEEL_COUNT;
 
 pub const DRAWBAR_COUNT: usize = 9;
+
+/// How much louder the leakage gets for each extra key held, at the top of
+/// the rate control. Provisional: Hammond publishes that the rate exists and
+/// is adjustable, not what it is.
+const LEAKAGE_PER_KEY: f32 = 0.35;
+/// Where that rate control starts, which is also provisional.
+pub const LEAKAGE_BOOST_DEFAULT: f32 = 0.5;
 pub const MANUAL_FIRST_NOTE: u8 = 36;
 pub const MANUAL_KEY_COUNT: usize = 61;
 const MANUAL_LAST_NOTE: u8 = MANUAL_FIRST_NOTE + MANUAL_KEY_COUNT as u8 - 1;
@@ -124,6 +131,9 @@ pub struct Manual {
     contact_spread: f32,
     contact_bounce: f32,
     event_counter: u32,
+    /// Keys down right now, which is what the leakage grows with.
+    held: u8,
+    leakage_boost: f32,
 }
 
 impl Manual {
@@ -136,6 +146,8 @@ impl Manual {
             contact_spread: 0.55,
             contact_bounce: 0.45,
             event_counter: 0,
+            held: 0,
+            leakage_boost: LEAKAGE_BOOST_DEFAULT,
         };
         for key in 0..MANUAL_KEY_COUNT {
             for bus in 0..DRAWBAR_COUNT {
@@ -186,6 +198,7 @@ impl Manual {
             return true;
         }
         self.keys[key].active = true;
+        self.held = self.held.saturating_add(1);
         self.schedule_key(key, true, velocity);
         true
     }
@@ -201,6 +214,7 @@ impl Manual {
             return true;
         }
         self.keys[key].active = false;
+        self.held = self.held.saturating_sub(1);
         self.schedule_key(key, false, velocity.max(0.25));
         true
     }
@@ -251,12 +265,36 @@ impl Manual {
         }
     }
 
+    /// How fast the leakage grows as more keys go down.
+    ///
+    /// Hammond gives this as a control of its own, over "the rate at which the
+    /// Leakage Tone increases as more notes are played simultaneously". The
+    /// reason there is a rate to set is that the leakage arriving at a busbar
+    /// comes from the whole generator through the harness, and every contact
+    /// that closes gives it another way in - so it grows with the keys held
+    /// while the note each key asked for only grows with that key. What is
+    /// documented is that it grows and that the rate is adjustable; how
+    /// steeply is not, so the step per key is provisional.
+    pub fn set_leakage_boost(&mut self, rate: f32) -> bool {
+        if !unit(rate) {
+            return false;
+        }
+        self.leakage_boost = rate;
+        true
+    }
+
+    /// What the leakage is multiplied by with this many keys down.
+    fn leakage_gain(&self) -> f32 {
+        1.0 + self.leakage_boost * LEAKAGE_PER_KEY * f32::from(self.held.saturating_sub(1))
+    }
+
     pub fn sample(
         &self,
         wheels: &[f32; TONEWHEEL_COUNT],
         leakage: f32,
         suppress_ninth_drawbar: bool,
     ) -> f32 {
+        let leakage = leakage * self.leakage_gain();
         let mut output = 0.0;
         for (index, gain) in self.wheel_gains.iter().copied().enumerate() {
             if gain == 0.0 {

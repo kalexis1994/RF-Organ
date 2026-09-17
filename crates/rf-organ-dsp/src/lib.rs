@@ -18,7 +18,8 @@ mod vibrato_line;
 
 pub use electronics::{ConsoleElectronics, ConsoleElectronicsDiagnostics};
 pub use manual::{
-    DRAWBAR_COUNT, MANUAL_FIRST_NOTE, MANUAL_KEY_COUNT, compartment_companions, drawbar_wheel,
+    DRAWBAR_COUNT, LEAKAGE_BOOST_DEFAULT, MANUAL_FIRST_NOTE, MANUAL_KEY_COUNT,
+    compartment_companions, drawbar_wheel,
 };
 pub use pedal::{PEDAL_DRAWBAR_COUNT, PEDAL_FIRST_NOTE, PEDAL_KEY_COUNT};
 pub use percussion::{PercussionDecay, PercussionHarmonic, PercussionVolume};
@@ -229,6 +230,11 @@ impl OrganEngine {
     /// Depth of the once-per-revolution level change of an off-centre wheel.
     pub fn set_eccentricity(&mut self, depth: f32) -> bool {
         self.tonewheels.set_eccentricity(depth)
+    }
+
+    /// How fast the leakage grows as more keys go down, on both manuals.
+    pub fn set_leakage_boost(&mut self, rate: f32) -> bool {
+        self.upper.set_leakage_boost(rate) && self.lower.set_leakage_boost(rate)
     }
 
     pub fn set_drive_wobble(&mut self, depth: f32) -> bool {
