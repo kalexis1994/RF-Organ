@@ -194,6 +194,14 @@ fn compare_suite(model: &Path, reference: &Path, destination: &Path) -> Result<(
         destination.join("taper-fit-candidates.csv"),
         reports.taper_fit_candidates,
     )?;
+    fs::write(
+        destination.join("console-stage-comparison.csv"),
+        reports.console_stage_comparison,
+    )?;
+    fs::write(
+        destination.join("console-stage-candidates.csv"),
+        reports.console_stage_candidates,
+    )?;
     println!(
         "RF_ORGAN_LAB_COMPARED model={} reference={} path={}",
         model.display(),
@@ -233,6 +241,13 @@ fn render_suite(destination: &Path, trims: captures::Trims) -> Result<(), Box<dy
     }
     for capture in &captures::EXPRESSION_CAPTURES {
         let samples = captures::render_expression_phrase(capture);
+        fs::write(
+            destination.join(format!("{}.wav", capture.id)),
+            wav::encode_f32(&samples, 2, SAMPLE_RATE)?,
+        )?;
+    }
+    for capture in &captures::CONSOLE_CAPTURES {
+        let samples = captures::render_console_injection(capture);
         fs::write(
             destination.join(format!("{}.wav", capture.id)),
             wav::encode_f32(&samples, 2, SAMPLE_RATE)?,

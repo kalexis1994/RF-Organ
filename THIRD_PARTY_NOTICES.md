@@ -271,6 +271,16 @@ labels, and the parts list covers assemblies rather than resistor and
 capacitor values. The AO-28's stage constants therefore cannot be ported the
 way the vibrato ladder's were, and they stay provisional.
 
+Version 0.36.0 does not find those values either - the schematic was rendered
+again at the highest resolution the scan holds and the component labels are
+grey mush. What it adds is the way to measure the stages from outside, which
+is a bench injection: a steady tone into the preamplifier's own input at three
+drives, and a fit that reads the second harmonic back out. That gives the one
+number such a reading can honestly give, which is how lopsided the chain is
+altogether. How the three stages divide it between them cannot be seen from
+the output, since the tone passes through all three, so the fit reports that
+split as underdetermined rather than settling it.
+
 What the stages did get is their shape. A single-ended triode's plate current
 follows roughly a three-halves power of grid voltage, so its transfer curve is
 asymmetric and its distortion is led by the second harmonic, with the third

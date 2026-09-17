@@ -7,9 +7,9 @@
 //! in `docs/CALIBRATION.md` lines up with the generated files.
 
 use rf_organ_dsp::{
-    DRAWBAR_COUNT, MANUAL_FIRST_NOTE, MANUAL_KEY_COUNT, MatchingTransformer, OrganEngine,
-    OrganPart, PEDAL_DRAWBAR_COUNT, PercussionDecay, PercussionHarmonic, PercussionVolume,
-    RotaryMode, ScannerMode, TransformerUnit, drawbar_wheel, gear_frequency,
+    ConsoleElectronics, DRAWBAR_COUNT, MANUAL_FIRST_NOTE, MANUAL_KEY_COUNT, MatchingTransformer,
+    OrganEngine, OrganPart, PEDAL_DRAWBAR_COUNT, PercussionDecay, PercussionHarmonic,
+    PercussionVolume, RotaryMode, ScannerMode, TransformerUnit, drawbar_wheel, gear_frequency,
 };
 use std::f64::consts::{PI, TAU};
 
@@ -39,6 +39,59 @@ pub const PHRASE_CAPTURES: [&str; 9] = [
     "09-pedal-16ft-8ft",
 ];
 pub const IMPULSE_CAPTURE: &str = "rotary-cabinet-impulse";
+
+/// The bench injection a preamplifier's stage asymmetry is read off.
+///
+/// One steady tone into the console's input at three documented drives, the
+/// tone control flat and the pedal wide open. It is not a phrase and is not in
+/// [`capture_names`]: it is a measurement signal, played into the AO-28's own
+/// input rather than through the generator, which is the only way to see what
+/// the stages do without the wheels in front of them.
+pub const CONSOLE_CAPTURES: [ConsoleCapture; 3] = [
+    ConsoleCapture {
+        id: "console-injection-clean",
+        drive: 0.0,
+    },
+    ConsoleCapture {
+        id: "console-injection-baseline",
+        drive: 0.32,
+    },
+    ConsoleCapture {
+        id: "console-injection-hard",
+        drive: 0.75,
+    },
+];
+/// The tone, its level and how long it is held.
+pub const CONSOLE_PROBE_HZ: f64 = 1_000.0;
+pub const CONSOLE_PROBE_AMPLITUDE: f64 = 0.25;
+pub const CONSOLE_PROBE_SECONDS: usize = 2;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ConsoleCapture {
+    pub id: &'static str,
+    pub drive: f32,
+}
+
+/// Renders one console injection: a steady tone through the preamplifier
+/// alone, with the generator, the cabinet and the pedal all out of the way.
+pub fn render_console_injection(capture: &ConsoleCapture) -> Vec<f32> {
+    let rate = SAMPLE_RATE as f64;
+    let settle = SAMPLE_RATE as usize / 4;
+    let frames = SAMPLE_RATE as usize * CONSOLE_PROBE_SECONDS;
+    let mut electronics = ConsoleElectronics::new(SAMPLE_RATE as f32);
+    assert!(electronics.set(capture.drive, 0.0, 0.0));
+    assert!(electronics.set_expression_character(0.0));
+    let mut output = Vec::with_capacity(frames * 2);
+    for frame in 0..settle + frames {
+        let angle = TAU * CONSOLE_PROBE_HZ * frame as f64 / rate;
+        let sample = electronics.process((CONSOLE_PROBE_AMPLITUDE * angle.sin()) as f32, 1.0);
+        if frame >= settle {
+            output.push(sample);
+            output.push(sample);
+        }
+    }
+    output
+}
 
 /// The chromatic pass that a per-wheel taper is read off. It is not in
 /// [`capture_names`]: those are phrases, compared to each other whole and

@@ -11,9 +11,19 @@ const TONE_CONTROL_HZ: f32 = 200.0;
 /// How asymmetric each single-ended stage is. The stages differ in operating
 /// point, so they differ here; all three values are provisional and the
 /// laboratory reports the harmonic structure they produce.
+///
+/// They are scaled together by a character, the same arrangement the matching
+/// transformers use: what a bench can measure from outside the preamplifier is
+/// how asymmetric the chain is, not how the three stages divide it between
+/// them. Telling them apart needs an injection at each stage, and until there
+/// is one the ratios between these three stay where they are and only their
+/// common size moves.
 const V4A_ASYMMETRY: f32 = 0.45;
 const V4B_ASYMMETRY: f32 = 0.30;
 const V3B_ASYMMETRY: f32 = 0.22;
+/// The range that character may take, with one meaning the values above.
+pub const STAGE_CHARACTER_RANGE: (f32, f32) = (0.0, 3.0);
+pub const STAGE_CHARACTER_DEFAULT: f32 = 1.0;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ConsoleElectronicsDiagnostics {
@@ -30,6 +40,7 @@ pub struct ConsoleElectronicsDiagnostics {
 pub struct ConsoleElectronics {
     sample_rate: f32,
     drive: f32,
+    stage_character: f32,
     bass_trim: f32,
     tone_control: f32,
     expression_character: f32,
@@ -47,6 +58,7 @@ impl ConsoleElectronics {
         Self {
             sample_rate,
             drive: 0.32,
+            stage_character: STAGE_CHARACTER_DEFAULT,
             bass_trim: 0.0,
             tone_control: 0.0,
             expression_character: 0.55,
@@ -58,6 +70,22 @@ impl ConsoleElectronics {
             dc_input: 0.0,
             dc_output: 0.0,
         }
+    }
+
+    /// Scales all three stage asymmetries together. One is the provisional
+    /// set the model ships with; the laboratory's console fit reports what a
+    /// reference recording asks for instead.
+    pub fn set_stage_character(&mut self, character: f32) -> bool {
+        let (low, high) = STAGE_CHARACTER_RANGE;
+        if !character.is_finite() || !(low..=high).contains(&character) {
+            return false;
+        }
+        self.stage_character = character;
+        true
+    }
+
+    pub const fn stage_character(&self) -> f32 {
+        self.stage_character
     }
 
     pub fn set(&mut self, drive: f32, bass: f32, tone: f32) -> bool {
@@ -90,7 +118,11 @@ impl ConsoleElectronics {
         // V4A drives the passive swell network. Keeping this stage before the
         // pedal lets expression alter how strongly V4B and the output stage
         // are driven, instead of applying a final digital volume multiplier.
-        let pre_expression = tube_stage(equalized, self.drive * 0.45, V4A_ASYMMETRY);
+        let pre_expression = tube_stage(
+            equalized,
+            self.drive * 0.45,
+            V4A_ASYMMETRY * self.stage_character,
+        );
 
         // Reduced three-band form of the capacitive expression network. The
         // two expression-control sections use the documented 60 pF/section
@@ -118,14 +150,22 @@ impl ConsoleElectronics {
         // then applies a broad shelf above roughly 200 Hz before V3B. The
         // original control only cut; the RackForge calibration parameter also
         // permits the documented modern +9 dB extension around its neutral.
-        let post_expression = tube_stage(expressed, self.drive * 0.35, V4B_ASYMMETRY);
+        let post_expression = tube_stage(
+            expressed,
+            self.drive * 0.35,
+            V4B_ASYMMETRY * self.stage_character,
+        );
         let tone_coefficient = one_pole(TONE_CONTROL_HZ, self.sample_rate);
         self.tone_state += tone_coefficient * (post_expression - self.tone_state);
         let tone_high = post_expression - self.tone_state;
         let toned = post_expression + (tone_gain(self.tone_control) - 1.0) * tone_high;
 
         // V3B/12BH7 is the final active stage before output transformer T3.
-        let amplified = tube_stage(toned, self.drive * 0.20, V3B_ASYMMETRY);
+        let amplified = tube_stage(
+            toned,
+            self.drive * 0.20,
+            V3B_ASYMMETRY * self.stage_character,
+        );
 
         // Coupling capacitors remove the small asymmetric-stage bias.
         let dc_coefficient = 1.0 - one_pole(18.0, self.sample_rate);

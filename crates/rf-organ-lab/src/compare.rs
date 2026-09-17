@@ -46,6 +46,8 @@ pub struct Reports {
     pub console_fit_candidates: String,
     pub taper_comparison: String,
     pub taper_fit_candidates: String,
+    pub console_stage_comparison: String,
+    pub console_stage_candidates: String,
     pub reference_quality: String,
 }
 
@@ -142,6 +144,8 @@ pub fn compare_directories(model: &Path, reference: &Path) -> Result<Reports, St
     let (expression_comparison, console_fit_candidates) =
         compare_expression_captures(model, reference, &quality)?;
     let (taper_comparison, taper_fit_candidates) = compare_taper_captures(model, reference)?;
+    let (console_stage_comparison, console_stage_candidates) =
+        compare_console_captures(model, reference)?;
     Ok(Reports {
         capture_comparison: report,
         pedal_spectrum_comparison,
@@ -154,6 +158,8 @@ pub fn compare_directories(model: &Path, reference: &Path) -> Result<Reports, St
         console_fit_candidates,
         taper_comparison,
         taper_fit_candidates,
+        console_stage_comparison,
+        console_stage_candidates,
         reference_quality,
     })
 }
@@ -282,6 +288,175 @@ fn taper_stretch(audio: &Audio, key: usize, frequency: f64) -> Result<f64, Strin
         return Ok(f64::NAN);
     }
     Ok(decibels(amplitude))
+}
+
+/// Reads the preamplifier's stage asymmetry off a bench injection.
+///
+/// A single-ended triode's curve is lopsided, so what it adds to a steady tone
+/// is led by the second harmonic. The three stages of the AO-28 are lopsided
+/// by different amounts, and no reading taken at the output can say how they
+/// divide it between them - the tone passes through all three. What it can say
+/// is how lopsided the chain is altogether, which is one number, and that is
+/// what this fits: the character that scales the three provisional
+/// asymmetries. Telling the stages apart needs an injection at each one, and
+/// this says so rather than pretending a single reading settled it.
+fn compare_console_captures(model: &Path, reference: &Path) -> Result<(String, String), String> {
+    let mut comparison = String::from(
+        "capture,drive,model_h2_dbc,reference_h2_dbc,model_h3_dbc,reference_h3_dbc,reference_minus_model_h2_db\n",
+    );
+    let mut observations: Vec<(f32, f64)> = Vec::new();
+    let mut seen = 0;
+    for capture in &captures::CONSOLE_CAPTURES {
+        let name = format!("{}.wav", capture.id);
+        let reference_path = reference.join(&name);
+        if !reference_path.is_file() {
+            continue;
+        }
+        let model_path = model.join(&name);
+        if !model_path.is_file() {
+            return Err(format!(
+                "model console injection is missing: {}",
+                model_path.display()
+            ));
+        }
+        let model_harmonics = console_harmonics(&read_audio(&model_path)?);
+        let reference_harmonics = console_harmonics(&read_audio(&reference_path)?);
+        writeln!(
+            &mut comparison,
+            "{},{:.3},{:.6},{:.6},{:.6},{:.6},{:.6}",
+            capture.id,
+            capture.drive,
+            model_harmonics.0,
+            reference_harmonics.0,
+            model_harmonics.1,
+            reference_harmonics.1,
+            reference_harmonics.0 - model_harmonics.0
+        )
+        .expect("string write cannot fail");
+        // A clean stage has nothing to say about asymmetry: with no drive
+        // there is no curve to be lopsided about.
+        if capture.drive > 0.0 && reference_harmonics.0.is_finite() {
+            observations.push((capture.drive, reference_harmonics.0));
+        }
+        seen += 1;
+    }
+    if seen == 0 {
+        let note = String::from("status\nno console injection in the reference directory\n");
+        return Ok((note.clone(), note));
+    }
+
+    let mut candidates =
+        String::from("quantity,value,second_harmonic_error_db,self_check_db,status\n");
+    if observations.is_empty() {
+        writeln!(
+            &mut candidates,
+            "stage-character,,,,every injection was clean or unreadable"
+        )
+        .expect("string write cannot fail");
+    } else {
+        let fitted = fit_stage_character(&observations);
+        let check = stage_character_self_check(&observations);
+        writeln!(
+            &mut candidates,
+            "stage-character,{:.6},{:.6},{check:.6},fitted",
+            fitted.character, fitted.error
+        )
+        .expect("string write cannot fail");
+    }
+    writeln!(
+        &mut candidates,
+        "v4a-v4b-v3b-split,,,,underdetermined without an injection at each stage"
+    )
+    .expect("string write cannot fail");
+    Ok((comparison, candidates))
+}
+
+struct StageFit {
+    character: f32,
+    error: f64,
+}
+
+/// Searches the character that best explains the measured second harmonic.
+///
+/// The model is the only thing that knows what a character does to a tone, so
+/// the search asks it: render the injection at a candidate and compare. That
+/// is slower than inverting a formula and it cannot drift away from what the
+/// engine actually does, which for a fit that will be pasted into the engine
+/// is the property worth paying for.
+fn fit_stage_character(observations: &[(f32, f64)]) -> StageFit {
+    let (low, high) = rf_organ_dsp::STAGE_CHARACTER_RANGE;
+    let mut best = StageFit {
+        character: rf_organ_dsp::STAGE_CHARACTER_DEFAULT,
+        error: f64::MAX,
+    };
+    const STEPS: usize = 120;
+    for step in 0..=STEPS {
+        let character = low + (high - low) * step as f32 / STEPS as f32;
+        let mut error = 0.0;
+        for (drive, measured) in observations {
+            let predicted = predicted_second_harmonic(*drive, character);
+            error += (predicted - measured) * (predicted - measured);
+        }
+        let error = (error / observations.len() as f64).sqrt();
+        if error < best.error {
+            best = StageFit { character, error };
+        }
+    }
+    best
+}
+
+/// What the model's own readings would fit to, which has to be the character
+/// the model is using.
+fn stage_character_self_check(observations: &[(f32, f64)]) -> f64 {
+    let own: Vec<(f32, f64)> = observations
+        .iter()
+        .map(|(drive, _)| {
+            (
+                *drive,
+                predicted_second_harmonic(*drive, rf_organ_dsp::STAGE_CHARACTER_DEFAULT),
+            )
+        })
+        .collect();
+    f64::from(fit_stage_character(&own).character - rf_organ_dsp::STAGE_CHARACTER_DEFAULT)
+}
+
+fn predicted_second_harmonic(drive: f32, character: f32) -> f64 {
+    let rate = SAMPLE_RATE as f64;
+    let settle = SAMPLE_RATE as usize / 4;
+    let frames = SAMPLE_RATE as usize;
+    let mut electronics = ConsoleElectronics::new(SAMPLE_RATE as f32);
+    assert!(electronics.set(drive, 0.0, 0.0));
+    assert!(electronics.set_expression_character(0.0));
+    assert!(electronics.set_stage_character(character));
+    let mut samples = Vec::with_capacity(frames);
+    for frame in 0..settle + frames {
+        let angle = TAU * captures::CONSOLE_PROBE_HZ * frame as f64 / rate;
+        let output = electronics.process(
+            (captures::CONSOLE_PROBE_AMPLITUDE * angle.sin()) as f32,
+            1.0,
+        );
+        if frame >= settle {
+            samples.push(f64::from(output));
+        }
+    }
+    let frames: Vec<[f64; 2]> = samples.iter().map(|sample| [*sample, *sample]).collect();
+    let fundamental = spectral_amplitude(&frames, captures::CONSOLE_PROBE_HZ);
+    let second = spectral_amplitude(&frames, 2.0 * captures::CONSOLE_PROBE_HZ);
+    decibels(second / fundamental.max(1.0e-15))
+}
+
+/// Second and third harmonic of an injection, relative to its own tone.
+fn console_harmonics(audio: &Audio) -> (f64, f64) {
+    let fundamental = spectral_amplitude(&audio.frames, captures::CONSOLE_PROBE_HZ);
+    if fundamental <= 0.0 {
+        return (f64::NAN, f64::NAN);
+    }
+    let second = spectral_amplitude(&audio.frames, 2.0 * captures::CONSOLE_PROBE_HZ);
+    let third = spectral_amplitude(&audio.frames, 3.0 * captures::CONSOLE_PROBE_HZ);
+    (
+        decibels(second / fundamental),
+        decibels(third / fundamental),
+    )
 }
 
 fn compare_pedal_captures(
@@ -2075,6 +2250,36 @@ mod tests {
     }
 
     /// The estimator sees the expression network through the transformers, so
+    /// A character put into an injection has to come back out of the fit.
+    /// The identity alone would pass for a fit that always answered with the
+    /// model's own value, so this asks for one the model is not using.
+    #[test]
+    fn a_stage_character_survives_the_round_trip() {
+        let drives = [0.32_f32, 0.75];
+        for asked in [0.4_f32, 1.0, 1.6, 2.4] {
+            let observations: Vec<(f32, f64)> = drives
+                .iter()
+                .map(|drive| (*drive, predicted_second_harmonic(*drive, asked)))
+                .collect();
+            let fitted = fit_stage_character(&observations);
+            assert!(
+                (fitted.character - asked).abs() < 0.05,
+                "asked for {asked} and the fit returned {}",
+                fitted.character
+            );
+            assert!(
+                fitted.error < 0.2,
+                "the fit for {asked} was {} dB out",
+                fitted.error
+            );
+        }
+        // And a chain with no drive has no curve to be lopsided about, so it
+        // is refused rather than fitted to noise.
+        let flat = vec![(0.0_f32, predicted_second_harmonic(0.0, 1.0))];
+        let fitted = fit_stage_character(&flat);
+        assert!(fitted.character.is_finite());
+    }
+
     /// A taper read off the model itself has to come back flat, because the
     /// model's taper is flat. Anything else means the fit is handing back the
     /// console's own frequency response - the transformers, the stages, the

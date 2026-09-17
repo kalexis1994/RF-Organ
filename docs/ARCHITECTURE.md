@@ -166,7 +166,7 @@ microphones, so moving them back zooms out instead of pushing them off the
 edge. The parameter table the surface validates against is the engine's, not a
 copy of it; a range that moves in the DSP moves there too.
 
-## Version 0.35.0 limitations
+## Version 0.36.0 limitations
 
 - The classic B-3 pedal contact and resistor-panel topology is present. The
   L20 pedal-filter coefficient and console matching-network constants remain
@@ -182,8 +182,12 @@ copy of it; a range that moves in the DSP moves there too.
   manual reachable from `docs/RESEARCH.md` is a scan that does not survive
   character recognition, and its parts list covers assemblies rather than
   resistors and capacitors. Every console stage constant is therefore
-  provisional, with a measurement surface and a reference protocol rather than
-  a fitted value.
+  provisional. The three stage asymmetries are scaled together by a character,
+  the same arrangement the matching transformers use, and the comparator fits
+  that character from a bench injection. How the three divide the asymmetry
+  between them is not visible at the output and is reported as
+  underdetermined, which is the same answer the transformer fit gives for T1
+  against T2 without an injection at each.
 - The generator taper is flat. The service manual's table of generator output
   voltages is in the same unreadable scan, so no per-wheel levels are claimed;
   the laboratory measures the taper the model produces and the API applies one

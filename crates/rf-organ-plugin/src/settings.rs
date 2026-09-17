@@ -5,11 +5,11 @@ use rf_organ_dsp::{
     MIC_DISTANCE_DEFAULT_M, MIC_DISTANCE_RANGE_M, MIC_OFFSET_MAX_M, MIC_PATTERN_DEFAULT,
     MIC_SPACING_DEFAULT_M, MIC_SPACING_MAX_M, MainsFrequency, MicrophoneArray, MicrophonePair,
     MicrophoneType, OrganEngine, OrganPart, PEDAL_DRAWBAR_COUNT, PercussionDecay,
-    PercussionHarmonic, PercussionVolume, RotaryMode, SUB_LEVEL_DEFAULT_DB, ScannerMode, StopAngle,
-    TransformerUnit,
+    PercussionHarmonic, PercussionVolume, RotaryMode, STAGE_CHARACTER_DEFAULT,
+    STAGE_CHARACTER_RANGE, SUB_LEVEL_DEFAULT_DB, ScannerMode, StopAngle, TransformerUnit,
 };
 
-pub const PARAMETER_COUNT: usize = 68;
+pub const PARAMETER_COUNT: usize = 69;
 /// Bipolar per-transformer calibration trims, ordered T1, T2, T3.
 pub const TRANSFORMER_TRIM_FIRST: u32 = 45;
 pub const DRAWBAR_FIRST: u32 = 2;
@@ -32,6 +32,8 @@ pub struct Settings {
     pub drive_wobble: f64,
     /// How fast the leakage grows as more keys go down.
     pub leakage_boost: f64,
+    /// How lopsided the preamplifier's three stages are, together.
+    pub console_stage_character: f64,
     pub transformer_drive: f64,
     pub transformer_hysteresis: f64,
     pub rotary_mode: RotaryMode,
@@ -96,6 +98,7 @@ impl Default for Settings {
             leakage: 0.2,
             drive_wobble: 1.0,
             leakage_boost: LEAKAGE_BOOST_DEFAULT as f64,
+            console_stage_character: STAGE_CHARACTER_DEFAULT as f64,
             transformer_drive: 0.38,
             transformer_hysteresis: 0.32,
             rotary_mode: RotaryMode::Off,
@@ -150,6 +153,11 @@ impl Settings {
             && unit(self.leakage)
             && unit(self.drive_wobble)
             && unit(self.leakage_boost)
+            && finite_range(
+                self.console_stage_character,
+                f64::from(STAGE_CHARACTER_RANGE.0),
+                f64::from(STAGE_CHARACTER_RANGE.1),
+            )
             && unit(self.transformer_drive)
             && unit(self.transformer_hysteresis)
             && unit(self.rotary_mix)
@@ -246,6 +254,7 @@ impl Settings {
             65 => bool_value(self.rotary_drum_mic_sides),
             66 => self.drive_wobble,
             67 => self.leakage_boost,
+            68 => self.console_stage_character,
             52 => self.rotary_mic_pattern,
             53 => self.rotary_horn_radius,
             54 => self.rotary_drum_radius,
@@ -326,6 +335,7 @@ impl Settings {
             65 if value == 0.0 || value == 1.0 => self.rotary_drum_mic_sides = value == 1.0,
             66 => self.drive_wobble = value,
             67 => self.leakage_boost = value,
+            68 => self.console_stage_character = value,
             52 => self.rotary_mic_pattern = value,
             53 => self.rotary_horn_radius = value,
             54 => self.rotary_drum_radius = value,
@@ -362,6 +372,7 @@ impl Settings {
         let _ = engine.set_leakage(self.leakage as f32);
         let _ = engine.set_drive_wobble(self.drive_wobble as f32);
         let _ = engine.set_leakage_boost(self.leakage_boost as f32);
+        let _ = engine.set_console_stage_character(self.console_stage_character as f32);
         let _ = engine.set_transformer(
             self.transformer_drive as f32,
             self.transformer_hysteresis as f32,

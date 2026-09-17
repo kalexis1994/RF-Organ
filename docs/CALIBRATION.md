@@ -416,6 +416,33 @@ A dynamic capsule reads 2.0 dB below a condenser at 10 kHz and 0.8 dB above it
 at 4 kHz. Both numbers are provisional and describe no particular microphone.
 To measure this properly you would need to know which two Hammond modelled.
 
+## Console stage protocol
+
+`console-injection-*.wav` are three bench signals: a 1 kHz tone at a quarter
+of full scale into the preamplifier's own input, with the tone control flat
+and the pedal wide open, at no drive, at the baseline drive and hard. Play the
+same tone into a real AO-28 at its input, record its output, and
+`rf-organ-lab compare` writes `console-stage-comparison.csv` and
+`console-stage-candidates.csv`.
+
+The fit searches for the stage character whose second harmonic matches the
+reference, by rendering the injection at each candidate and comparing - the
+model is the only thing that knows what a character does, so the fit asks it
+rather than inverting a formula that could drift away from the engine. The
+model against itself returns 1.000000 with 0.000000 dB of error, and a
+character the model is not using comes back out of the fit to within 0.05,
+which is the check that matters: an identity alone would also pass for a fit
+that always answered with the model's own value.
+
+The clean injection is in the comparison and out of the fit. A stage with no
+drive has no curve to be lopsided about, so it says nothing about asymmetry
+and would only pull the fit toward noise.
+
+What the fit will not do is tell V4A, V4B and V3B apart. The tone passes
+through all three and comes out once. Separating them needs a probe at each
+stage, and until there is one the three keep the ratios they have and only
+their common size moves.
+
 ## Taper protocol
 
 `generator-taper-sweep.wav` holds every key of the upper manual in turn on the

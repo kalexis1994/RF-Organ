@@ -15,7 +15,7 @@ pub use settings::{PARAMETER_COUNT, Settings, presets};
 
 pub const MAX_FRAMES: u32 = 4096;
 pub const MAX_EVENTS: usize = 256;
-pub const STATE_VERSION: u32 = 15;
+pub const STATE_VERSION: u32 = 16;
 pub const STATE_BYTES_V1: usize = 8 + 19 * 8;
 pub const STATE_BYTES_V2: usize = 8 + 24 * 8;
 pub const STATE_BYTES_V3: usize = 8 + 37 * 8;
@@ -30,6 +30,7 @@ pub const STATE_BYTES_V11: usize = 8 + 61 * 8;
 pub const STATE_BYTES_V12: usize = 8 + 64 * 8;
 pub const STATE_BYTES_V13: usize = 8 + 66 * 8;
 pub const STATE_BYTES_V14: usize = 8 + 67 * 8;
+pub const STATE_BYTES_V15: usize = 8 + 68 * 8;
 pub const STATE_BYTES: usize = 8 + PARAMETER_COUNT * 8;
 
 /// A gain as decibels, with nothing at all reported as the silence the
@@ -234,6 +235,7 @@ impl Processor for RfOrganProcessor {
             STATE_BYTES_V12,
             STATE_BYTES_V13,
             STATE_BYTES_V14,
+            STATE_BYTES_V15,
             STATE_BYTES,
         ]
         .contains(&state.len())
@@ -257,6 +259,7 @@ impl Processor for RfOrganProcessor {
             (12, STATE_BYTES_V12) => 64,
             (13, STATE_BYTES_V13) => 66,
             (14, STATE_BYTES_V14) => 67,
+            (15, STATE_BYTES_V15) => 68,
             (STATE_VERSION, STATE_BYTES) => PARAMETER_COUNT,
             _ => return false,
         };

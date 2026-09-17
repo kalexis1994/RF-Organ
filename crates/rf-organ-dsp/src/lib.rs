@@ -17,7 +17,10 @@ mod tonewheel;
 mod transformer;
 mod vibrato_line;
 
-pub use electronics::{ConsoleElectronics, ConsoleElectronicsDiagnostics};
+pub use electronics::{
+    ConsoleElectronics, ConsoleElectronicsDiagnostics, STAGE_CHARACTER_DEFAULT,
+    STAGE_CHARACTER_RANGE,
+};
 pub use manual::{
     DRAWBAR_COUNT, LEAKAGE_BOOST_DEFAULT, MANUAL_FIRST_NOTE, MANUAL_KEY_COUNT,
     compartment_companions, drawbar_wheel,
@@ -235,6 +238,12 @@ impl OrganEngine {
     }
 
     /// How fast the leakage grows as more keys go down, on both manuals.
+    /// Scales the three preamplifier stage asymmetries together. See
+    /// `crates/rf-organ-dsp/src/electronics.rs` for why it is one control.
+    pub fn set_console_stage_character(&mut self, character: f32) -> bool {
+        self.electronics.set_stage_character(character)
+    }
+
     pub fn set_leakage_boost(&mut self, rate: f32) -> bool {
         self.upper.set_leakage_boost(rate) && self.lower.set_leakage_boost(rate)
     }
