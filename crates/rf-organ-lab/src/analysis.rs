@@ -25,6 +25,7 @@ pub struct Artifacts {
     pub pedal_release: String,
     pub expression_response: String,
     pub tone_control_response: String,
+    pub console_distortion: String,
     pub transformer_intermodulation: String,
     pub transformer_calibration: String,
 }
@@ -54,6 +55,8 @@ fn analyze_inner() -> Result<Artifacts, String> {
     measurements.extend(expression);
     let (tone_control, tone_control_response) = tone_control_probe();
     measurements.extend(tone_control);
+    let (distortion, console_distortion) = console_distortion_probe();
+    measurements.extend(distortion);
     let (transformer, transformer_intermodulation) = transformer_probe();
     measurements.extend(transformer);
     let (calibration, transformer_calibration) = transformer_calibration_probe();
@@ -80,6 +83,7 @@ fn analyze_inner() -> Result<Artifacts, String> {
         pedal_release,
         expression_response,
         tone_control_response,
+        console_distortion,
         transformer_intermodulation,
         transformer_calibration,
     })
@@ -221,6 +225,101 @@ fn tone_control_gain(
         spectral_amplitude(&samples, frequency) / AMPLITUDE,
         electronics.diagnostics(),
     )
+}
+
+/// Harmonic distortion of the console chain against its drive control, at two
+/// signal levels. The AO-28's tube stages are the reason the console is not a
+/// clean amplifier, and this is the surface a reference console's own
+/// distortion would be fitted against: an asymmetric stage makes second
+/// harmonic, a symmetric one makes third, and their ratio says which is
+/// responsible.
+fn console_distortion_probe() -> (Vec<Measurement>, String) {
+    const DRIVES: [(&str, f32); 5] = [
+        ("clean", 0.0),
+        ("quarter", 0.25),
+        ("baseline", 0.32),
+        ("three-quarter", 0.75),
+        ("maximum", 1.0),
+    ];
+    const LEVELS: [(&str, f64); 2] = [("quiet", 0.025), ("loud", 0.25)];
+    const PROBE_HZ: f64 = 1_000.0;
+    let mut measurements = Vec::new();
+    let mut csv = String::from(
+        "drive_name,drive,level_name,input_dbfs,fundamental_dbfs,gain_db,h2_dbc,h3_dbc,h4_dbc,h5_dbc,thd_percent\n",
+    );
+    for (drive_name, drive) in DRIVES {
+        for (level_name, amplitude) in LEVELS {
+            let samples = render_console_tone(drive, amplitude, PROBE_HZ);
+            let fundamental = spectral_amplitude(&samples, PROBE_HZ);
+            let harmonics: [f64; 4] =
+                [2.0, 3.0, 4.0, 5.0].map(|order| spectral_amplitude(&samples, order * PROBE_HZ));
+            let distortion_power = harmonics
+                .iter()
+                .map(|amplitude| amplitude * amplitude)
+                .sum::<f64>();
+            let thd_percent = 100.0 * distortion_power.sqrt() / fundamental.max(1.0e-15);
+            writeln!(
+                &mut csv,
+                "{drive_name},{drive:.3},{level_name},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{thd_percent:.6}",
+                decibels(amplitude),
+                decibels(fundamental),
+                decibels(fundamental / amplitude),
+                decibels(harmonics[0] / fundamental),
+                decibels(harmonics[1] / fundamental),
+                decibels(harmonics[2] / fundamental),
+                decibels(harmonics[3] / fundamental),
+            )
+            .expect("string write cannot fail");
+            if level_name == "loud" {
+                let probe = match drive_name {
+                    "clean" => "console-clean",
+                    "quarter" => "console-quarter",
+                    "baseline" => "console-baseline",
+                    "three-quarter" => "console-three-quarter",
+                    _ => "console-maximum",
+                };
+                measurements.extend([
+                    Measurement {
+                        probe,
+                        metric: "second-harmonic",
+                        value: decibels(harmonics[0] / fundamental),
+                        unit: "dBc",
+                    },
+                    Measurement {
+                        probe,
+                        metric: "third-harmonic",
+                        value: decibels(harmonics[1] / fundamental),
+                        unit: "dBc",
+                    },
+                    Measurement {
+                        probe,
+                        metric: "thd",
+                        value: thd_percent,
+                        unit: "%",
+                    },
+                ]);
+            }
+        }
+    }
+    (measurements, csv)
+}
+
+/// One tone through the console electronics alone, with expression wide open
+/// and the tone control neutral, so that only the tube stages act on it.
+fn render_console_tone(drive: f32, amplitude: f64, frequency: f64) -> Vec<f64> {
+    const SETTLE: usize = SAMPLE_RATE / 4;
+    let mut electronics = ConsoleElectronics::new(SAMPLE_RATE as f32);
+    assert!(electronics.set(drive, 0.0, 0.0));
+    assert!(electronics.set_expression_character(0.0));
+    let mut samples = Vec::with_capacity(SAMPLE_RATE);
+    for frame in 0..SETTLE + SAMPLE_RATE {
+        let input = amplitude * (TAU * frequency * frame as f64 / SAMPLE_RATE as f64).sin();
+        let output = electronics.process(input as f32, 1.0);
+        if frame >= SETTLE {
+            samples.push(f64::from(output));
+        }
+    }
+    samples
 }
 
 fn transformer_probe() -> (Vec<Measurement>, String) {
@@ -1369,6 +1468,44 @@ mod tests {
         assert!(gain("expression-25", "high-gain") > gain("expression-25", "mid-gain"));
         assert!(gain("expression-100", "mid-gain").abs() < 0.05);
         assert_eq!(csv.lines().count(), 16);
+    }
+
+    /// The console's stages are asymmetric, so second harmonic leads, and
+    /// distortion has to grow with both drive and level.
+    #[test]
+    fn console_distortion_grows_with_drive_and_level() {
+        let (measurements, csv) = with_analysis_stack(console_distortion_probe);
+        assert_eq!(csv.lines().count(), 11);
+        let value = |probe, metric| {
+            measurements
+                .iter()
+                .find(|measurement| measurement.probe == probe && measurement.metric == metric)
+                .unwrap_or_else(|| panic!("{probe}/{metric}"))
+                .value
+        };
+        assert!(value("console-clean", "thd") < 0.01);
+        assert!(value("console-baseline", "thd") > value("console-quarter", "thd"));
+        assert!(value("console-maximum", "thd") > value("console-baseline", "thd"));
+        assert!(
+            value("console-maximum", "second-harmonic")
+                > value("console-maximum", "third-harmonic")
+        );
+        let quiet = csv
+            .lines()
+            .find(|line| line.starts_with("maximum,1.000,quiet"))
+            .expect("quiet row");
+        let loud = csv
+            .lines()
+            .find(|line| line.starts_with("maximum,1.000,loud"))
+            .expect("loud row");
+        let thd = |line: &str| {
+            line.rsplit(',')
+                .next()
+                .expect("thd")
+                .parse::<f64>()
+                .expect("thd")
+        };
+        assert!(thd(loud) > thd(quiet), "{loud} against {quiet}");
     }
 
     #[test]

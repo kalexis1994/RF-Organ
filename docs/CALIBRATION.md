@@ -21,6 +21,9 @@ The suite contains:
 - an end-to-end A4 frequency, RMS and peak probe;
 - expression gain at 80 Hz, 1 kHz and 8 kHz for five pedal positions;
 - AO-28 tone-control response at 100 Hz, 1 kHz and 10 kHz across ±9 dB;
+- console harmonic structure against drive at two signal levels, reported per
+  harmonic and as total distortion;
+- five expression captures with the pedal parked at documented positions;
 - direct two-tone transformer difference and third-order product levels across
   five magnetic settings;
 - per-unit transformer calibration: the effective drive and memory coefficients
@@ -71,6 +74,12 @@ tables retain the underlying curves:
   making the passive-network coefficients independently fit-able.
 - `tone-control-response.csv` records gain relative to neutral at three
   frequencies for five control positions, isolating the post-V4B shelf.
+- `console-distortion.csv` records the first four harmonics and total
+  distortion of a 1 kHz tone through the console stages, for five drive
+  settings at a quiet and a loud level. The second harmonic leading the third,
+  and growing with the first power of level while the third grows with its
+  square, is the signature of the single-ended stages; a reference console
+  measured the same way is what would replace their provisional constants.
 - `transformer-intermodulation.csv` drives the reduced magnetic model with
   523.3 Hz and 698.5 Hz and reports both their 175.2 Hz difference product and
   their 348.1 Hz third-order product.
@@ -277,6 +286,30 @@ level and the drawbar cut are exactly what the measurement produces, so the
 reference value is the candidate. The drawbar cut it reports is the end-to-end
 one, measured through the matching transformer and console, and comes out
 slightly under the 6 dB the tablet takes at the manual.
+
+## Expression reference protocol
+
+Files `41` through `45` park the swell pedal at five documented positions —
+one eighth, one quarter, one half, three quarters and fully open — with every
+upper drawbar out and two keys held two octaves apart, C3 and C6. That
+registration puts energy on the 16' bus of the low key and on the 8' and 1'
+buses of the high one, so one capture can be read at a low, a middle and a
+high frequency. All five share a recording gain, and every reading is relative
+to the fully open capture, so the gain of the session cancels.
+
+`expression-comparison.csv` reports each band at each position for model and
+reference. `console-fit-candidates.csv` then fits the one coefficient the
+model exposes for this network: how much of the pedal's attenuation the middle
+band takes compared with the ends.
+
+That fit is biased and says so. The estimator evaluates the console
+electronics alone, while a capture also carries the matching and output
+transformers, whose compression moves with level and therefore with the pedal.
+The comparator fits the model's own captures first, where the answer is known,
+and reports the offset as `estimator_bias` before taking it back off the
+reference fit. Comparing a directory with itself returns the model's own
+coefficient exactly, with the bias visible beside it — presently -0.12, which
+is how much the transformers move the answer.
 
 ## Sample rate and cost
 

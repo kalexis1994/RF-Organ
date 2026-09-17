@@ -115,7 +115,24 @@ byte identically across the change.
 What remains when nothing is keyed is the generator itself, which is
 inherent: the 91 wheels turn whether or not anyone is playing.
 
-## Version 0.18.0 limitations
+## Console stages
+
+V4A, V4B and V3B are single-ended stages, and RF-Organ shapes them as such: a
+cubic soft clip whose own distortion is third order, followed by a rational
+asymmetric curve whose expansion is second order to the first power of level
+and third order to its square. Cascaded, they put the second harmonic well
+above the third at normal levels and let the third overtake only when the
+drive control is pushed into hard clipping, which is what a single-ended
+triode does.
+
+The expression network sits between V4A and V4B, so the pedal changes how hard
+the later stages are driven rather than scaling the output. Its one fitted
+parameter is how much of the pedal's attenuation the middle band takes
+compared with the ends; the laboratory fits it from captures with the pedal
+parked at documented positions, and reports the bias of that estimator by
+fitting the model's own captures first.
+
+## Version 0.19.0 limitations
 
 - The classic B-3 pedal contact and resistor-panel topology is present. The
   L20 pedal-filter coefficient and console matching-network constants remain
@@ -127,6 +144,12 @@ inherent: the 91 wheels turn whether or not anyone is playing.
 - Contact timing is a provisional deterministic model. The published keyboard
   action study is behind a paywall, so the laboratory measures the spread and
   the click rather than claiming a fitted one.
+- The AO-28 component values are not available: the schematic in the service
+  manual reachable from `docs/RESEARCH.md` is a scan that does not survive
+  character recognition, and its parts list covers assemblies rather than
+  resistors and capacitors. Every console stage constant is therefore
+  provisional, with a measurement surface and a reference protocol rather than
+  a fitted value.
 - The vibrato line uses the documented component values with an unwarped
   bilinear transform, so its cutoff is placed by the components rather than
   fitted; the scanner runs at 6.9 Hz and its plate overlap is modelled as a

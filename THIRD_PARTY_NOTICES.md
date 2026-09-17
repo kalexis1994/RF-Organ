@@ -49,6 +49,25 @@ The insertion-loss make-up that keeps the chorus position usable is a
 provisional stand-in for the AO-28 vibrato amplifier, derived from the
 resistor network rather than fitted.
 
+## AO-28 stage shape
+
+Version 0.19.0 records what could not be sourced. The B-3/C-3 preamplifier
+schematic in the service manual available to this project is a scan whose
+optical character recognition returns unusable fragments for the component
+labels, and the parts list covers assemblies rather than resistor and
+capacitor values. The AO-28's stage constants therefore cannot be ported the
+way the vibrato ladder's were, and they stay provisional.
+
+What the stages did get is their shape. A single-ended triode's plate current
+follows roughly a three-halves power of grid voltage, so its transfer curve is
+asymmetric and its distortion is led by the second harmonic, with the third
+falling away as the square of level. That is textbook tube behaviour rather
+than anything specific to Hammond, and it is stated here as such. The stages
+previously used a symmetric soft clipper, which put the third harmonic 29 dB
+above the second; they now put the second ahead by 19 to 42 dB across the
+normal range. The asymmetry of each stage remains a provisional number, and
+the laboratory reports the harmonic structure it produces.
+
 ## Hammond percussion documentation
 
 Version 0.17.0 takes the percussion behaviour Hammond documents for the

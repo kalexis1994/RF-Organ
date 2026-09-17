@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 use crate::captures::{
-    C_NOTE, CHARACTER, F_NOTE, Level, NO_TRIM, Notes, PERCUSSION_CAPTURES, PERCUSSION_NOTE,
-    PercussionCapture, TransformerPath, Trims, bus_frequency, capture_names, note_frequency,
-    transformer_capture, transformer_steady_frames, trim_for,
+    C_NOTE, CHARACTER, EXPRESSION_CAPTURES, EXPRESSION_CHARACTER, EXPRESSION_HIGH, EXPRESSION_LOW,
+    EXPRESSION_MID, ExpressionCapture, F_NOTE, Level, NO_TRIM, Notes, PERCUSSION_CAPTURES,
+    PERCUSSION_NOTE, PercussionCapture, TransformerPath, Trims, bus_frequency, capture_names,
+    note_frequency, transformer_capture, transformer_steady_frames, trim_for,
 };
 use crate::wav::{self, Audio};
 use rf_organ_dsp::gear_frequency;
-use rf_organ_dsp::{PercussionDecay, PercussionVolume};
+use rf_organ_dsp::{ConsoleElectronics, PercussionDecay, PercussionVolume};
 use std::collections::BTreeMap;
 use std::f64::consts::TAU;
 use std::fmt::Write as _;
@@ -34,6 +35,8 @@ pub struct Reports {
     pub transformer_fit_candidates: String,
     pub percussion_comparison: String,
     pub percussion_fit_candidates: String,
+    pub expression_comparison: String,
+    pub console_fit_candidates: String,
     pub reference_quality: String,
 }
 
@@ -127,6 +130,8 @@ pub fn compare_directories(model: &Path, reference: &Path) -> Result<Reports, St
         compare_transformer_captures(model, reference, &quality)?;
     let (percussion_comparison, percussion_fit_candidates) =
         compare_percussion_captures(model, reference, &quality)?;
+    let (expression_comparison, console_fit_candidates) =
+        compare_expression_captures(model, reference, &quality)?;
     Ok(Reports {
         capture_comparison: report,
         pedal_spectrum_comparison,
@@ -135,6 +140,8 @@ pub fn compare_directories(model: &Path, reference: &Path) -> Result<Reports, St
         transformer_fit_candidates,
         percussion_comparison,
         percussion_fit_candidates,
+        expression_comparison,
+        console_fit_candidates,
         reference_quality,
     })
 }
@@ -891,6 +898,254 @@ fn percussion_measurement(audio: &Audio) -> Result<PercussionMeasurement, String
         organ_dbfs: decibels(organ),
         strike_dbc: decibels(peak / organ),
         t60: 60.0 * (end - start) / 20.0,
+    })
+}
+
+/// The three bands one expression capture is read at, relative to the toe
+/// capture of the same session.
+#[derive(Clone, Copy)]
+struct ExpressionMeasurement {
+    low: f64,
+    mid: f64,
+    high: f64,
+}
+
+impl ExpressionMeasurement {
+    const fn band(&self, index: usize) -> f64 {
+        match index {
+            0 => self.low,
+            1 => self.mid,
+            _ => self.high,
+        }
+    }
+}
+
+const BAND_NAMES: [&str; 3] = ["low", "mid", "high"];
+
+fn compare_expression_captures(
+    model: &Path,
+    reference: &Path,
+    quality: &BTreeMap<String, CaptureQuality>,
+) -> Result<(String, String), String> {
+    let mut csv = String::from(
+        "capture,position,band,frequency_hz,model_gain_db,reference_gain_db,reference_minus_model_db,qualification\n",
+    );
+    let frequencies = [
+        bus_frequency(EXPRESSION_LOW.0, EXPRESSION_LOW.1),
+        bus_frequency(EXPRESSION_MID.0, EXPRESSION_MID.1),
+        bus_frequency(EXPRESSION_HIGH.0, EXPRESSION_HIGH.1),
+    ];
+    let toe = EXPRESSION_CAPTURES
+        .last()
+        .expect("expression captures are not empty");
+    if !reference.join(format!("{}.wav", toe.id)).is_file() {
+        // Every reading is relative to the toe capture; without it the session
+        // says nothing about the network, only about the recording gain.
+        return Ok((
+            csv,
+            String::from(
+                "parameter,captures,unit,current_value,raw_fit,estimator_bias,candidate_value,rms_error_db,qualification\n",
+            ),
+        ));
+    }
+    let model_toe = expression_measurement(
+        &read_audio(&model.join(format!("{}.wav", toe.id)))?,
+        &frequencies,
+    )?;
+    let reference_toe = expression_measurement(
+        &read_audio(&reference.join(format!("{}.wav", toe.id)))?,
+        &frequencies,
+    )?;
+
+    let mut observations: Vec<(
+        ExpressionCapture,
+        ExpressionMeasurement,
+        ExpressionMeasurement,
+        &'static str,
+        QualityStatus,
+    )> = Vec::new();
+    for capture in EXPRESSION_CAPTURES {
+        let reference_path = reference.join(format!("{}.wav", capture.id));
+        if !reference_path.is_file() {
+            continue;
+        }
+        let model_path = model.join(format!("{}.wav", capture.id));
+        if !model_path.is_file() {
+            return Err(format!(
+                "model capture is missing: {}",
+                model_path.display()
+            ));
+        }
+        let model_measured = expression_measurement(&read_audio(&model_path)?, &frequencies)?;
+        let reference_measured =
+            expression_measurement(&read_audio(&reference_path)?, &frequencies)?;
+        let capture_quality = quality
+            .get(capture.id)
+            .ok_or_else(|| format!("missing quality result for {}", capture.id))?;
+        for (band, name) in BAND_NAMES.into_iter().enumerate() {
+            let model_gain = decibels(model_measured.band(band) / model_toe.band(band));
+            let reference_gain = decibels(reference_measured.band(band) / reference_toe.band(band));
+            writeln!(
+                &mut csv,
+                "{},{:.3},{name},{:.3},{model_gain:.6},{reference_gain:.6},{:.6},{}",
+                capture.id,
+                capture.position,
+                frequencies[band],
+                reference_gain - model_gain,
+                capture_quality.qualification
+            )
+            .expect("string write cannot fail");
+        }
+        observations.push((
+            capture,
+            model_measured,
+            reference_measured,
+            capture_quality.qualification,
+            capture_quality.status,
+        ));
+    }
+    Ok((
+        csv,
+        expression_fit_candidates(&observations, &model_toe, &reference_toe, &frequencies),
+    ))
+}
+
+/// Fits the one parameter the model exposes for this network: how much of the
+/// pedal's attenuation the middle band takes compared with the ends. The
+/// search runs on the console electronics alone, which is cheap and is exactly
+/// the stage the captures isolate.
+fn expression_fit_candidates(
+    observations: &[(
+        ExpressionCapture,
+        ExpressionMeasurement,
+        ExpressionMeasurement,
+        &'static str,
+        QualityStatus,
+    )],
+    model_toe: &ExpressionMeasurement,
+    reference_toe: &ExpressionMeasurement,
+    frequencies: &[f64; 3],
+) -> String {
+    let mut csv = String::from(
+        "parameter,captures,unit,current_value,raw_fit,estimator_bias,candidate_value,rms_error_db,qualification\n",
+    );
+    let usable = observations
+        .iter()
+        .filter(|(_, _, _, _, status)| *status != QualityStatus::Fail)
+        .collect::<Vec<_>>();
+    if usable.len() < 2 {
+        return csv;
+    }
+    // The estimator works on the console electronics alone, but a capture also
+    // carries the matching and output transformers, whose compression moves
+    // with level and therefore with the pedal. Fitting the model's own
+    // captures says how far that pushes the answer for a coefficient that is
+    // already known, and the same offset comes back off the reference fit.
+    let fit = |toe: &ExpressionMeasurement, model_side: bool| {
+        let error = |character: f32| {
+            let mut total = 0.0;
+            let mut count = 0;
+            for observation in &usable {
+                let bands = if model_side {
+                    observation.1
+                } else {
+                    observation.2
+                };
+                for (band, frequency) in frequencies.iter().enumerate() {
+                    let predicted = decibels(
+                        electronics_band_gain(character, observation.0.position, *frequency)
+                            / electronics_band_gain(character, 1.0, *frequency),
+                    );
+                    let measured = decibels(bands.band(band) / toe.band(band));
+                    total += (predicted - measured) * (predicted - measured);
+                    count += 1;
+                }
+            }
+            (total / f64::from(count)).sqrt()
+        };
+        let mut best = (EXPRESSION_CHARACTER, error(EXPRESSION_CHARACTER));
+        for step in 0..=100 {
+            let character = step as f32 / 100.0;
+            let candidate = error(character);
+            if candidate < best.1 {
+                best = (character, candidate);
+            }
+        }
+        best
+    };
+    let model_fit = fit(model_toe, true);
+    let reference_fit = fit(reference_toe, false);
+    let bias = model_fit.0 - EXPRESSION_CHARACTER;
+    let candidate = (reference_fit.0 - bias).clamp(0.0, 1.0);
+    let qualification = usable
+        .iter()
+        .max_by_key(|(_, _, _, _, status)| *status)
+        .map(|(_, _, _, qualification, _)| *qualification)
+        .unwrap_or("quality-pass");
+    writeln!(
+        &mut csv,
+        "expression-character,{},ratio,{:.6},{:.6},{bias:.6},{candidate:.6},{:.6},{qualification}",
+        usable
+            .iter()
+            .map(|(capture, _, _, _, _)| capture.id)
+            .collect::<Vec<_>>()
+            .join("|"),
+        EXPRESSION_CHARACTER,
+        reference_fit.0,
+        reference_fit.1
+    )
+    .expect("string write cannot fail");
+    csv
+}
+
+/// Gain of the console's expression network at one pedal position and one
+/// frequency, with the tube stages left clean so only the passive network is
+/// measured.
+fn electronics_band_gain(character: f32, position: f32, frequency: f64) -> f64 {
+    const AMPLITUDE: f64 = 0.25;
+    let settle = SAMPLE_RATE as usize / 4;
+    let window = SAMPLE_RATE as usize / 2;
+    let mut electronics = ConsoleElectronics::new(SAMPLE_RATE as f32);
+    assert!(electronics.set(0.0, 0.0, 0.0));
+    assert!(electronics.set_expression_character(character));
+    electronics.reset(position);
+    let mut frames = Vec::with_capacity(window);
+    for frame in 0..settle + window {
+        let input = AMPLITUDE * (TAU * frequency * frame as f64 / f64::from(SAMPLE_RATE)).sin();
+        let output = electronics.process(input as f32, position);
+        if frame >= settle {
+            frames.push([f64::from(output), f64::from(output)]);
+        }
+    }
+    spectral_amplitude(&frames, frequency).max(1.0e-15)
+}
+
+/// Reads one expression capture at its three band frequencies, over a steady
+/// second well after the attack.
+fn expression_measurement(
+    audio: &Audio,
+    frequencies: &[f64; 3],
+) -> Result<ExpressionMeasurement, String> {
+    if audio.sample_rate != SAMPLE_RATE {
+        return Err(format!(
+            "expression captures must be {SAMPLE_RATE} Hz; got {}",
+            audio.sample_rate
+        ));
+    }
+    let onset = onset(audio)?;
+    let start = onset + SAMPLE_RATE as usize / 2;
+    let frames = audio
+        .frames
+        .get(start..start + SAMPLE_RATE as usize)
+        .ok_or_else(|| "expression capture needs a steady second".to_owned())?;
+    let bands = frequencies.map(|frequency| spectral_amplitude(frames, frequency));
+    if bands.iter().any(|band| *band <= 1.0e-12) {
+        return Err("expression capture is missing one of its bands".to_owned());
+    }
+    Ok(ExpressionMeasurement {
+        low: bands[0],
+        mid: bands[1],
+        high: bands[2],
     })
 }
 
@@ -1678,6 +1933,47 @@ mod tests {
         assert!(
             csv.contains("injection-captures-rejected-by-quality-gate"),
             "{csv}"
+        );
+    }
+
+    /// The estimator sees the expression network through the transformers, so
+    /// it is biased. Correcting with the model's own fit has to return the
+    /// coefficient the model actually uses whenever reference and model agree.
+    #[test]
+    fn an_expression_fit_of_the_model_against_itself_returns_its_own_character() {
+        let bands = |scale: f64| ExpressionMeasurement {
+            low: 0.4 * scale,
+            mid: 0.3 * scale,
+            high: 0.2 * scale,
+        };
+        let observations = EXPRESSION_CAPTURES
+            .into_iter()
+            .map(|capture| {
+                let measured = bands(f64::from(capture.position));
+                (
+                    capture,
+                    measured,
+                    measured,
+                    "quality-pass",
+                    QualityStatus::Pass,
+                )
+            })
+            .collect::<Vec<_>>();
+        let toe = bands(1.0);
+        let frequencies = [
+            bus_frequency(EXPRESSION_LOW.0, EXPRESSION_LOW.1),
+            bus_frequency(EXPRESSION_MID.0, EXPRESSION_MID.1),
+            bus_frequency(EXPRESSION_HIGH.0, EXPRESSION_HIGH.1),
+        ];
+        let csv = expression_fit_candidates(&observations, &toe, &toe, &frequencies);
+        let row = csv.lines().nth(1).expect("one candidate");
+        let fields = row.split(',').collect::<Vec<_>>();
+        let current: f32 = fields[3].parse().expect("current");
+        let candidate: f32 = fields[6].parse().expect("candidate");
+        assert_eq!(current, EXPRESSION_CHARACTER);
+        assert!(
+            (candidate - EXPRESSION_CHARACTER).abs() < 1.0e-6,
+            "candidate {candidate} against {EXPRESSION_CHARACTER}"
         );
     }
 

@@ -8,6 +8,12 @@ const EXPRESSION_LOW_HZ: f32 =
     1.0 / (TAU * EXPRESSION_GRID_RESISTANCE_OHM * EXPRESSION_SECTION_CAPACITANCE_PF * 1.0e-12);
 const EXPRESSION_HIGH_HZ: f32 = 4_000.0;
 const TONE_CONTROL_HZ: f32 = 200.0;
+/// How asymmetric each single-ended stage is. The stages differ in operating
+/// point, so they differ here; all three values are provisional and the
+/// laboratory reports the harmonic structure they produce.
+const V4A_ASYMMETRY: f32 = 0.45;
+const V4B_ASYMMETRY: f32 = 0.30;
+const V3B_ASYMMETRY: f32 = 0.22;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ConsoleElectronicsDiagnostics {
@@ -84,7 +90,7 @@ impl ConsoleElectronics {
         // V4A drives the passive swell network. Keeping this stage before the
         // pedal lets expression alter how strongly V4B and the output stage
         // are driven, instead of applying a final digital volume multiplier.
-        let pre_expression = tube_stage(equalized, self.drive * 0.45, 0.08);
+        let pre_expression = tube_stage(equalized, self.drive * 0.45, V4A_ASYMMETRY);
 
         // Reduced three-band form of the capacitive expression network. The
         // two expression-control sections use the documented 60 pF/section
@@ -112,14 +118,14 @@ impl ConsoleElectronics {
         // then applies a broad shelf above roughly 200 Hz before V3B. The
         // original control only cut; the RackForge calibration parameter also
         // permits the documented modern +9 dB extension around its neutral.
-        let post_expression = tube_stage(expressed, self.drive * 0.35, -0.05);
+        let post_expression = tube_stage(expressed, self.drive * 0.35, V4B_ASYMMETRY);
         let tone_coefficient = one_pole(TONE_CONTROL_HZ, self.sample_rate);
         self.tone_state += tone_coefficient * (post_expression - self.tone_state);
         let tone_high = post_expression - self.tone_state;
         let toned = post_expression + (tone_gain(self.tone_control) - 1.0) * tone_high;
 
         // V3B/12BH7 is the final active stage before output transformer T3.
-        let amplified = tube_stage(toned, self.drive * 0.20, 0.03);
+        let amplified = tube_stage(toned, self.drive * 0.20, V3B_ASYMMETRY);
 
         // Coupling capacitors remove the small asymmetric-stage bias.
         let dc_coefficient = 1.0 - one_pole(18.0, self.sample_rate);
@@ -151,11 +157,35 @@ impl ConsoleElectronics {
     }
 }
 
-fn tube_stage(input: f32, drive: f32, bias_scale: f32) -> f32 {
+/// One single-ended triode stage. A triode's plate current follows roughly a
+/// three-halves power of its grid voltage, so the transfer curve is not
+/// symmetric: one half of the waveform compresses harder than the other, and
+/// the distortion that results is dominated by the second harmonic rather
+/// than the third. That is the character the AO-28's single-ended stages
+/// contribute, and it is why a symmetric soft clipper is the wrong shape for
+/// them. `asymmetry` is how much harder the positive half compresses, and is
+/// provisional per stage.
+fn tube_stage(input: f32, drive: f32, asymmetry: f32) -> f32 {
     let driven = input * (1.0 + 7.0 * drive);
-    let bias = bias_scale * drive;
-    let biased = driven + bias;
-    let saturated = biased / (1.0 + biased.abs()) - bias / (1.0 + bias.abs());
+    // Two shapes in series, and the order matters for which harmonic leads.
+    // The symmetric part is a cubic soft clip, whose lowest distortion term is
+    // third order and therefore grows with the square of level. The asymmetric
+    // part is a rational curve whose expansion is x - a x^2 + a^2 x^3: second
+    // order to first power of level, third order to the square of it. That is
+    // the single-ended triode relationship, where the third harmonic sits
+    // roughly as far below the second as the second is below the fundamental,
+    // and it is what makes a console sound like one stage rather than like a
+    // clipper.
+    // Unit slope at the origin, so the stage neither gains nor loses level
+    // until it is actually being driven.
+    let clipped = if driven >= 1.0 {
+        2.0 / 3.0
+    } else if driven <= -1.0 {
+        -2.0 / 3.0
+    } else {
+        driven - driven * driven * driven / 3.0
+    };
+    let saturated = clipped / (1.0 + asymmetry * clipped);
     let makeup = 1.0 / (1.0 + 3.2 * drive);
     (input * (1.0 - drive) + saturated * drive) * makeup
 }

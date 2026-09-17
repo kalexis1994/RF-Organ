@@ -44,6 +44,9 @@ pub const IMPULSE_CAPTURE: &str = "leslie-cabinet-impulse";
 /// percussion stands alone in the spectrum at three times the 8' frequency.
 pub const PERCUSSION_NOTE: u8 = 60;
 pub const PERCUSSION_DRAWBARS: [u8; 3] = [8, 8, 8];
+/// Expression character the calibration render uses, and the quantity the
+/// expression captures exist to fit.
+pub const EXPRESSION_CHARACTER: f32 = 0.55;
 
 #[derive(Clone, Copy, Debug)]
 pub struct PercussionCapture {
@@ -75,6 +78,47 @@ pub const PERCUSSION_CAPTURES: [PercussionCapture; 4] = [
         id: "40-percussion-soft-slow",
         volume: PercussionVolume::Soft,
         decay: PercussionDecay::Slow,
+    },
+];
+
+/// Keys and registration of the expression captures. Two octaves apart with
+/// every drawbar out puts energy on the 16' bus of the low key and on the 8'
+/// and 1' buses of the high one, which is how one capture can be read at a
+/// low, a middle and a high frequency.
+pub const EXPRESSION_NOTES: [u8; 2] = [48, 84];
+pub const EXPRESSION_LOW: (u8, usize) = (48, 0);
+pub const EXPRESSION_MID: (u8, usize) = (84, 2);
+pub const EXPRESSION_HIGH: (u8, usize) = (84, 8);
+
+#[derive(Clone, Copy, Debug)]
+pub struct ExpressionCapture {
+    pub id: &'static str,
+    /// Documented pedal position, heel to toe.
+    pub position: f32,
+}
+
+/// Five pedal positions at one recording gain. Every reading is relative to
+/// the toe capture, so the absolute gain of the session cancels.
+pub const EXPRESSION_CAPTURES: [ExpressionCapture; 5] = [
+    ExpressionCapture {
+        id: "41-expression-heel",
+        position: 0.125,
+    },
+    ExpressionCapture {
+        id: "42-expression-quarter",
+        position: 0.25,
+    },
+    ExpressionCapture {
+        id: "43-expression-half",
+        position: 0.5,
+    },
+    ExpressionCapture {
+        id: "44-expression-three-quarter",
+        position: 0.75,
+    },
+    ExpressionCapture {
+        id: "45-expression-toe",
+        position: 1.0,
     },
 ];
 
@@ -372,8 +416,49 @@ pub fn capture_names() -> Vec<&'static str> {
         .into_iter()
         .chain(TRANSFORMER_CAPTURES.iter().map(|capture| capture.id))
         .chain(PERCUSSION_CAPTURES.iter().map(|capture| capture.id))
+        .chain(EXPRESSION_CAPTURES.iter().map(|capture| capture.id))
         .chain([IMPULSE_CAPTURE])
         .collect()
+}
+
+/// Renders one expression capture: the pedal parked at a documented
+/// position, every drawbar out, two keys two octaves apart, with the console
+/// drive left where the calibration render puts it so the reading includes the
+/// stages the pedal sits between.
+pub fn render_expression_phrase(capture: &ExpressionCapture) -> Vec<f32> {
+    let frames = SAMPLE_RATE as usize * PHRASE_SECONDS;
+    let onset = SAMPLE_RATE as usize / 4;
+    let release = SAMPLE_RATE as usize * 3;
+    let mut engine = OrganEngine::new(SAMPLE_RATE as f32).expect("valid engine");
+    for drawbar in 0..DRAWBAR_COUNT {
+        let _ = engine.set_manual_drawbar(OrganPart::Upper, drawbar, 8);
+        let _ = engine.set_manual_drawbar(OrganPart::Lower, drawbar, 0);
+    }
+    for drawbar in 0..PEDAL_DRAWBAR_COUNT {
+        let _ = engine.set_manual_drawbar(OrganPart::Pedal, drawbar, 0);
+    }
+    let _ = engine.set_output_level(1.0);
+    let _ = engine.set_transformer(CHARACTER.0, CHARACTER.1);
+    let _ = engine.set_console(0.0, 0.0, 0.0);
+    let _ = engine.set_expression_character(EXPRESSION_CHARACTER);
+    let _ = engine.set_expression(capture.position);
+    engine.set_scanner_mode(ScannerMode::Off);
+    engine.set_scanner_manuals(false, false);
+    engine.set_leslie_mode(LeslieMode::Off);
+
+    let mut output = Vec::with_capacity(frames * 2);
+    for frame in 0..frames {
+        if frame == onset {
+            for note in EXPRESSION_NOTES {
+                let _ = engine.note_on_part(OrganPart::Upper, note, 1.0);
+            }
+        }
+        if frame == release {
+            engine.all_notes_off();
+        }
+        output.extend_from_slice(&engine.next_sample());
+    }
+    output
 }
 
 /// Renders one percussion capture with the same timing as the rest of the
@@ -592,7 +677,7 @@ mod tests {
     #[test]
     fn the_capture_grid_is_complete_and_uniquely_named() {
         let names = capture_names();
-        assert_eq!(names.len(), 41);
+        assert_eq!(names.len(), 46);
         let mut sorted = names.clone();
         sorted.sort_unstable();
         sorted.dedup();
