@@ -34,6 +34,77 @@ const fn rpm_to_hz(rpm: f32) -> f32 {
     rpm / 60.0
 }
 
+/// Below this the rotor is treated as already at rest, and a stop has nothing
+/// left to aim.
+const RESTING_HZ: f32 = 1.0e-4;
+
+/// Where a rotor is asked to come to rest. Hammond documents the setting as
+/// 0 to 359 degrees or "Rnd", which stops it at a random angle. Zero is the
+/// mouth pointing at the microphones.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum StopAngle {
+    /// Turns from the microphones, in `[0, 1)`.
+    Fixed(f32),
+    Random,
+}
+
+impl StopAngle {
+    /// Hammond's own encoding: a degree from 0 to 359, and one step past the
+    /// end for "Rnd".
+    pub fn from_degrees(degrees: f32) -> Option<Self> {
+        if !degrees.is_finite() || degrees < 0.0 || degrees > 360.0 {
+            return None;
+        }
+        if degrees >= 360.0 {
+            Some(Self::Random)
+        } else {
+            Some(Self::Fixed(degrees / 360.0))
+        }
+    }
+}
+
+/// Fraction of a turn, from a number of turns that may be negative or large.
+fn wrap_turn(turns: f32) -> f32 {
+    let whole = (turns as i32) as f32;
+    let fraction = turns - whole;
+    if fraction < 0.0 {
+        fraction + 1.0
+    } else {
+        fraction
+    }
+}
+
+/// A stop that has to end at a chosen angle.
+///
+/// A constant rate cannot do that: the angle a rotor covers while slowing at a
+/// fixed rate is whatever its speed happens to make it, and Hammond documents
+/// both the time the stop takes and where it ends. What is left free is the
+/// shape. The speed still falls from where it was to nothing over the same
+/// time, but along a curve whose area is the angle that lands the mouth where
+/// it was asked to stop.
+///
+/// The curve is `start * (1 - s) * (1 + bend * s)`, which leaves the speed
+/// positive and falling for any bend in `[-1, 1]`, and covers between a third
+/// and two thirds of `start * seconds`. A straight ramp is the half-way case.
+/// Only when a whole turn still will not fit into that window does the stop
+/// take longer than the documented time.
+#[derive(Clone, Copy)]
+struct Brake {
+    start_hz: f32,
+    frames: f32,
+    elapsed: f32,
+    bend: f32,
+    /// Resolved once, so that a random angle stays put if the stop is
+    /// re-shaped while it is under way.
+    target: f32,
+}
+
+/// The travel a brake of this length can be shaped to cover, in turns.
+fn brake_reach(speed_hz: f32, seconds: f32) -> (f32, f32) {
+    let sweep = speed_hz * seconds;
+    (sweep / 3.0, 2.0 * sweep / 3.0)
+}
+
 /// Radius at which each rotor's mouth travels, in metres. Smith, Serafin,
 /// Abel and Berners model the horn as an omnidirectional source on a circle
 /// of radius r, whose far-field Doppler amplitude is r times angular velocity
@@ -222,6 +293,10 @@ pub struct RotaryDiagnostics {
     /// defines it.
     pub horn_transition_seconds: f32,
     pub drum_transition_seconds: f32,
+    /// Where each mouth is pointing, in degrees, with zero facing the
+    /// microphones.
+    pub horn_angle_degrees: f32,
+    pub drum_angle_degrees: f32,
 }
 
 impl RotaryMode {
@@ -273,6 +348,12 @@ impl DelayLine {
 struct Rotor {
     sine: f32,
     cosine: f32,
+    /// The same angle as the pair above, in turns, kept alongside them because
+    /// aiming a stop needs to know where the mouth is and not only where it
+    /// points.
+    phase: f32,
+    stop_angle: StopAngle,
+    brake: Option<Brake>,
     speed_hz: f32,
     target_hz: f32,
     /// Hertz per second while ramping. Hammond defines a transition time as
@@ -301,6 +382,9 @@ impl Rotor {
         Self {
             sine: 0.0,
             cosine: 1.0,
+            phase: 0.0,
+            stop_angle: StopAngle::Fixed(0.0),
+            brake: None,
             speed_hz: 0.0,
             target_hz: 0.0,
             rate_hz_per_second: 0.0,
@@ -317,7 +401,7 @@ impl Rotor {
     /// Points the rotor at a new speed and works out how fast it may get
     /// there: up takes the rise time, down to the slow speed the fall time,
     /// and down to a stop the brake time.
-    fn aim(&mut self, target_hz: f32, sample_rate: f32) {
+    fn aim(&mut self, target_hz: f32, sample_rate: f32, random: f32) {
         let seconds = if target_hz > self.speed_hz {
             self.rise_seconds
         } else if target_hz <= 0.0 {
@@ -333,6 +417,54 @@ impl Rotor {
         self.target_hz = target_hz;
         self.rate_hz_per_second = span / seconds.max(0.05);
         self.delay_frames = (MODE_DELAY_SECONDS * sample_rate) as u32;
+        self.brake = if target_hz <= 0.0 {
+            let target = match (self.stop_angle, self.brake) {
+                (StopAngle::Fixed(turns), _) => turns,
+                (StopAngle::Random, Some(brake)) => brake.target,
+                (StopAngle::Random, None) => random,
+            };
+            self.shape_stop(sample_rate, target)
+        } else {
+            None
+        };
+    }
+
+    /// Works out the curve that brings this rotor to rest facing the right
+    /// way. Returns nothing when there is nothing to aim, which is when the
+    /// rotor has already stopped.
+    fn shape_stop(&self, sample_rate: f32, target: f32) -> Option<Brake> {
+        let speed = self.speed_hz;
+        if speed <= RESTING_HZ || self.rate_hz_per_second <= 0.0 {
+            return None;
+        }
+        // How far the mouth has to travel, measured the way it is turning,
+        // plus however many whole turns bring that nearest a straight ramp.
+        // The relay and clutch have not let go yet, so the turns the rotor
+        // makes at full speed while waiting come off the journey first.
+        let documented = speed / self.rate_hz_per_second;
+        let straight = 0.5 * speed * documented;
+        let waiting = speed * self.delay_frames as f32 / sample_rate;
+        let ahead = wrap_turn((target - self.phase) * self.direction - waiting);
+        let extra = (((straight - ahead + 0.5) as i32).max(0)) as f32;
+        let turns = (ahead + extra).max(1.0e-5);
+
+        let (shortest, longest) = brake_reach(speed, documented);
+        let seconds = if turns > longest {
+            1.5 * turns / speed
+        } else if turns < shortest {
+            3.0 * turns / speed
+        } else {
+            documented
+        }
+        .clamp(1.0 / sample_rate, TIME_CEILING);
+        let bend = (6.0 * (turns / (speed * seconds) - 0.5)).clamp(-1.0, 1.0);
+        Some(Brake {
+            start_hz: speed,
+            frames: (seconds * sample_rate).max(1.0),
+            elapsed: 0.0,
+            bend,
+            target,
+        })
     }
 
     /// Seconds this rotor would need to cross its whole range at the rate it
@@ -348,6 +480,14 @@ impl Rotor {
     fn advance(&mut self, sample_rate: f32) {
         if self.delay_frames > 0 {
             self.delay_frames -= 1;
+        } else if let Some(brake) = &mut self.brake {
+            brake.elapsed += 1.0;
+            let progress = (brake.elapsed / brake.frames).min(1.0);
+            self.speed_hz = brake.start_hz * (1.0 - progress) * (1.0 + brake.bend * progress);
+            if progress >= 1.0 {
+                self.speed_hz = 0.0;
+                self.brake = None;
+            }
         } else {
             let step = self.rate_hz_per_second / sample_rate;
             if self.speed_hz < self.target_hz {
@@ -356,6 +496,7 @@ impl Rotor {
                 self.speed_hz = (self.speed_hz - step).max(self.target_hz);
             }
         }
+        self.phase = wrap_turn(self.phase + self.direction * self.speed_hz / sample_rate);
         let angle = self.direction * TAU * self.speed_hz / sample_rate;
         let (rotation_sine, rotation_cosine) = small_rotation(angle);
         let sine = self.sine * rotation_cosine + self.cosine * rotation_sine;
@@ -387,6 +528,9 @@ pub struct Rotary {
     drum_radius: f32,
     reflections: f32,
     horn_drum_balance: f32,
+    /// Drawn on only when a rotor is asked to stop at a random angle, so a
+    /// render with fixed angles stays bit-identical run to run.
+    entropy: u32,
 }
 
 impl Rotary {
@@ -429,7 +573,31 @@ impl Rotary {
             drum_radius: DRUM_RADIUS_DEFAULT_M,
             reflections: 0.22,
             horn_drum_balance: 0.0,
+            entropy: 0x9e37_79b9,
         }
+    }
+
+    /// Where each rotor comes to rest when the cabinet is stopped.
+    pub fn set_stop_angles(&mut self, horn: StopAngle, drum: StopAngle) -> bool {
+        for angle in [horn, drum] {
+            if let StopAngle::Fixed(turns) = angle
+                && !(0.0..1.0).contains(&turns)
+            {
+                return false;
+            }
+        }
+        self.horn.stop_angle = horn;
+        self.drum.stop_angle = drum;
+        true
+    }
+
+    /// A turn's worth of randomness, from a generator that only moves when a
+    /// rotor actually asks for it.
+    fn roll(&mut self) -> f32 {
+        self.entropy ^= self.entropy << 13;
+        self.entropy ^= self.entropy >> 17;
+        self.entropy ^= self.entropy << 5;
+        (self.entropy >> 8) as f32 / (1 << 24) as f32
     }
 
     pub fn set_mode(&mut self, mode: RotaryMode) {
@@ -442,8 +610,9 @@ impl Rotary {
             RotaryMode::Chorale => (self.horn.slow_hz, self.drum.slow_hz),
             RotaryMode::Tremolo => (self.horn.fast_hz, self.drum.fast_hz),
         };
-        self.horn.aim(horn, self.sample_rate);
-        self.drum.aim(drum, self.sample_rate);
+        let (horn_roll, drum_roll) = (self.roll(), self.roll());
+        self.horn.aim(horn, self.sample_rate, horn_roll);
+        self.drum.aim(drum, self.sample_rate, drum_roll);
     }
 
     pub const fn mode(&self) -> RotaryMode {
@@ -477,8 +646,9 @@ impl Rotary {
         // Keep whatever move is under way consistent with the new times.
         let (horn_target, drum_target) = (self.horn.target_hz, self.drum.target_hz);
         let (horn_delay, drum_delay) = (self.horn.delay_frames, self.drum.delay_frames);
-        self.horn.aim(horn_target, self.sample_rate);
-        self.drum.aim(drum_target, self.sample_rate);
+        let (horn_roll, drum_roll) = (self.roll(), self.roll());
+        self.horn.aim(horn_target, self.sample_rate, horn_roll);
+        self.drum.aim(drum_target, self.sample_rate, drum_roll);
         self.horn.delay_frames = horn_delay;
         self.drum.delay_frames = drum_delay;
         true
@@ -657,6 +827,8 @@ impl Rotary {
             drum_speed_rpm: self.drum.speed_hz * 60.0,
             horn_transition_seconds: self.horn.transition_seconds(),
             drum_transition_seconds: self.drum.transition_seconds(),
+            horn_angle_degrees: self.horn.phase * 360.0,
+            drum_angle_degrees: self.drum.phase * 360.0,
         }
     }
 
@@ -695,6 +867,106 @@ fn one_pole(frequency: f32, sample_rate: f32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Runs the cabinet up to a mode, stops it, and reports where each rotor
+    /// came to rest and how long the stop took.
+    fn stop_from(mode: RotaryMode, horn: StopAngle, drum: StopAngle) -> (f32, f32, f32) {
+        let rate = 48_000.0_f32;
+        let mut rotary = Rotary::new(rate);
+        assert!(rotary.set_stop_angles(horn, drum));
+        rotary.set_mode(mode);
+        for _ in 0..(rate as usize * 12) {
+            rotary.process(0.0);
+        }
+        rotary.set_mode(RotaryMode::Brake);
+        let mut frames = 0.0;
+        let mut moving = true;
+        for _ in 0..(rate as usize * 20) {
+            rotary.process(0.0);
+            let state = rotary.diagnostics();
+            if moving {
+                frames += 1.0;
+                if state.horn_speed_hz <= 0.0 && state.drum_speed_hz <= 0.0 {
+                    moving = false;
+                }
+            }
+        }
+        let state = rotary.diagnostics();
+        (
+            state.horn_angle_degrees,
+            state.drum_angle_degrees,
+            frames / rate,
+        )
+    }
+
+    /// The distance between two angles on a circle, in degrees.
+    fn apart(left: f32, right: f32) -> f32 {
+        let gap = (left - right).abs() % 360.0;
+        if gap > 180.0 { 360.0 - gap } else { gap }
+    }
+
+    /// A stopped rotor ends up facing where it was told to, from either
+    /// running speed. The horn and the drum turn against each other, so the
+    /// same aim is a different journey for each.
+    #[test]
+    fn a_stop_lands_where_it_was_aimed() {
+        for degrees in [0.0_f32, 37.0, 180.0, 300.0] {
+            let aim = StopAngle::from_degrees(degrees).unwrap();
+            for mode in [RotaryMode::Tremolo, RotaryMode::Chorale] {
+                let (horn, drum, seconds) = stop_from(mode, aim, aim);
+                assert!(
+                    apart(horn, degrees) < 2.0,
+                    "horn stopped at {horn} instead of {degrees} from {mode:?}"
+                );
+                assert!(
+                    apart(drum, degrees) < 2.0,
+                    "drum stopped at {drum} instead of {degrees} from {mode:?}"
+                );
+                // Hammond's brake time is the time to stop from the fast
+                // speed, and that is where it has to hold: the drum is the
+                // slower of the pair, so it sets what the pair takes.
+                let expected = if mode == RotaryMode::Tremolo {
+                    (1.7, 3.2)
+                } else {
+                    (0.05, 3.2)
+                };
+                assert!(
+                    (expected.0..expected.1).contains(&seconds),
+                    "the stop took {seconds}s from {mode:?}"
+                );
+            }
+        }
+    }
+
+    /// "Rnd" is the documented alternative, and it has to actually land
+    /// somewhere else each time without ever leaving the circle.
+    #[test]
+    fn a_random_stop_lands_somewhere_new() {
+        let rate = 48_000.0_f32;
+        let mut rotary = Rotary::new(rate);
+        assert!(rotary.set_stop_angles(StopAngle::Random, StopAngle::Random));
+        let mut seen = [0.0_f32; 4];
+        for slot in &mut seen {
+            rotary.set_mode(RotaryMode::Tremolo);
+            for _ in 0..(rate as usize * 12) {
+                rotary.process(0.0);
+            }
+            rotary.set_mode(RotaryMode::Brake);
+            for _ in 0..(rate as usize * 20) {
+                rotary.process(0.0);
+            }
+            *slot = rotary.diagnostics().horn_angle_degrees;
+            assert!(
+                (0.0..360.0).contains(slot),
+                "angle {slot} is off the circle"
+            );
+        }
+        for (index, angle) in seen.iter().enumerate() {
+            for other in &seen[index + 1..] {
+                assert!(apart(*angle, *other) > 1.0, "{seen:?} repeats");
+            }
+        }
+    }
 
     /// The reciprocal root against the real one, over every distance a
     /// cabinet can put between a mouth and a microphone, and well past both
@@ -902,14 +1174,18 @@ mod tests {
             "horn fall took {fall} s"
         );
 
-        // From the slow speed a stop gives up a tenth of the range, so it
-        // takes about a tenth of the brake time.
+        // Hammond defines the brake time as the time to stop from the fast
+        // speed, which is the one case where the angle the rotor has to reach
+        // always fits inside it. From any slower speed the stop takes as long
+        // as reaching that angle needs, which is what
+        // `a_stop_lands_where_it_was_aimed` covers.
+        rotary.set_mode(RotaryMode::Tremolo);
+        settle_seconds(&mut rotary, true);
         rotary.set_mode(RotaryMode::Brake);
         let brake = settle_seconds(&mut rotary, true);
-        let expected = HORN_BRAKE_SECONDS * HORN_SLOW_RPM / HORN_FAST_RPM + MODE_DELAY_SECONDS;
         assert!(
-            (brake - expected).abs() < 0.1,
-            "braking from slow took {brake} s against {expected}"
+            (brake - HORN_BRAKE_SECONDS - MODE_DELAY_SECONDS).abs() < 0.1,
+            "braking from fast took {brake} s"
         );
     }
 

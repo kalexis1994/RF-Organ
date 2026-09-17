@@ -74,19 +74,25 @@ manual refers to when it calls the 2 2/3' the first black drawbar.
 ## Rotary cabinet documentation
 
 Version 0.21.0 takes the mechanical description Hammond publishes for a
-digital rotating cabinet: the horn turns counter-clockwise and the drum clockwise; slow
-speeds run from 20 to 120 rpm and fast speeds from 200 to 500 rpm; a rise, a
-fall and a brake time are separate per rotor, floored at 0.8 s for the horn and
-1.0 s for the drum and ceilinged at 12.5 s; a mode switch can be delayed by up
-to a second before the rotor responds; and a time means the time to cross the
-whole speed range, so a shorter move takes proportionally less and the rate is
-what stays constant.
+digital rotating cabinet: the horn turns counter-clockwise and the drum
+clockwise; slow speeds run from 20 to 120 rpm and fast speeds from 200 to
+500 rpm; a rise, a fall and a brake time are separate per rotor, floored at
+0.8 s for the horn and 1.0 s for the drum and ceilinged at 12.5 s; a mode
+switch can be delayed by up to a second before the rotor responds; and a time
+means the time to cross the whole speed range, so a shorter move takes
+proportionally less and the rate is what stays constant.
+
+Version 0.26.0 adds the stop angle from the same description: each rotor has
+one, documented as a whole degree from 0 to 359 or "Rnd" for a random angle,
+and the brake time is documented specifically as the time to stop from the
+fast speed. Both are modelled, and where they conflict the engine keeps the
+documented brake time and lets the stop from a slower speed run long; see
+`docs/CALIBRATION.md`.
 
 RF-Organ runs its rotors at 400 and 40 rpm for the horn and 340 and 40 for the
 drum, the figures usually quoted for a 122 and the ones Hammond's own worked
 examples use. The six transition times are provisional, inside the documented
-floors, and the laboratory measures what they produce. The stop angle is not
-modelled yet.
+floors, and the laboratory measures what they produce.
 
 ## Rotating source geometry
 

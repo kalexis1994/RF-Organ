@@ -267,6 +267,10 @@ fn render_suite(destination: &Path, trims: captures::Trims) -> Result<(), Box<dy
         analysis.rotary_doppler,
     )?;
     fs::write(
+        destination.join("rotary-stop-angle.csv"),
+        analysis.rotary_stop_angle,
+    )?;
+    fs::write(
         destination.join("pedal-spectrum.csv"),
         analysis.pedal_spectrum,
     )?;
@@ -469,7 +473,7 @@ fn manifest(trims: captures::Trims) -> String {
         .collect::<Vec<_>>()
         .join(",");
     format!(
-        "RF-Organ deterministic calibration suite\nversion={}\nsample_rate={}\nphrase_seconds={}\nnormalization=none\nformat=IEEE-float WAV stereo\nanalysis=frequency,level,generator-taper,generator-leakage,pedal-spectrum,pedal-release,expression-response,tone-control-response,console-distortion,transformer-intermodulation,transformer-calibration,percussion-envelope,percussion-recovery,keying-contacts,scanner-sidebands,scanner-line-response,rotary-rotor-response,rotary-doppler\n",
+        "RF-Organ deterministic calibration suite\nversion={}\nsample_rate={}\nphrase_seconds={}\nnormalization=none\nformat=IEEE-float WAV stereo\nanalysis=frequency,level,generator-taper,generator-leakage,pedal-spectrum,pedal-release,expression-response,tone-control-response,console-distortion,transformer-intermodulation,transformer-calibration,percussion-envelope,percussion-recovery,keying-contacts,scanner-sidebands,scanner-line-response,rotary-rotor-response,rotary-doppler,rotary-stop-angle\n",
         env!("CARGO_PKG_VERSION"),
         SAMPLE_RATE,
         SECONDS

@@ -4,10 +4,10 @@ use rf_organ_dsp::{
     HORN_RADIUS_RANGE_M, MIC_DISTANCE_DEFAULT_M, MIC_DISTANCE_RANGE_M, MIC_OFFSET_MAX_M,
     MIC_PATTERN_DEFAULT, MIC_SPACING_DEFAULT_M, MIC_SPACING_MAX_M, MicrophoneArray, OrganEngine,
     OrganPart, PEDAL_DRAWBAR_COUNT, PercussionDecay, PercussionHarmonic, PercussionVolume,
-    RotaryMode, ScannerMode, TransformerUnit,
+    RotaryMode, ScannerMode, StopAngle, TransformerUnit,
 };
 
-pub const PARAMETER_COUNT: usize = 55;
+pub const PARAMETER_COUNT: usize = 57;
 /// Bipolar per-transformer calibration trims, ordered T1, T2, T3.
 pub const TRANSFORMER_TRIM_FIRST: u32 = 45;
 pub const DRAWBAR_FIRST: u32 = 2;
@@ -53,6 +53,10 @@ pub struct Settings {
     /// is a control; see `THIRD_PARTY_NOTICES.md`.
     pub rotary_horn_radius: f64,
     pub rotary_drum_radius: f64,
+    /// Where each rotor comes to rest, in degrees, with one step past the end
+    /// of the circle standing for a random angle, as Hammond encodes it.
+    pub rotary_horn_stop_angle: f64,
+    pub rotary_drum_stop_angle: f64,
     pub rotary_reflections: f64,
     pub rotary_horn_drum_balance: f64,
     pub transformer_trims: [[f64; 2]; 3],
@@ -91,6 +95,8 @@ impl Default for Settings {
             rotary_mic_pattern: MIC_PATTERN_DEFAULT as f64,
             rotary_horn_radius: HORN_RADIUS_DEFAULT_M as f64,
             rotary_drum_radius: DRUM_RADIUS_DEFAULT_M as f64,
+            rotary_horn_stop_angle: 0.0,
+            rotary_drum_stop_angle: 0.0,
             rotary_reflections: 0.22,
             rotary_horn_drum_balance: 0.0,
             transformer_trims: [[0.0; 2]; 3],
@@ -138,6 +144,8 @@ impl Settings {
                 DRUM_RADIUS_RANGE_M.0 as f64,
                 DRUM_RADIUS_RANGE_M.1 as f64,
             )
+            && finite_range(self.rotary_horn_stop_angle, 0.0, 360.0)
+            && finite_range(self.rotary_drum_stop_angle, 0.0, 360.0)
             && unit(self.rotary_reflections)
             && bipolar(self.rotary_horn_drum_balance)
             && self
@@ -197,6 +205,8 @@ impl Settings {
             52 => self.rotary_mic_pattern,
             53 => self.rotary_horn_radius,
             54 => self.rotary_drum_radius,
+            55 => self.rotary_horn_stop_angle,
+            56 => self.rotary_drum_stop_angle,
             _ => return None,
         })
     }
@@ -264,6 +274,8 @@ impl Settings {
             52 => self.rotary_mic_pattern = value,
             53 => self.rotary_horn_radius = value,
             54 => self.rotary_drum_radius = value,
+            55 => self.rotary_horn_stop_angle = value,
+            56 => self.rotary_drum_stop_angle = value,
             _ => return None,
         }
         self.valid().then_some(self)
@@ -317,6 +329,12 @@ impl Settings {
             self.rotary_horn_radius as f32,
             self.rotary_drum_radius as f32,
         );
+        if let (Some(horn), Some(drum)) = (
+            StopAngle::from_degrees(self.rotary_horn_stop_angle as f32),
+            StopAngle::from_degrees(self.rotary_drum_stop_angle as f32),
+        ) {
+            let _ = engine.set_rotary_stop_angles(horn, drum);
+        }
         engine.set_scanner_mode(self.scanner_mode);
         engine.set_scanner_manuals(self.upper_scanner, self.lower_scanner);
         engine.set_percussion_enabled(self.percussion_enabled);

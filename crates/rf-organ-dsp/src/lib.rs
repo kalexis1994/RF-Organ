@@ -26,7 +26,7 @@ pub use rotary::{
     DRUM_RADIUS_DEFAULT_M, DRUM_RADIUS_RANGE_M, HORN_RADIUS_DEFAULT_M, HORN_RADIUS_RANGE_M,
     MIC_DISTANCE_DEFAULT_M, MIC_DISTANCE_RANGE_M, MIC_OFFSET_MAX_M, MIC_PATTERN_DEFAULT,
     MIC_SPACING_DEFAULT_M, MIC_SPACING_MAX_M, MicrophoneArray, Rotary, RotaryDiagnostics,
-    RotaryGeometry, RotaryMode,
+    RotaryGeometry, RotaryMode, StopAngle,
 };
 pub use scanner::{ScannerMode, ScannerVibrato};
 pub use tonewheel::{TONEWHEEL_COUNT, gear_frequency, gear_teeth};
@@ -366,6 +366,10 @@ impl OrganEngine {
 
     pub fn set_rotary_rotor_radii(&mut self, horn_m: f32, drum_m: f32) -> bool {
         self.rotary.set_rotor_radii(horn_m, drum_m)
+    }
+
+    pub fn set_rotary_stop_angles(&mut self, horn: StopAngle, drum: StopAngle) -> bool {
+        self.rotary.set_stop_angles(horn, drum)
     }
 
     pub fn next_sample(&mut self) -> [f32; 2] {

@@ -5,7 +5,7 @@ use crate::signal::{decay_time, decibels, peak, rms, zero_crossing_frequency};
 use rf_organ_dsp::{
     ConsoleElectronics, DRAWBAR_COUNT, MANUAL_FIRST_NOTE, MANUAL_KEY_COUNT, MatchingTransformer,
     MicrophoneArray, OrganEngine, OrganPart, PercussionDecay, PercussionHarmonic, PercussionVolume,
-    Rotary, RotaryGeometry, RotaryMode, ScannerMode, ScannerVibrato, TransformerUnit,
+    Rotary, RotaryGeometry, RotaryMode, ScannerMode, ScannerVibrato, StopAngle, TransformerUnit,
     compartment_companions, drawbar_wheel, gear_frequency,
 };
 use std::f64::consts::{PI, TAU};
@@ -23,6 +23,7 @@ pub struct Artifacts {
     pub scanner_line_response: String,
     pub rotary_rotor_response: String,
     pub rotary_doppler: String,
+    pub rotary_stop_angle: String,
     pub pedal_spectrum: String,
     pub pedal_release: String,
     pub expression_response: String,
@@ -81,6 +82,8 @@ fn analyze_inner() -> Result<Artifacts, String> {
     measurements.extend(rotary);
     let (doppler, rotary_doppler) = rotary_doppler_probe();
     measurements.extend(doppler);
+    let (stop, rotary_stop_angle) = rotary_stop_probe();
+    measurements.extend(stop);
     Ok(Artifacts {
         measurements: measurement_csv(&measurements),
         percussion_envelope,
@@ -90,6 +93,7 @@ fn analyze_inner() -> Result<Artifacts, String> {
         scanner_line_response,
         rotary_rotor_response,
         rotary_doppler,
+        rotary_stop_angle,
         pedal_spectrum,
         pedal_release,
         expression_response,
@@ -1640,6 +1644,94 @@ fn rotary_doppler_probe() -> (Vec<Measurement>, String) {
             },
         ]);
     }
+    (measurements, csv)
+}
+
+/// How far apart two angles are on a circle, in degrees.
+fn degrees_apart(left: f64, right: f64) -> f64 {
+    let gap = (left - right).abs() % 360.0;
+    if gap > 180.0 { 360.0 - gap } else { gap }
+}
+
+/// Where the rotors come to rest, and how long getting there takes.
+///
+/// Hammond documents a stop angle per rotor, from 0 to 359 degrees or a random
+/// one, and separately a brake time defined as the time to stop from the fast
+/// speed. A rotor slowing at a fixed rate covers whatever angle its speed
+/// happens to give it, so the two cannot both hold unless the shape of the
+/// deceleration is free. This probe checks that both do hold: the rotor lands
+/// where it was aimed, and a stop from the fast speed still takes the
+/// documented time.
+fn rotary_stop_probe() -> (Vec<Measurement>, String) {
+    const AIMS: [f32; 6] = [0.0, 37.0, 90.0, 180.0, 275.0, 359.0];
+    let mut csv =
+        String::from("start,aim_degrees,horn_degrees,drum_degrees,error_degrees,seconds\n");
+    let mut measurements = Vec::new();
+    let mut worst = [0.0_f64; 2];
+    let mut from_fast_seconds = 0.0_f64;
+
+    for (start, mode) in [("fast", RotaryMode::Tremolo), ("slow", RotaryMode::Chorale)] {
+        let mut longest = 0.0_f64;
+        for aim in AIMS {
+            let angle = StopAngle::from_degrees(aim).expect("documented angle");
+            let mut rotary = Rotary::new(SAMPLE_RATE as f32);
+            assert!(rotary.set_stop_angles(angle, angle));
+            rotary.set_mode(mode);
+            for _ in 0..SAMPLE_RATE * 12 {
+                rotary.process(0.0);
+            }
+            rotary.set_mode(RotaryMode::Brake);
+            let mut frames = 0_usize;
+            let mut turning = true;
+            for _ in 0..SAMPLE_RATE * 20 {
+                rotary.process(0.0);
+                if turning {
+                    frames += 1;
+                    let state = rotary.diagnostics();
+                    if state.horn_speed_hz <= 0.0 && state.drum_speed_hz <= 0.0 {
+                        turning = false;
+                    }
+                }
+            }
+            let state = rotary.diagnostics();
+            let horn = f64::from(state.horn_angle_degrees);
+            let drum = f64::from(state.drum_angle_degrees);
+            let aim = f64::from(aim);
+            let seconds = frames as f64 / SAMPLE_RATE as f64;
+            worst[0] = worst[0].max(degrees_apart(horn, aim));
+            worst[1] = worst[1].max(degrees_apart(drum, aim));
+            longest = longest.max(seconds);
+            let error = degrees_apart(horn, aim).max(degrees_apart(drum, aim));
+            let _ = writeln!(
+                csv,
+                "{start},{aim:.0},{horn:.3},{drum:.3},{error:.3},{seconds:.4}"
+            );
+        }
+        if start == "fast" {
+            from_fast_seconds = longest;
+        }
+    }
+
+    measurements.extend([
+        Measurement {
+            probe: "rotary-horn",
+            metric: "stop-angle-error",
+            value: worst[0],
+            unit: "degrees",
+        },
+        Measurement {
+            probe: "rotary-drum",
+            metric: "stop-angle-error",
+            value: worst[1],
+            unit: "degrees",
+        },
+        Measurement {
+            probe: "rotary-cabinet",
+            metric: "stop-from-fast",
+            value: from_fast_seconds,
+            unit: "seconds",
+        },
+    ]);
     (measurements, csv)
 }
 

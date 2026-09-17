@@ -368,6 +368,31 @@ well below it for the drum, and report peak deviation in cents. The radii are
 the quantity to solve for: a horn whose mouth turns at radius r sweeps
 1200*log2(1 + r*omega/c) cents at angular speed omega.
 
+## Rotor stop protocol
+
+`rotary-stop-angle.csv` and the `stop-` rows of `measurements.csv` come from
+stopping the cabinet at six aimed angles, from both running speeds, and
+reading where each rotor came to rest against where it was sent. The worst
+error is 0.03 degrees, and a stop from the fast speed takes 2.44 seconds,
+which is the drum's documented brake time plus the documented relay delay.
+
+From the slow speed the same stops take between 0.32 and 1.99 seconds, and
+that spread is the point rather than a defect. The deceleration is shaped, not
+rated: the speed still falls from where it was to nothing, but along a curve
+whose area is the angle that lands the mouth where it was asked to stop. The
+shape can cover between a third and two thirds of what a rotor at that speed
+would cover in that time, which from the fast speed is always enough to
+absorb up to half a turn of adjustment. From the slow speed the rotor is only
+covering a thirtieth of a turn while it stops, so an angle most of a turn away
+cannot fit, and the only honest choice left is to take longer. Hammond
+documents the brake time as the time to stop from the fast speed, so that is
+where it is held exactly.
+
+To measure a real cabinet against this, stop it repeatedly from each speed
+with the angle set to the same value and photograph or mark where the horn
+ends up. What matters is the spread across repetitions, not the absolute
+angle, since zero here means the mouth facing the microphones.
+
 ## Sample rate and cost
 
 Every other probe in this document runs at 48 kHz. The sweep checks that the

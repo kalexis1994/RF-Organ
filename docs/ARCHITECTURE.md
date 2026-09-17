@@ -158,7 +158,7 @@ slow speed takes a tenth of the time braking from fast does, and the drum takes
 several times longer than the horn either way. A mode switch waits briefly
 before the rotor responds, as a relay and a clutch do.
 
-## Version 0.25.0 limitations
+## Version 0.26.0 limitations
 
 - The classic B-3 pedal contact and resistor-panel topology is present. The
   L20 pedal-filter coefficient and console matching-network constants remain
@@ -185,12 +185,20 @@ before the rotor responds, as a relay and a clutch do.
   for that rate. The laboratory reports leakage against note count, which is
   where that gap will be closed.
 - Wow and flutter are not modelled. Eccentricity is, at a provisional depth.
-- The cabinet's microphone geometry is a set of abstract controls rather than
-  the distance, width and centre offset in centimetres that Hammond specifies,
-  and the rotors stop wherever they land rather than at a chosen angle. The
-  six transition times are provisional, though now inside the documented
+- The six transition times are provisional, though inside the documented
   range; before 0.21.0 the horn ramped in 0.35 s, which is under the 0.8 s
-  floor a cabinet can manage.
+  floor a cabinet can manage. Placement and stop angle are no longer
+  abstractions: both are in the units Hammond specifies them in.
+- A stop has to end at the documented angle and take the documented time, and
+  a rotor slowing at a fixed rate cannot do both, because the angle it covers
+  is whatever its speed makes it. What the engine holds fixed is the time and
+  the endpoints; what it bends is the shape of the deceleration, over a range
+  that keeps the speed falling and positive. From the fast speed that window
+  always contains the angle, so the brake time is exactly the documented one.
+  From a slower speed it sometimes does not, and then the stop takes as long
+  as reaching the angle needs - up to about two seconds from Chorale - which
+  is a departure from a constant rate that the laboratory reports rather than
+  hides.
 - The vibrato line uses the documented component values with an unwarped
   bilinear transform, so its cutoff is placed by the components rather than
   fitted; the scanner runs at 6.9 Hz and its plate overlap is modelled as a
