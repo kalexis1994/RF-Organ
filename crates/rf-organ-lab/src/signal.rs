@@ -72,9 +72,15 @@ mod tests {
                 .map(|index| 0.37 * (TAU * 997.0 * index as f64 / rate).sin())
                 .collect::<Vec<_>>();
             let measured = spectral_amplitude(&samples, 997.0, rate);
-            assert!((measured - 0.37).abs() < 1.0e-6, "{rate} Hz gave {measured}");
+            assert!(
+                (measured - 0.37).abs() < 1.0e-6,
+                "{rate} Hz gave {measured}"
+            );
             let frequency = zero_crossing_frequency(&samples, rate).expect("crossings");
-            assert!((frequency - 997.0).abs() < 0.01, "{rate} Hz gave {frequency}");
+            assert!(
+                (frequency - 997.0).abs() < 0.01,
+                "{rate} Hz gave {frequency}"
+            );
             assert!((peak(&samples) - 0.37).abs() < 1.0e-4);
             assert!((rms(&samples) - 0.37 / 2.0_f64.sqrt()).abs() < 1.0e-4);
         }

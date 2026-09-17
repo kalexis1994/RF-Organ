@@ -1,0 +1,128 @@
+# RF-Organ lives in its own repository but builds against the RackForge SDK
+# from a sibling checkout, so CI reproduces that layout: both repositories are
+# checked out side by side and the SDK is pinned to the revision Cargo.lock
+# records. Bump RACKFORGE_REF and the lockfile together, never one alone.
+#
+# What this does not check: the committed web surface. `package/web/app_bg.wasm`
+# is produced by wasm-bindgen, whose output cannot be compared across toolchains
+# the way the component can, so the UI crate is only compiled and tested here.
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # Validation builds do not benefit from incremental artifacts and they grow
+  # the cache for nothing.
+  CARGO_INCREMENTAL: "0"
+  # RackForge 0.1.21, the SDK version in Cargo.lock.
+  RACKFORGE_REF: 8e8991b67ddcb55507911abd93dcf52dfd6b5ef6
+
+jobs:
+  validate:
+    name: Tests, lints and package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out RF-Organ
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: RF-Organ
+          persist-credentials: false
+
+      - name: Check out the RackForge SDK
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: kalexis1994/rackforge
+          ref: ${{ env.RACKFORGE_REF }}
+          path: rackforge
+          persist-credentials: false
+
+      - name: Lint this workflow
+        uses: docker://rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 # 1.7.12
+        with:
+          args: -color RF-Organ/.github/workflows/ci.yml
+
+      - name: Install native dependencies
+        shell: bash
+        # rackforge-core links ALSA and udev on Linux; RF-Organ itself needs
+        # neither, but the package validation runs through the host.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libasound2-dev \
+            libudev-dev \
+            pkg-config
+
+      - name: Restore Rust build cache
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: RF-Organ
+          key: rf-organ-ci
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Check formatting
+        shell: bash
+        working-directory: RF-Organ
+        run: cargo fmt --all -- --check
+
+      - name: Lint
+        shell: bash
+        working-directory: RF-Organ
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings
+
+      - name: Test
+        shell: bash
+        working-directory: RF-Organ
+        run: cargo test --locked --workspace
+
+      - name: Build the plugin and the surface for wasm32
+        shell: bash
+        working-directory: RF-Organ
+        run: |
+          cargo build --locked --release -p rf-organ-plugin --target wasm32-unknown-unknown
+          cargo build --locked --release -p rf-organ-ui --target wasm32-unknown-unknown
+
+      - name: Validate the package
+        shell: bash
+        working-directory: RF-Organ
+        run: |
+          cargo run --locked --manifest-path ../rackforge/Cargo.toml \
+            --target-dir target/rackforge-core -p rackforge-core -- inspect package
+          target/rackforge-core/debug/rackforge-core smoke package --preset gospel-full
+
+      - name: Check that the committed component matches the sources
+        shell: bash
+        working-directory: RF-Organ
+        run: |
+          bash tools/check-package.sh \
+            target/rackforge-core/debug/rackforge-core \
+            target/wasm32-unknown-unknown/release/rf_organ_plugin.wasm
+
+      - name: Sweep sample rates and benchmark the engine
+        shell: bash
+        working-directory: RF-Organ
+        run: cargo run --locked --release -p rf-organ-lab -- sweep artifacts/sweep
+
+      - name: Publish the sweep
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sample-rate-sweep
+          path: |
+            RF-Organ/artifacts/sweep/sample-rate-invariance.csv
+            RF-Organ/artifacts/sweep/performance.csv
+          if-no-files-found: error

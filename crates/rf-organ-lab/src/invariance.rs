@@ -52,7 +52,8 @@ impl Invariant {
     }
 
     pub fn holds(&self) -> bool {
-        self.values.iter().all(|value| value.is_finite()) && self.worst_deviation() <= self.tolerance
+        self.values.iter().all(|value| value.is_finite())
+            && self.worst_deviation() <= self.tolerance
     }
 }
 
@@ -322,8 +323,8 @@ fn transformer_third_order(rate: u32) -> Result<f64, String> {
         }
     }
     let rate = f64::from(rate);
-    let carrier = 0.5
-        * (spectral_amplitude(&samples, C_HZ, rate) + spectral_amplitude(&samples, F_HZ, rate));
+    let carrier =
+        0.5 * (spectral_amplitude(&samples, C_HZ, rate) + spectral_amplitude(&samples, F_HZ, rate));
     let third_order = spectral_amplitude(&samples, 2.0 * C_HZ - F_HZ, rate);
     Ok(decibels(third_order / carrier))
 }
@@ -431,9 +432,10 @@ fn full_console(rate: u32) -> Result<OrganEngine, String> {
 }
 
 pub fn performance_report(measurements: &[Performance]) -> String {
-    let mut csv =
-        String::from("sample_rate_hz,seconds_rendered,elapsed_seconds,realtime_factor
-");
+    let mut csv = String::from(
+        "sample_rate_hz,seconds_rendered,elapsed_seconds,realtime_factor
+",
+    );
     for measurement in measurements {
         writeln!(
             &mut csv,

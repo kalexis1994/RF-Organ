@@ -1,5 +1,7 @@
 # RF-Organ
 
+[![CI](https://github.com/kalexis1994/RF-Organ/actions/workflows/ci.yml/badge.svg)](https://github.com/kalexis1994/RF-Organ/actions/workflows/ci.yml)
+
 RF-Organ is a physically informed tonewheel-organ instrument for RackForge.
 It is written in Rust and licensed under GPL-2.0-or-later.
 
@@ -56,6 +58,14 @@ target/rackforge-core/debug/rackforge-core.exe smoke package --preset chorale-88
 
 The RackForge development SDK is consumed from the sibling `rackforge`
 checkout. Package metadata lives under `package/`.
+
+`.github/workflows/ci.yml` reproduces that layout on every push and pull
+request: it checks out RackForge at the revision `Cargo.lock` records, then
+runs formatting, clippy, the test suite, both wasm32 builds, package inspection
+and smoke, the sample-rate sweep, and `tools/check-package.sh`, which proves the
+committed `component.wasm` still reports the same parameter schema, state size
+and rendered output as a build from the current sources. Bump `RACKFORGE_REF`
+and the lockfile together.
 
 The custom surface is declared through the package's `web_ui` manifest table.
 Its HTML and CSS are static, `bootstrap.js` only initializes the module, and

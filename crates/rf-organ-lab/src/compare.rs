@@ -282,10 +282,7 @@ fn compare_transformer_captures(
     for path in TransformerPath::ALL {
         for level in Level::ALL {
             let triplet = Notes::ALL.map(|notes| transformer_capture(path, level, notes));
-            if !reference
-                .join(format!("{}.wav", triplet[2].id))
-                .is_file()
-            {
+            if !reference.join(format!("{}.wav", triplet[2].id)).is_file() {
                 continue;
             }
             let load = |directory: &Path| -> Result<[Audio; 3], String> {
@@ -303,11 +300,7 @@ fn compare_transformer_captures(
                     }
                     loaded.push(read_audio(&file)?);
                 }
-                Ok([
-                    loaded.remove(0),
-                    loaded.remove(0),
-                    loaded.remove(0),
-                ])
+                Ok([loaded.remove(0), loaded.remove(0), loaded.remove(0)])
             };
             let model_audio = load(model)?;
             let reference_audio = load(reference)?;
@@ -396,7 +389,8 @@ fn transformer_fit_candidates(observations: &[Observation]) -> String {
     };
 
     let injection = usable(TransformerPath::Injection);
-    let output_fit = (!injection.is_empty()).then(|| fit_path(TransformerPath::Injection, &injection, NO_TRIM));
+    let output_fit =
+        (!injection.is_empty()).then(|| fit_path(TransformerPath::Injection, &injection, NO_TRIM));
     if let Some(fit) = &output_fit {
         write_fit_row(
             &mut csv,
@@ -422,7 +416,12 @@ fn transformer_fit_candidates(observations: &[Observation]) -> String {
         }
         match &output_fit {
             Some(output) => {
-                let base = trim_for(NO_TRIM, TransformerPath::Injection.unit(), output.drive_trim, 0.0);
+                let base = trim_for(
+                    NO_TRIM,
+                    TransformerPath::Injection.unit(),
+                    output.drive_trim,
+                    0.0,
+                );
                 let fit = fit_path(path, &rows, base);
                 write_fit_row(
                     &mut csv,
@@ -449,7 +448,12 @@ fn qualification_of(observations: &[Observation]) -> String {
     worst.qualification.to_owned()
 }
 
-fn write_fit_row(csv: &mut String, path: TransformerPath, fit: &TransformerFit, qualification: &str) {
+fn write_fit_row(
+    csv: &mut String,
+    path: TransformerPath,
+    fit: &TransformerFit,
+    qualification: &str,
+) {
     writeln!(
         csv,
         "{}-drive-trim,{},{},{},0.000000,{:.6},{:.6},{:.6},{:.6},{:.6},{qualification}",
@@ -541,12 +545,7 @@ fn sweep_self_check(path: TransformerPath, observations: &[Observation]) -> f64 
         .fold(0.0_f64, f64::max)
 }
 
-fn fit_error(
-    path: TransformerPath,
-    observations: &[Observation],
-    base: Trims,
-    trim: f32,
-) -> f64 {
+fn fit_error(path: TransformerPath, observations: &[Observation], base: Trims, trim: f32) -> f64 {
     let trims = trim_for(base, path.unit(), trim, 0.0);
     let total = observations
         .iter()
@@ -565,8 +564,14 @@ fn fit_error(
 fn predicted_third_order_dbc(path: TransformerPath, level: Level, trims: Trims) -> f64 {
     const SETTLE: usize = SAMPLE_RATE as usize / 4;
     const MEASURE: usize = SAMPLE_RATE as usize / 2;
-    let frames = Notes::ALL
-        .map(|notes| transformer_steady_frames(transformer_capture(path, level, notes), trims, SETTLE, MEASURE));
+    let frames = Notes::ALL.map(|notes| {
+        transformer_steady_frames(
+            transformer_capture(path, level, notes),
+            trims,
+            SETTLE,
+            MEASURE,
+        )
+    });
     intermodulation(&frames[0], &frames[1], &frames[2]).third_order_dbc
 }
 

@@ -438,7 +438,12 @@ fn injection_transformer(trims: Trims) -> MatchingTransformer {
     transformer
 }
 
-fn injection_input(capture: &TransformerCapture, frame: usize, onset: usize, release: usize) -> f32 {
+fn injection_input(
+    capture: &TransformerCapture,
+    frame: usize,
+    onset: usize,
+    release: usize,
+) -> f32 {
     let time = frame as f64 / f64::from(SAMPLE_RATE);
     let amplitude = capture.level.injection_amplitude() * injection_gate(frame, onset, release);
     let mut input = 0.0;

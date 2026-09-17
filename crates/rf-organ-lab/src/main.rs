@@ -107,7 +107,11 @@ fn sweep_suite(destination: &Path) -> Result<(), Box<dyn Error>> {
     if rate_dependent.is_empty() {
         Ok(())
     } else {
-        Err(format!("sample-rate dependent quantities: {}", rate_dependent.join(", ")).into())
+        Err(format!(
+            "sample-rate dependent quantities: {}",
+            rate_dependent.join(", ")
+        )
+        .into())
     }
 }
 

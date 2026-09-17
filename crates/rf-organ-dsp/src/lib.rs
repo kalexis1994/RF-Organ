@@ -528,7 +528,10 @@ mod tests {
         }
 
         assert!(engine.set_transformer_trim(TransformerUnit::T3, 0.25, -0.1));
-        assert_eq!(engine.transformer_diagnostics(TransformerUnit::T3).drive, 0.65);
+        assert_eq!(
+            engine.transformer_diagnostics(TransformerUnit::T3).drive,
+            0.65
+        );
         assert!(
             (engine
                 .transformer_diagnostics(TransformerUnit::T3)
@@ -537,12 +540,15 @@ mod tests {
                 .abs()
                 < 1.0e-6
         );
-        assert_eq!(engine.transformer_diagnostics(TransformerUnit::T1).drive, 0.4);
-        assert_eq!(engine.transformer_diagnostics(TransformerUnit::T2).drive, 0.4);
         assert_eq!(
-            engine.transformer_trim(TransformerUnit::T3),
-            (0.25, -0.1)
+            engine.transformer_diagnostics(TransformerUnit::T1).drive,
+            0.4
         );
+        assert_eq!(
+            engine.transformer_diagnostics(TransformerUnit::T2).drive,
+            0.4
+        );
+        assert_eq!(engine.transformer_trim(TransformerUnit::T3), (0.25, -0.1));
     }
 
     #[test]
@@ -553,7 +559,10 @@ mod tests {
         let t1 = engine.transformer_diagnostics(TransformerUnit::T1);
         assert_eq!(t1.drive, 0.0);
         assert_eq!(t1.hysteresis, 1.0);
-        assert_eq!(engine.transformer_diagnostics(TransformerUnit::T2).drive, 0.2);
+        assert_eq!(
+            engine.transformer_diagnostics(TransformerUnit::T2).drive,
+            0.2
+        );
         assert!(!engine.set_transformer_trim(TransformerUnit::T1, 1.5, 0.0));
         assert!(!engine.set_transformer_trim(TransformerUnit::T1, 0.0, f32::NAN));
         assert_eq!(engine.transformer_trim(TransformerUnit::T1), (-0.5, 1.0));
