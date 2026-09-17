@@ -483,16 +483,19 @@ mod tests {
         let mut scanned = OrganEngine::new(48_000.0).expect("valid engine");
         let mut silent = OrganEngine::new(48_000.0).expect("valid engine");
         for engine in [&mut scanned, &mut silent] {
-            assert!(engine.set_transformer(0.0, 0.0));
+            // A transformer drive high enough that anything passing through
+            // T1 or T2 would come out visibly compressed.
+            assert!(engine.set_transformer(0.9, 0.8));
             engine.set_scanner_mode(ScannerMode::Vibrato3);
-            engine.set_scanner_manuals(true, false);
+            engine.set_scanner_manuals(true, true);
         }
 
-        // Whatever the vibrato line does with the upper manual, the percussion
-        // channel reaches the V4A sum untouched: two identical consoles that
-        // differ only in percussion differ by exactly that much.
-        let with_percussion = scanned.route_ao28_inputs(0.5, 0.0, 0.0, 0.25);
-        let without_percussion = silent.route_ao28_inputs(0.5, 0.0, 0.0, 0.0);
+        // Whatever the matching transformers and the vibrato line do with the
+        // manuals, the percussion channel reaches the V4A sum untouched: two
+        // identical consoles that differ only in percussion differ by exactly
+        // that much.
+        let with_percussion = scanned.route_ao28_inputs(0.5, 0.4, 0.3, 0.25);
+        let without_percussion = silent.route_ao28_inputs(0.5, 0.4, 0.3, 0.0);
         assert!((with_percussion - without_percussion - 0.25).abs() < 1.0e-6);
     }
 

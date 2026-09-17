@@ -617,7 +617,52 @@ fn percussion_probe() -> Result<(Vec<Measurement>, String, String), String> {
         });
     }
 
+    measurements.extend(percussion_harmonic_probe()?);
     Ok((measurements, csv, percussion_recovery_probe()?))
+}
+
+/// Which generator each harmonic tablet actually reaches. Second percussion
+/// should come from the 4' bus and third from the 2 2/3' bus, so with every
+/// drawbar closed the strike is alone and its frequency identifies the bus.
+fn percussion_harmonic_probe() -> Result<Vec<Measurement>, String> {
+    const SELECTION: [(&str, PercussionHarmonic, usize); 2] = [
+        ("percussion-second", PercussionHarmonic::Second, 3),
+        ("percussion-third", PercussionHarmonic::Third, 4),
+    ];
+    const NOTE: u8 = 60;
+    let mut measurements = Vec::new();
+    for (probe, harmonic, bus) in SELECTION {
+        let mut engine = clean_engine()?;
+        engine.set_percussion_enabled(true);
+        engine.set_percussion_harmonic(harmonic);
+        engine.set_percussion_volume(PercussionVolume::Normal);
+        engine.set_percussion_decay(PercussionDecay::Slow);
+        assert!(engine.note_on_part(OrganPart::Upper, NOTE, 1.0));
+        let samples = (0..SAMPLE_RATE / 4)
+            .map(|_| f64::from(engine.next_sample()[0]))
+            .collect::<Vec<_>>();
+        let measured = zero_crossing_frequency(&samples[SAMPLE_RATE / 100..], SAMPLE_RATE as f64)
+            .ok_or_else(|| format!("{probe} produced no strike"))?;
+        let key = usize::from(NOTE - MANUAL_FIRST_NOTE);
+        let wheel = drawbar_wheel(key, bus).ok_or_else(|| format!("{probe} has no bus"))?;
+        let expected =
+            f64::from(gear_frequency(wheel).ok_or_else(|| format!("{probe} has no wheel"))?);
+        measurements.extend([
+            Measurement {
+                probe,
+                metric: "strike-frequency",
+                value: measured,
+                unit: "Hz",
+            },
+            Measurement {
+                probe,
+                metric: "strike-frequency-error",
+                value: 1_200.0 * (measured / expected).log2(),
+                unit: "cent",
+            },
+        ]);
+    }
+    Ok(measurements)
 }
 
 /// Steady drawbar level of the upper manual with percussion off, or on at the
@@ -1170,6 +1215,18 @@ mod tests {
         );
         let attack = value("percussion-fast", "attack-time");
         assert!((0.5..12.0).contains(&attack), "attack was {attack} ms");
+
+        // Second percussion is the 4' bus and third is the 2 2/3' bus, so the
+        // third strike sits a fifth above the second.
+        let second = value("percussion-second", "strike-frequency");
+        let third = value("percussion-third", "strike-frequency");
+        assert!(value("percussion-second", "strike-frequency-error").abs() < 1.0);
+        assert!(value("percussion-third", "strike-frequency-error").abs() < 1.0);
+        let interval = 1_200.0 * (third / second).log2();
+        assert!(
+            (interval - 702.0).abs() < 5.0,
+            "interval was {interval} cents"
+        );
 
         // Hammond documents about 6 dB out of the drawbars at Normal volume,
         // and none at Soft.
