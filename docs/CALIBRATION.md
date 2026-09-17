@@ -438,10 +438,23 @@ The clean injection is in the comparison and out of the fit. A stage with no
 drive has no curve to be lopsided about, so it says nothing about asymmetry
 and would only pull the fit toward noise.
 
-What the fit will not do is tell V4A, V4B and V3B apart. The tone passes
-through all three and comes out once. Separating them needs a probe at each
-stage, and until there is one the three keep the ratios they have and only
-their common size moves.
+Telling V4A, V4B and V3B apart needs a reading taken at each. A tone into the
+input passes through all three and comes out once, so
+`console-stage-v4a-*.wav` and its two companions inject at one stage's grid and
+read at its plate, at the baseline drive and hard. Do the same on a real
+AO-28 - the tone into that stage's grid, the probe on its plate - and the fit
+gives that stage a trim off the shared character.
+
+The model's own stage injections read -32.0, -39.2 and -49.6 dBc at the
+baseline, which is the three asymmetries falling stage by stage as the
+provisional constants have them. Fitting those back returns no trim at all on
+any stage, and a trim the model is not using comes back within 0.05 on the
+stage it was put in while the other two stay at zero. That last part is what
+injecting per stage buys: a reading taken at the output would have smeared one
+stage's trim across all three.
+
+Stages with no injection in the reference say so rather than being fitted from
+the chain.
 
 ## Taper protocol
 

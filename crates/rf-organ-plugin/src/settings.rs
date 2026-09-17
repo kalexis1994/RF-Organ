@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 use rf_organ_dsp::{
-    DRAWBAR_COUNT, DRUM_RADIUS_DEFAULT_M, DRUM_RADIUS_RANGE_M, HORN_RADIUS_DEFAULT_M,
+    ConsoleStage, DRAWBAR_COUNT, DRUM_RADIUS_DEFAULT_M, DRUM_RADIUS_RANGE_M, HORN_RADIUS_DEFAULT_M,
     HORN_RADIUS_RANGE_M, LEAKAGE_BOOST_DEFAULT, LEVEL_RANGE_DB, LEVEL_SILENT_DB,
     MIC_DISTANCE_DEFAULT_M, MIC_DISTANCE_RANGE_M, MIC_OFFSET_MAX_M, MIC_PATTERN_DEFAULT,
     MIC_SPACING_DEFAULT_M, MIC_SPACING_MAX_M, MainsFrequency, MicrophoneArray, MicrophonePair,
@@ -9,7 +9,9 @@ use rf_organ_dsp::{
     STAGE_CHARACTER_RANGE, SUB_LEVEL_DEFAULT_DB, ScannerMode, StopAngle, TransformerUnit,
 };
 
-pub const PARAMETER_COUNT: usize = 69;
+pub const PARAMETER_COUNT: usize = 72;
+/// Per-stage offsets from the shared console character, ordered V4A, V4B, V3B.
+pub const CONSOLE_STAGE_TRIM_FIRST: u32 = 69;
 /// Bipolar per-transformer calibration trims, ordered T1, T2, T3.
 pub const TRANSFORMER_TRIM_FIRST: u32 = 45;
 pub const DRAWBAR_FIRST: u32 = 2;
@@ -32,8 +34,10 @@ pub struct Settings {
     pub drive_wobble: f64,
     /// How fast the leakage grows as more keys go down.
     pub leakage_boost: f64,
-    /// How lopsided the preamplifier's three stages are, together.
+    /// How lopsided the preamplifier's three stages are, together, and how
+    /// each of them sits against that.
     pub console_stage_character: f64,
+    pub console_stage_trims: [f64; 3],
     pub transformer_drive: f64,
     pub transformer_hysteresis: f64,
     pub rotary_mode: RotaryMode,
@@ -99,6 +103,7 @@ impl Default for Settings {
             drive_wobble: 1.0,
             leakage_boost: LEAKAGE_BOOST_DEFAULT as f64,
             console_stage_character: STAGE_CHARACTER_DEFAULT as f64,
+            console_stage_trims: [0.0; 3],
             transformer_drive: 0.38,
             transformer_hysteresis: 0.32,
             rotary_mode: RotaryMode::Off,
@@ -158,6 +163,7 @@ impl Settings {
                 f64::from(STAGE_CHARACTER_RANGE.0),
                 f64::from(STAGE_CHARACTER_RANGE.1),
             )
+            && self.console_stage_trims.iter().all(|trim| bipolar(*trim))
             && unit(self.transformer_drive)
             && unit(self.transformer_hysteresis)
             && unit(self.rotary_mix)
@@ -255,6 +261,7 @@ impl Settings {
             66 => self.drive_wobble,
             67 => self.leakage_boost,
             68 => self.console_stage_character,
+            69..=71 => self.console_stage_trims[(index - CONSOLE_STAGE_TRIM_FIRST) as usize],
             52 => self.rotary_mic_pattern,
             53 => self.rotary_horn_radius,
             54 => self.rotary_drum_radius,
@@ -336,6 +343,9 @@ impl Settings {
             66 => self.drive_wobble = value,
             67 => self.leakage_boost = value,
             68 => self.console_stage_character = value,
+            69..=71 => {
+                self.console_stage_trims[(index - CONSOLE_STAGE_TRIM_FIRST) as usize] = value;
+            }
             52 => self.rotary_mic_pattern = value,
             53 => self.rotary_horn_radius = value,
             54 => self.rotary_drum_radius = value,
@@ -373,6 +383,9 @@ impl Settings {
         let _ = engine.set_drive_wobble(self.drive_wobble as f32);
         let _ = engine.set_leakage_boost(self.leakage_boost as f32);
         let _ = engine.set_console_stage_character(self.console_stage_character as f32);
+        for (stage, trim) in ConsoleStage::ALL.into_iter().zip(self.console_stage_trims) {
+            let _ = engine.set_console_stage_trim(stage, trim as f32);
+        }
         let _ = engine.set_transformer(
             self.transformer_drive as f32,
             self.transformer_hysteresis as f32,

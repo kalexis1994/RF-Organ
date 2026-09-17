@@ -755,6 +755,36 @@
       "kind": { "type": "float", "minimum": 0.0, "maximum": 3.0, "default": 1.0, "step": 0.001 },
       "flags": { "automatable": true, "advanced": true },
       "suggested_control": "knob"
+    },
+    {
+      "index": 69,
+      "id": "console-v4a-trim",
+      "name": "V4A Trim",
+      "page": "electronics",
+      "order": 5,
+      "kind": { "type": "float", "minimum": -1.0, "maximum": 1.0, "default": 0.0, "step": 0.001 },
+      "flags": { "automatable": true, "advanced": true },
+      "suggested_control": "knob"
+    },
+    {
+      "index": 70,
+      "id": "console-v4b-trim",
+      "name": "V4B Trim",
+      "page": "electronics",
+      "order": 6,
+      "kind": { "type": "float", "minimum": -1.0, "maximum": 1.0, "default": 0.0, "step": 0.001 },
+      "flags": { "automatable": true, "advanced": true },
+      "suggested_control": "knob"
+    },
+    {
+      "index": 71,
+      "id": "console-v3b-trim",
+      "name": "V3B Trim",
+      "page": "electronics",
+      "order": 7,
+      "kind": { "type": "float", "minimum": -1.0, "maximum": 1.0, "default": 0.0, "step": 0.001 },
+      "flags": { "automatable": true, "advanced": true },
+      "suggested_control": "knob"
     }
   ],
   "semantic_controls": [

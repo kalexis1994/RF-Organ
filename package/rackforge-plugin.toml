@@ -6,10 +6,10 @@ id = "org.rackforge.organ"
 name = "RF-Organ"
 short_name = "RF-ORGAN"
 vendor = "RackForge"
-version = "0.36.0"
+version = "0.37.0"
 description = "Physical-model tonewheel organ with an integrated rotary speaker module"
 kind = "instrument"
-state_version = 16
+state_version = 17
 capabilities = ["audio_output", "midi_input", "presets", "state"]
 ui_layouts = ["little@1"]
 

@@ -7,9 +7,10 @@
 //! in `docs/CALIBRATION.md` lines up with the generated files.
 
 use rf_organ_dsp::{
-    ConsoleElectronics, DRAWBAR_COUNT, MANUAL_FIRST_NOTE, MANUAL_KEY_COUNT, MatchingTransformer,
-    OrganEngine, OrganPart, PEDAL_DRAWBAR_COUNT, PercussionDecay, PercussionHarmonic,
-    PercussionVolume, RotaryMode, ScannerMode, TransformerUnit, drawbar_wheel, gear_frequency,
+    ConsoleElectronics, ConsoleStage, DRAWBAR_COUNT, MANUAL_FIRST_NOTE, MANUAL_KEY_COUNT,
+    MatchingTransformer, OrganEngine, OrganPart, PEDAL_DRAWBAR_COUNT, PercussionDecay,
+    PercussionHarmonic, PercussionVolume, RotaryMode, ScannerMode, TransformerUnit, drawbar_wheel,
+    gear_frequency,
 };
 use std::f64::consts::{PI, TAU};
 
@@ -70,6 +71,71 @@ pub const CONSOLE_PROBE_SECONDS: usize = 2;
 pub struct ConsoleCapture {
     pub id: &'static str,
     pub drive: f32,
+}
+
+/// The injections that see one stage at a time.
+///
+/// A probe at a stage's grid and another at its plate, at the drive the
+/// console is actually set to. Nothing before or after that stage is in the
+/// way, so the second harmonic in the reading belongs to that stage and to
+/// nothing else - which is the only way the three can be told apart.
+pub const CONSOLE_STAGE_CAPTURES: [ConsoleStageCapture; 6] = [
+    ConsoleStageCapture {
+        id: "console-stage-v4a-baseline",
+        stage: ConsoleStage::V4A,
+        drive: 0.32,
+    },
+    ConsoleStageCapture {
+        id: "console-stage-v4a-hard",
+        stage: ConsoleStage::V4A,
+        drive: 0.75,
+    },
+    ConsoleStageCapture {
+        id: "console-stage-v4b-baseline",
+        stage: ConsoleStage::V4B,
+        drive: 0.32,
+    },
+    ConsoleStageCapture {
+        id: "console-stage-v4b-hard",
+        stage: ConsoleStage::V4B,
+        drive: 0.75,
+    },
+    ConsoleStageCapture {
+        id: "console-stage-v3b-baseline",
+        stage: ConsoleStage::V3B,
+        drive: 0.32,
+    },
+    ConsoleStageCapture {
+        id: "console-stage-v3b-hard",
+        stage: ConsoleStage::V3B,
+        drive: 0.75,
+    },
+];
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ConsoleStageCapture {
+    pub id: &'static str,
+    pub stage: ConsoleStage,
+    pub drive: f32,
+}
+
+/// Renders one stage's injection: the same tone, into that stage alone.
+pub fn render_console_stage(capture: &ConsoleStageCapture) -> Vec<f32> {
+    let rate = SAMPLE_RATE as f64;
+    let frames = SAMPLE_RATE as usize * CONSOLE_PROBE_SECONDS;
+    let mut electronics = ConsoleElectronics::new(SAMPLE_RATE as f32);
+    assert!(electronics.set(capture.drive, 0.0, 0.0));
+    let mut output = Vec::with_capacity(frames * 2);
+    for frame in 0..frames {
+        let angle = TAU * CONSOLE_PROBE_HZ * frame as f64 / rate;
+        let sample = electronics.stage_sample(
+            capture.stage,
+            (CONSOLE_PROBE_AMPLITUDE * angle.sin()) as f32,
+        );
+        output.push(sample);
+        output.push(sample);
+    }
+    output
 }
 
 /// Renders one console injection: a steady tone through the preamplifier

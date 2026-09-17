@@ -25,6 +25,64 @@ const V3B_ASYMMETRY: f32 = 0.22;
 pub const STAGE_CHARACTER_RANGE: (f32, f32) = (0.0, 3.0);
 pub const STAGE_CHARACTER_DEFAULT: f32 = 1.0;
 
+/// One of the preamplifier's three single-ended stages.
+///
+/// They are named here so that a bench can be asked about one of them at a
+/// time. A probe at a stage's grid and another at its plate sees that stage
+/// alone, which is the only way to learn how the three divide the chain's
+/// asymmetry between them; a tone into the input and a reading at the output
+/// passes through all three and comes out once.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum ConsoleStage {
+    V4A = 0,
+    V4B = 1,
+    V3B = 2,
+}
+
+impl ConsoleStage {
+    pub const ALL: [Self; 3] = [Self::V4A, Self::V4B, Self::V3B];
+
+    pub const fn from_index(index: u8) -> Option<Self> {
+        match index {
+            0 => Some(Self::V4A),
+            1 => Some(Self::V4B),
+            2 => Some(Self::V3B),
+            _ => None,
+        }
+    }
+
+    pub const fn index(self) -> usize {
+        self as usize
+    }
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::V4A => "v4a",
+            Self::V4B => "v4b",
+            Self::V3B => "v3b",
+        }
+    }
+
+    /// How lopsided this stage is before the character and its trim, and how
+    /// hard the drive control pushes it.
+    const fn asymmetry(self) -> f32 {
+        match self {
+            Self::V4A => V4A_ASYMMETRY,
+            Self::V4B => V4B_ASYMMETRY,
+            Self::V3B => V3B_ASYMMETRY,
+        }
+    }
+
+    const fn drive_share(self) -> f32 {
+        match self {
+            Self::V4A => 0.45,
+            Self::V4B => 0.35,
+            Self::V3B => 0.20,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ConsoleElectronicsDiagnostics {
     pub expression: f32,
@@ -41,6 +99,9 @@ pub struct ConsoleElectronics {
     sample_rate: f32,
     drive: f32,
     stage_character: f32,
+    /// Per-stage offsets from that shared character, in the order of
+    /// [`ConsoleStage::ALL`]. Zero leaves a stage where the character puts it.
+    stage_trims: [f32; 3],
     bass_trim: f32,
     tone_control: f32,
     expression_character: f32,
@@ -59,6 +120,7 @@ impl ConsoleElectronics {
             sample_rate,
             drive: 0.32,
             stage_character: STAGE_CHARACTER_DEFAULT,
+            stage_trims: [0.0; 3],
             bass_trim: 0.0,
             tone_control: 0.0,
             expression_character: 0.55,
@@ -86,6 +148,37 @@ impl ConsoleElectronics {
 
     pub const fn stage_character(&self) -> f32 {
         self.stage_character
+    }
+
+    /// Moves one stage off the shared character. A bench that has injected at
+    /// that stage alone can say what it should be; without one, the three
+    /// stay where they are.
+    pub fn set_stage_trim(&mut self, stage: ConsoleStage, trim: f32) -> bool {
+        if !trim.is_finite() || !(-1.0..=1.0).contains(&trim) {
+            return false;
+        }
+        self.stage_trims[stage.index()] = trim;
+        true
+    }
+
+    pub const fn stage_trim(&self, stage: ConsoleStage) -> f32 {
+        self.stage_trims[stage.index()]
+    }
+
+    /// How lopsided one stage is as it currently stands.
+    fn stage_asymmetry(&self, stage: ConsoleStage) -> f32 {
+        stage.asymmetry() * self.stage_character * trim_gain(self.stage_trims[stage.index()])
+    }
+
+    /// One stage on its own, as a probe at its grid and another at its plate
+    /// would see it. Nothing before or after it is in the way, which is what
+    /// makes the reading about that stage and not about the chain.
+    pub fn stage_sample(&self, stage: ConsoleStage, input: f32) -> f32 {
+        tube_stage(
+            input,
+            self.drive * stage.drive_share(),
+            self.stage_asymmetry(stage),
+        )
     }
 
     pub fn set(&mut self, drive: f32, bass: f32, tone: f32) -> bool {
@@ -118,11 +211,7 @@ impl ConsoleElectronics {
         // V4A drives the passive swell network. Keeping this stage before the
         // pedal lets expression alter how strongly V4B and the output stage
         // are driven, instead of applying a final digital volume multiplier.
-        let pre_expression = tube_stage(
-            equalized,
-            self.drive * 0.45,
-            V4A_ASYMMETRY * self.stage_character,
-        );
+        let pre_expression = self.stage_sample(ConsoleStage::V4A, equalized);
 
         // Reduced three-band form of the capacitive expression network. The
         // two expression-control sections use the documented 60 pF/section
@@ -150,22 +239,14 @@ impl ConsoleElectronics {
         // then applies a broad shelf above roughly 200 Hz before V3B. The
         // original control only cut; the RackForge calibration parameter also
         // permits the documented modern +9 dB extension around its neutral.
-        let post_expression = tube_stage(
-            expressed,
-            self.drive * 0.35,
-            V4B_ASYMMETRY * self.stage_character,
-        );
+        let post_expression = self.stage_sample(ConsoleStage::V4B, expressed);
         let tone_coefficient = one_pole(TONE_CONTROL_HZ, self.sample_rate);
         self.tone_state += tone_coefficient * (post_expression - self.tone_state);
         let tone_high = post_expression - self.tone_state;
         let toned = post_expression + (tone_gain(self.tone_control) - 1.0) * tone_high;
 
         // V3B/12BH7 is the final active stage before output transformer T3.
-        let amplified = tube_stage(
-            toned,
-            self.drive * 0.20,
-            V3B_ASYMMETRY * self.stage_character,
-        );
+        let amplified = self.stage_sample(ConsoleStage::V3B, toned);
 
         // Coupling capacitors remove the small asymmetric-stage bias.
         let dc_coefficient = 1.0 - one_pole(18.0, self.sample_rate);

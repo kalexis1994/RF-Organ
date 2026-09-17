@@ -18,7 +18,7 @@ mod transformer;
 mod vibrato_line;
 
 pub use electronics::{
-    ConsoleElectronics, ConsoleElectronicsDiagnostics, STAGE_CHARACTER_DEFAULT,
+    ConsoleElectronics, ConsoleElectronicsDiagnostics, ConsoleStage, STAGE_CHARACTER_DEFAULT,
     STAGE_CHARACTER_RANGE,
 };
 pub use manual::{
@@ -242,6 +242,12 @@ impl OrganEngine {
     /// `crates/rf-organ-dsp/src/electronics.rs` for why it is one control.
     pub fn set_console_stage_character(&mut self, character: f32) -> bool {
         self.electronics.set_stage_character(character)
+    }
+
+    /// Moves one preamplifier stage off the shared character. Only a bench
+    /// that injected at that stage can say what belongs here.
+    pub fn set_console_stage_trim(&mut self, stage: ConsoleStage, trim: f32) -> bool {
+        self.electronics.set_stage_trim(stage, trim)
     }
 
     pub fn set_leakage_boost(&mut self, rate: f32) -> bool {

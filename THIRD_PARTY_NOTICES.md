@@ -281,6 +281,13 @@ altogether. How the three stages divide it between them cannot be seen from
 the output, since the tone passes through all three, so the fit reports that
 split as underdetermined rather than settling it.
 
+Version 0.37.0 adds the injection that tells the three apart. A probe at one
+stage's grid and another at its plate sees that stage and nothing else, which
+is how a bench separates what an output reading cannot, and it is the same
+arrangement the matching transformers already use for T1, T2 and T3. Each
+stage gets a trim off the shared character, and the comparator fits each from
+its own injection.
+
 What the stages did get is their shape. A single-ended triode's plate current
 follows roughly a three-halves power of grid voltage, so its transfer curve is
 asymmetric and its distortion is led by the second harmonic, with the third

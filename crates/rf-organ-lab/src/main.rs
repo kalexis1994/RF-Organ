@@ -253,6 +253,13 @@ fn render_suite(destination: &Path, trims: captures::Trims) -> Result<(), Box<dy
             wav::encode_f32(&samples, 2, SAMPLE_RATE)?,
         )?;
     }
+    for capture in &captures::CONSOLE_STAGE_CAPTURES {
+        let samples = captures::render_console_stage(capture);
+        fs::write(
+            destination.join(format!("{}.wav", capture.id)),
+            wav::encode_f32(&samples, 2, SAMPLE_RATE)?,
+        )?;
+    }
     let sweep = captures::render_taper_sweep();
     fs::write(
         destination.join(format!("{}.wav", captures::TAPER_CAPTURE)),

@@ -8,7 +8,7 @@ use crate::captures::{
     note_frequency, transformer_capture, transformer_steady_frames, trim_for,
 };
 use crate::wav::{self, Audio};
-use rf_organ_dsp::{ConsoleElectronics, PercussionDecay, PercussionVolume};
+use rf_organ_dsp::{ConsoleElectronics, ConsoleStage, PercussionDecay, PercussionVolume};
 use rf_organ_dsp::{MANUAL_FIRST_NOTE, MANUAL_KEY_COUNT, drawbar_wheel, gear_frequency};
 use std::collections::BTreeMap;
 use std::f64::consts::TAU;
@@ -305,6 +305,7 @@ fn compare_console_captures(model: &Path, reference: &Path) -> Result<(String, S
         "capture,drive,model_h2_dbc,reference_h2_dbc,model_h3_dbc,reference_h3_dbc,reference_minus_model_h2_db\n",
     );
     let mut observations: Vec<(f32, f64)> = Vec::new();
+    let mut stage_observations: [Vec<(f32, f64)>; 3] = [Vec::new(), Vec::new(), Vec::new()];
     let mut seen = 0;
     for capture in &captures::CONSOLE_CAPTURES {
         let name = format!("{}.wav", capture.id);
@@ -363,12 +364,142 @@ fn compare_console_captures(model: &Path, reference: &Path) -> Result<(String, S
         )
         .expect("string write cannot fail");
     }
-    writeln!(
-        &mut candidates,
-        "v4a-v4b-v3b-split,,,,underdetermined without an injection at each stage"
-    )
-    .expect("string write cannot fail");
+    // And the split, which needs a reading taken at each stage on its own.
+    let mut split = 0;
+    for capture in &captures::CONSOLE_STAGE_CAPTURES {
+        let name = format!("{}.wav", capture.id);
+        let reference_path = reference.join(&name);
+        if !reference_path.is_file() {
+            continue;
+        }
+        let model_path = model.join(&name);
+        if !model_path.is_file() {
+            return Err(format!(
+                "model stage injection is missing: {}",
+                model_path.display()
+            ));
+        }
+        let measured = console_harmonics(&read_audio(&reference_path)?).0;
+        let own = console_harmonics(&read_audio(&model_path)?).0;
+        writeln!(
+            &mut comparison,
+            "{},{:.3},{own:.6},{measured:.6},,,{:.6}",
+            capture.id,
+            capture.drive,
+            measured - own
+        )
+        .expect("string write cannot fail");
+        if measured.is_finite() {
+            stage_observations[capture.stage.index()].push((capture.drive, measured));
+        }
+        split += 1;
+    }
+    if split == 0 {
+        writeln!(
+            &mut candidates,
+            "v4a-v4b-v3b-split,,,,underdetermined without an injection at each stage"
+        )
+        .expect("string write cannot fail");
+    } else {
+        let character = if observations.is_empty() {
+            rf_organ_dsp::STAGE_CHARACTER_DEFAULT
+        } else {
+            fit_stage_character(&observations).character
+        };
+        for stage in ConsoleStage::ALL {
+            let seen = &stage_observations[stage.index()];
+            if seen.is_empty() {
+                writeln!(
+                    &mut candidates,
+                    "{}-trim,,,,no injection at this stage",
+                    stage.label()
+                )
+                .expect("string write cannot fail");
+                continue;
+            }
+            let fitted = fit_stage_trim(stage, character, seen);
+            let check = stage_trim_self_check(stage, character, seen);
+            writeln!(
+                &mut candidates,
+                "{}-trim,{:.6},{:.6},{check:.6},fitted",
+                stage.label(),
+                fitted.character,
+                fitted.error
+            )
+            .expect("string write cannot fail");
+        }
+    }
     Ok((comparison, candidates))
+}
+
+/// Searches the trim that explains one stage's own reading, given the
+/// character the chain already fitted. The stage is rendered on its own, the
+/// way the injection was taken, so the fit and the capture see the same thing.
+fn fit_stage_trim(stage: ConsoleStage, character: f32, observations: &[(f32, f64)]) -> StageFit {
+    let mut best = StageFit {
+        character: 0.0,
+        error: f64::MAX,
+    };
+    const STEPS: usize = 160;
+    for step in 0..=STEPS {
+        let trim = -1.0 + 2.0 * step as f32 / STEPS as f32;
+        let mut error = 0.0;
+        for (drive, measured) in observations {
+            let predicted = predicted_stage_second_harmonic(stage, *drive, character, trim);
+            error += (predicted - measured) * (predicted - measured);
+        }
+        let error = (error / observations.len() as f64).sqrt();
+        if error < best.error {
+            best = StageFit {
+                character: trim,
+                error,
+            };
+        }
+    }
+    best
+}
+
+/// What the model's own stage readings fit to, which has to be no trim at all.
+fn stage_trim_self_check(stage: ConsoleStage, character: f32, observations: &[(f32, f64)]) -> f64 {
+    let own: Vec<(f32, f64)> = observations
+        .iter()
+        .map(|(drive, _)| {
+            (
+                *drive,
+                predicted_stage_second_harmonic(stage, *drive, character, 0.0),
+            )
+        })
+        .collect();
+    f64::from(fit_stage_trim(stage, character, &own).character)
+}
+
+fn predicted_stage_second_harmonic(
+    stage: ConsoleStage,
+    drive: f32,
+    character: f32,
+    trim: f32,
+) -> f64 {
+    // A stage on its own has no memory - there is no filter in it, only a
+    // curve - so a hundred cycles of the tone is as good as a second of it,
+    // and a fit that renders a few thousand times notices the difference.
+    let rate = SAMPLE_RATE as f64;
+    let frames = SAMPLE_RATE as usize / 10;
+    let mut electronics = ConsoleElectronics::new(SAMPLE_RATE as f32);
+    assert!(electronics.set(drive, 0.0, 0.0));
+    assert!(electronics.set_stage_character(character));
+    assert!(electronics.set_stage_trim(stage, trim));
+    let mut samples = Vec::with_capacity(frames);
+    for frame in 0..frames {
+        let angle = TAU * captures::CONSOLE_PROBE_HZ * frame as f64 / rate;
+        let output = electronics.stage_sample(
+            stage,
+            (captures::CONSOLE_PROBE_AMPLITUDE * angle.sin()) as f32,
+        );
+        samples.push([f64::from(output), f64::from(output)]);
+    }
+    let fundamental = spectral_amplitude(&samples, captures::CONSOLE_PROBE_HZ);
+    let second = spectral_amplitude(&samples, 2.0 * captures::CONSOLE_PROBE_HZ);
+    decibels(second / fundamental.max(1.0e-15))
 }
 
 struct StageFit {
@@ -421,9 +552,11 @@ fn stage_character_self_check(observations: &[(f32, f64)]) -> f64 {
 }
 
 fn predicted_second_harmonic(drive: f32, character: f32) -> f64 {
+    // The whole chain does have filters in it, so it is given time to settle;
+    // a quarter second of steady tone after that is plenty for one bin.
     let rate = SAMPLE_RATE as f64;
     let settle = SAMPLE_RATE as usize / 4;
-    let frames = SAMPLE_RATE as usize;
+    let frames = SAMPLE_RATE as usize / 4;
     let mut electronics = ConsoleElectronics::new(SAMPLE_RATE as f32);
     assert!(electronics.set(drive, 0.0, 0.0));
     assert!(electronics.set_expression_character(0.0));
@@ -2278,6 +2411,44 @@ mod tests {
         let flat = vec![(0.0_f32, predicted_second_harmonic(0.0, 1.0))];
         let fitted = fit_stage_character(&flat);
         assert!(fitted.character.is_finite());
+    }
+
+    /// A trim put into one stage's injection has to come back out of that
+    /// stage's fit, and has to leave the other two alone. The second half is
+    /// the point of injecting per stage at all: a reading taken at the output
+    /// would have smeared the trim across all three.
+    #[test]
+    fn a_stage_trim_survives_the_round_trip_and_stays_in_its_stage() {
+        let drives = [0.32_f32, 0.75];
+        for moved in ConsoleStage::ALL {
+            for asked in [-0.6_f32, 0.0, 0.5] {
+                for stage in ConsoleStage::ALL {
+                    let trim = if stage == moved { asked } else { 0.0 };
+                    let observations: Vec<(f32, f64)> = drives
+                        .iter()
+                        .map(|drive| {
+                            (
+                                *drive,
+                                predicted_stage_second_harmonic(stage, *drive, 1.0, trim),
+                            )
+                        })
+                        .collect();
+                    let fitted = fit_stage_trim(stage, 1.0, &observations);
+                    assert!(
+                        (fitted.character - trim).abs() < 0.05,
+                        "{:?} asked for {trim} and the fit returned {}",
+                        stage,
+                        fitted.character
+                    );
+                    assert!(
+                        fitted.error < 0.2,
+                        "{:?} fit was {} dB out",
+                        stage,
+                        fitted.error
+                    );
+                }
+            }
+        }
     }
 
     /// A taper read off the model itself has to come back flat, because the
