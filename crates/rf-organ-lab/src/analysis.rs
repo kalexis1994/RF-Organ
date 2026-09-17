@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-use crate::captures::{C_NOTE, CHARACTER, F_NOTE, Level, note_frequency};
+use crate::captures::{C_NOTE, CHARACTER, F_NOTE, Level, bus_frequency, note_frequency};
 use crate::signal::{decay_time, decibels, peak, rms, zero_crossing_frequency};
 use rf_organ_dsp::{
     ConsoleElectronics, DRAWBAR_COUNT, LEVEL_SILENT_DB, MANUAL_FIRST_NOTE, MANUAL_KEY_COUNT,
@@ -25,6 +25,7 @@ pub struct Artifacts {
     pub rotary_rotor_response: String,
     pub rotary_doppler: String,
     pub rotary_stop_angle: String,
+    pub drive_wobble: String,
     pub pedal_spectrum: String,
     pub pedal_release: String,
     pub expression_response: String,
@@ -87,6 +88,8 @@ fn analyze_inner() -> Result<Artifacts, String> {
     measurements.extend(stop);
     measurements.extend(rotary_supply_probe());
     measurements.extend(rotary_capsule_probe());
+    let (wobble, drive_wobble) = drive_wobble_probe()?;
+    measurements.extend(wobble);
     Ok(Artifacts {
         measurements: measurement_csv(&measurements),
         percussion_envelope,
@@ -97,6 +100,7 @@ fn analyze_inner() -> Result<Artifacts, String> {
         rotary_rotor_response,
         rotary_doppler,
         rotary_stop_angle,
+        drive_wobble,
         pedal_spectrum,
         pedal_release,
         expression_response,
@@ -1921,6 +1925,185 @@ fn rotary_capsule_probe() -> Vec<Measurement> {
     ]
 }
 
+/// What the resiliently coupled drive does to the pitch, and whether it does
+/// it to every wheel at once.
+///
+/// Hammond's own description is of a drive that is springy at every joint, and
+/// of 91 wheels geared to one shaft. Both halves of that have a consequence
+/// worth measuring. The first is that the pitch cannot sit still. The second
+/// is stronger and is what tells this apart from a generator whose wheels
+/// merely drift: if they share a shaft then they must stray together, in the
+/// same proportion at the same moment, and two notes measured at once have to
+/// agree.
+fn drive_wobble_probe() -> Result<(Vec<Measurement>, String), String> {
+    // Both notes sit above the wheels that carry a shaped profile, so what
+    // the demodulator sees is as close to one tone as this generator gets.
+    const LOW: u8 = 60;
+    const HIGH: u8 = 84;
+    const BUS: usize = 2;
+    const SECONDS: usize = 4;
+    // A fiftieth of a second: long enough to quiet the estimator, short
+    // against the slowest thing the drive does.
+    const BLOCK: usize = 960;
+
+    let deviations = |wobble: f32| -> Result<(Vec<f64>, Vec<f64>, f64), String> {
+        let mut tracks = Vec::new();
+        let (mut lowest, mut highest) = (f64::MAX, f64::MIN);
+        let mut seen_shaft = false;
+        for note in [LOW, HIGH] {
+            let mut engine = clean_engine()?;
+            assert!(engine.set_drive_wobble(wobble));
+            assert!(engine.set_eccentricity(0.0));
+            assert!(engine.set_manual_drawbar(OrganPart::Upper, BUS, 8));
+            assert!(engine.note_on_part(OrganPart::Upper, note, 1.0));
+            // Drawbar 2 is the eight foot, so the wheel behind it sings at
+            // the note's own pitch.
+            let carrier = bus_frequency(note, BUS);
+
+            let omega = TAU * carrier / SAMPLE_RATE as f64;
+            let smoothing = {
+                let x = TAU * 30.0 / SAMPLE_RATE as f64;
+                x / (1.0 + x)
+            };
+            let mut quadrature = [[0.0_f64; 2]; 3];
+            let mut shaft_filter = [0.0_f64; 3];
+            let (mut shaft_total, mut shaft_window) = (0.0_f64, Vec::new());
+            let (mut previous, mut total) = (0.0_f64, 0.0_f64);
+            let mut phase = Vec::with_capacity(SAMPLE_RATE * SECONDS);
+            for frame in 0..SAMPLE_RATE * SECONDS {
+                let angle = omega * frame as f64;
+                let value = f64::from(engine.next_sample()[0]);
+                // The shaft's own state, put through the same three poles the
+                // audio goes through, so that the two can be compared at all.
+                // An estimator that reads the fast part away reads it away in
+                // both, and a difference that survives that is the model's.
+                let mut shaft = f64::from(engine.drive_deviation());
+                for stage in &mut shaft_filter {
+                    *stage += smoothing * (shaft - *stage);
+                    shaft = *stage;
+                }
+                shaft_total += shaft;
+                shaft_window.push(shaft_total);
+                let mut pair = [value * angle.cos(), -value * angle.sin()];
+                for stage in &mut quadrature {
+                    stage[0] += smoothing * (pair[0] - stage[0]);
+                    stage[1] += smoothing * (pair[1] - stage[1]);
+                    pair = *stage;
+                }
+                let mut delta = pair[1].atan2(pair[0]) - previous;
+                previous = pair[1].atan2(pair[0]);
+                while delta > PI {
+                    delta -= TAU;
+                }
+                while delta < -PI {
+                    delta += TAU;
+                }
+                total += delta;
+                phase.push(total);
+            }
+
+            // The drift of that phase over a block is the pitch deviation.
+            let skip = SAMPLE_RATE / 2;
+            let mut cents = Vec::new();
+            for index in (skip + BLOCK)..phase.len() {
+                let drift = phase[index] - phase[index - BLOCK];
+                let hertz = drift * SAMPLE_RATE as f64 / (BLOCK as f64 * TAU);
+                cents.push(1200.0 * ((carrier + hertz) / carrier).log2());
+            }
+            tracks.push(cents);
+
+            // The same block average the pitch track gets, over the shaft's
+            // own filtered reading. Once is enough: both notes share it.
+            if !seen_shaft {
+                seen_shaft = true;
+                for index in (skip + BLOCK)..shaft_window.len() {
+                    let mean = (shaft_window[index] - shaft_window[index - BLOCK]) / BLOCK as f64;
+                    lowest = lowest.min(mean);
+                    highest = highest.max(mean);
+                }
+            }
+        }
+        let high = tracks.pop().expect("two notes");
+        let low = tracks.pop().expect("two notes");
+        // What the shaft itself says it did, for the audio to be held against.
+        let swing = 1200.0 * ((1.0 + highest) / (1.0 + lowest)).log2();
+        Ok((low, high, swing))
+    };
+
+    let swing = |track: &[f64]| {
+        let (mut lowest, mut highest) = (f64::MAX, f64::MIN);
+        for value in track {
+            lowest = lowest.min(*value);
+            highest = highest.max(*value);
+        }
+        highest - lowest
+    };
+
+    let (steady_low, _, _) = deviations(0.0)?;
+    let (low, high, shaft_swing) = deviations(1.0)?;
+
+    // Do the two notes stray together? Their deviations are compared where
+    // both are measured, as a correlation: one means one shaft, zero means two
+    // wheels going their own way.
+    let span = low.len().min(high.len());
+    let (mut low_sum, mut high_sum) = (0.0, 0.0);
+    for index in 0..span {
+        low_sum += low[index];
+        high_sum += high[index];
+    }
+    let (low_mean, high_mean) = (low_sum / span as f64, high_sum / span as f64);
+    let (mut together, mut low_energy, mut high_energy) = (0.0, 0.0, 0.0);
+    for index in 0..span {
+        let (a, b) = (low[index] - low_mean, high[index] - high_mean);
+        together += a * b;
+        low_energy += a * a;
+        high_energy += b * b;
+    }
+    let coherence = together / (low_energy * high_energy).sqrt().max(1.0e-12);
+
+    let mut csv = String::from("time_seconds,low_cents,high_cents\n");
+    for index in (0..span).step_by(SAMPLE_RATE / 200) {
+        let seconds = index as f64 / SAMPLE_RATE as f64;
+        let _ = writeln!(csv, "{seconds:.4},{:.4},{:.4}", low[index], high[index]);
+    }
+
+    Ok((
+        vec![
+            Measurement {
+                probe: "generator-drive",
+                metric: "wobble-swing-low",
+                value: swing(&low),
+                unit: "cents",
+            },
+            Measurement {
+                probe: "generator-drive",
+                metric: "wobble-swing-high",
+                value: swing(&high),
+                unit: "cents",
+            },
+            Measurement {
+                probe: "generator-drive",
+                metric: "wobble-swing-steady",
+                value: swing(&steady_low),
+                unit: "cents",
+            },
+            Measurement {
+                probe: "generator-drive",
+                metric: "wobble-swing-shaft",
+                value: shaft_swing,
+                unit: "cents",
+            },
+            Measurement {
+                probe: "generator-drive",
+                metric: "wobble-coherence",
+                value: coherence,
+                unit: "ratio",
+            },
+        ],
+        csv,
+    ))
+}
+
 fn clean_engine() -> Result<OrganEngine, String> {
     let mut engine = OrganEngine::new(SAMPLE_RATE as f32).map_err(|error| error.0.to_owned())?;
     for part in [OrganPart::Upper, OrganPart::Lower] {
@@ -1934,6 +2117,10 @@ fn clean_engine() -> Result<OrganEngine, String> {
     assert!(engine.set_contact_spread(0.0));
     assert!(engine.set_contact_bounce(0.0));
     assert!(engine.set_leakage(0.0));
+    // A probe that is measuring the generator's gearing wants the shaft the
+    // gearing assumes: perfectly steady. The drive's own unsteadiness has a
+    // probe of its own.
+    assert!(engine.set_drive_wobble(0.0));
     assert!(engine.set_transformer(0.0, 0.0));
     assert!(engine.set_console(0.0, 0.0, 0.0));
     assert!(engine.set_expression_character(0.0));
@@ -2168,6 +2355,49 @@ mod tests {
     /// land on what the path lengths predict. The horn carries a shelf that
     /// turns with it, which adds phase modulation of its own, so its measured
     /// deviation is larger and no longer symmetric.
+    /// The drive's unsteadiness has to reach every wheel at once, in the
+    /// same proportion, because they are geared to one shaft. Two notes an
+    /// octave and a half apart are measured together and have to agree; a
+    /// generator whose wheels drifted on their own would not.
+    #[test]
+    fn the_whole_generator_strays_together() {
+        let (measurements, csv) = with_analysis_stack(|| drive_wobble_probe().unwrap());
+        let value = |metric: &str| {
+            measurements
+                .iter()
+                .find(|measurement| measurement.metric == metric)
+                .expect("measurement")
+                .value
+        };
+        assert!(csv.lines().count() > 100);
+
+        let floor = value("wobble-swing-steady");
+        assert!(floor < 0.2, "a steady shaft still moved {floor} cents");
+        let (low, high) = (value("wobble-swing-low"), value("wobble-swing-high"));
+        assert!(
+            (0.5..8.0).contains(&low),
+            "the drive swings {low} cents, which is not a generator"
+        );
+        assert!(low > 10.0 * floor, "the swing is in the noise");
+        assert!(
+            (low - high).abs() < 0.1 * low,
+            "the two notes swung differently: {low} against {high}"
+        );
+        // And what reaches the audio has to be what the mechanism says it
+        // did, read through the same estimator so the two are comparable.
+        let shaft = value("wobble-swing-shaft");
+        assert!(
+            (low - shaft).abs() < 0.1 * shaft,
+            "the audio strayed {low} cents against the shaft's {shaft}"
+        );
+
+        let coherence = value("wobble-coherence");
+        assert!(
+            coherence > 0.99,
+            "the wheels are not sharing a shaft: {coherence}"
+        );
+    }
+
     #[test]
     fn doppler_follows_the_path_that_causes_it() {
         let (measurements, csv) = with_analysis_stack(rotary_doppler_probe);

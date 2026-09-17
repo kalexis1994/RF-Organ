@@ -231,6 +231,17 @@ impl OrganEngine {
         self.tonewheels.set_eccentricity(depth)
     }
 
+    pub fn set_drive_wobble(&mut self, depth: f32) -> bool {
+        self.tonewheels.set_drive_wobble(depth)
+    }
+
+    /// Where the drive is now, as a fraction of its nominal speed. This is the
+    /// shaft's own state, so a tool can hold what it measures in the audio
+    /// against what the mechanism says it should be.
+    pub const fn drive_deviation(&self) -> f32 {
+        self.tonewheels.drive_deviation()
+    }
+
     pub const fn eccentricity(&self) -> f32 {
         self.tonewheels.eccentricity()
     }
@@ -378,8 +389,15 @@ impl OrganEngine {
         self.rotary.set_stop_angles(horn, drum)
     }
 
-    pub fn set_rotary_mains(&mut self, mains: MainsFrequency) {
+    /// The supply the installation runs from. It reaches two machines, and
+    /// does a different documented thing to each: the cabinet's motors turn
+    /// in proportion to it, while the console's run motor turns at whichever
+    /// synchronous speed its market's armature gives, geared back to concert
+    /// pitch either way.
+    pub fn set_mains(&mut self, mains: MainsFrequency) {
         self.rotary.set_mains(mains);
+        self.tonewheels
+            .set_shaft_rpm_for_fifty(mains == MainsFrequency::Fifty);
     }
 
     pub fn set_rotary_microphone_type(&mut self, capsule: MicrophoneType) {

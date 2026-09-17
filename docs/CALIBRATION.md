@@ -416,6 +416,29 @@ A dynamic capsule reads 2.0 dB below a condenser at 10 kHz and 0.8 dB above it
 at 4 kHz. Both numbers are provisional and describe no particular microphone.
 To measure this properly you would need to know which two Hammond modelled.
 
+## Drive protocol
+
+`drive-wobble.csv` and the `wobble-` rows of `measurements.csv` hold two notes
+an octave and a half apart, demodulate each against its own wheel's frequency,
+and read the pitch off the drift of the resulting phase. With the drive held
+perfectly steady the estimator reports 0.04 cents of movement, which is its
+own noise; with the drive as modelled it reports 2.90 cents on the lower note
+and 2.86 on the upper. The shaft's own state goes through the same three poles
+and the same block average and comes to 2.86, so what reaches the audio is
+what the mechanism says it did, to within a percent and a half. Comparing
+them any other way is a trap: an estimator narrow enough to be quiet reads
+the once-per-revolution part away, and the missing part then looks like a
+fault in the model rather than in the ruler.
+
+That those two agree is the measurement that matters. A generator whose wheels
+drifted on their own could produce any amount of wobble on each note
+independently; one whose wheels are geared to a single shaft has to move them
+in the same proportion at the same moment. The two tracks correlate at 0.9998.
+The amount is provisional. The togetherness is the documented structure, and
+it is what a real generator should be checked against: record two widely
+spaced notes at once and correlate their pitch tracks, rather than measuring
+either alone.
+
 ## Supply protocol
 
 The `fifty-hertz-` and `supply-ratio` rows of `measurements.csv` settle the

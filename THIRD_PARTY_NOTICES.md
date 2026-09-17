@@ -71,6 +71,25 @@ licence applies to them. Their subject is the drawbar layout every tonewheel
 console shares - two brown, four white and three black - which Hammond's
 manual refers to when it calls the 2 2/3' the first black drawbar.
 
+## Generator drive documentation
+
+Version 0.33.0 takes the drive from the Hammond service manual, which
+describes it as springy at every joint: the shaft is "resiliently coupled to
+the synchronous running motor", it "is divided into several sections connected
+by flexible couplings", the wheel assemblies are "coupled resiliently to the
+drive shaft", and each bakelite gear "rotate[s] freely on the shafts with the
+tone wheels" while being held to its assembly "by a pair of coil springs". The
+same manual gives the run motor a 2-pole field and a 6-pole armature at
+1200 rpm on sixty cycles, and a 4-pole armature at 1500 rpm on fifty.
+
+What follows from that is structural rather than numerical: a drive built
+this way cannot turn perfectly evenly, and because all 91 wheels are geared to
+that one shaft, whatever it does it does to every wheel at once and in the
+same proportion. RF-Organ models that structure. How far the shaft strays,
+how fast the motor's coupling lets it swing, and where the coil springs
+resonate are not figures Hammond publishes, so all of them are provisional
+and the laboratory reports the pitch deviation they come to.
+
 ## Rotary cabinet documentation
 
 Version 0.21.0 takes the mechanical description Hammond publishes for a

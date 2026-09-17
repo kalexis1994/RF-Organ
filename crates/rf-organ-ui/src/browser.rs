@@ -14,7 +14,7 @@ use web_sys::{
 };
 
 const PLUGIN_ID: &str = "org.rackforge.organ";
-const CONTROL_IDS: [&str; 66] = [
+const CONTROL_IDS: [&str; 67] = [
     "output",
     "expression",
     "u16",
@@ -81,6 +81,7 @@ const CONTROL_IDS: [&str; 66] = [
     "drum-mic-offset",
     "horn-mic-sides",
     "drum-mic-sides",
+    "drive-wobble",
 ];
 
 /// Steps of the display's own rotor model per second.

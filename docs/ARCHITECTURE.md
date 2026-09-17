@@ -166,7 +166,7 @@ microphones, so moving them back zooms out instead of pushing them off the
 edge. The parameter table the surface validates against is the engine's, not a
 copy of it; a range that moves in the DSP moves there too.
 
-## Version 0.32.0 limitations
+## Version 0.33.0 limitations
 
 - The classic B-3 pedal contact and resistor-panel topology is present. The
   L20 pedal-filter coefficient and console matching-network constants remain
@@ -192,7 +192,14 @@ copy of it; a range that moves in the DSP moves there too.
   describes it as rising with the number of notes held and exposes a control
   for that rate. The laboratory reports leakage against note count, which is
   where that gap will be closed.
-- Wow and flutter are not modelled. Eccentricity is, at a provisional depth.
+- The drive is resiliently coupled at every joint, which is what the service
+  manual describes, so the shaft does not turn perfectly evenly and the 91
+  wheels geared to it stray together. The depth, the rate the motor's coupling
+  swings at and where the coil springs resonate are all provisional; what is
+  not provisional is that it reaches every wheel at once, which the laboratory
+  measures as a correlation of 0.9998 between two notes an octave and a half
+  apart. Per-assembly scatter is not modelled: the 48 assemblies are built the
+  same way, so they are one filter rather than 48 identical ones.
 - The six transition times are provisional, though inside the documented
   range; before 0.21.0 the horn ramped in 0.35 s, which is under the 0.8 s
   floor a cabinet can manage. Placement and stop angle are no longer
@@ -267,6 +274,6 @@ copy of it; a range that moves in the DSP moves there too.
   shelf modulates phase as well as level; that is a property of the shaping,
   not of the path, and the shaping is still provisional.
 - The engine is measured as sample-rate invariant from 32 to 192 kHz. A fully
-  engaged console runs about 15.7x real time at 48 kHz and 4.0x at 192 kHz on
+  engaged console runs about 15.2x real time at 48 kHz and 3.8x at 192 kHz on
   the development machine. What remains is mostly the generator itself, which is
   inherent: 91 wheels turn whether or not anyone is playing.

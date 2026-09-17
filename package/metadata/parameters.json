@@ -725,6 +725,16 @@
       "kind": { "type": "boolean", "default": false },
       "flags": { "automatable": true },
       "suggested_control": "toggle"
+    },
+    {
+      "index": 66,
+      "id": "generator-drive-wobble",
+      "name": "Drive Wobble",
+      "page": "generator",
+      "order": 11,
+      "kind": { "type": "float", "minimum": 0.0, "maximum": 1.0, "default": 1.0, "step": 0.001 },
+      "flags": { "automatable": true },
+      "suggested_control": "knob"
     }
   ],
   "semantic_controls": [

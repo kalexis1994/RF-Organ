@@ -8,7 +8,7 @@ use rf_organ_dsp::{
     PercussionVolume, RotaryMode, SUB_LEVEL_DEFAULT_DB, ScannerMode, StopAngle, TransformerUnit,
 };
 
-pub const PARAMETER_COUNT: usize = 66;
+pub const PARAMETER_COUNT: usize = 67;
 /// Bipolar per-transformer calibration trims, ordered T1, T2, T3.
 pub const TRANSFORMER_TRIM_FIRST: u32 = 45;
 pub const DRAWBAR_FIRST: u32 = 2;
@@ -26,6 +26,9 @@ pub struct Settings {
     pub contact_spread: f64,
     pub contact_bounce: f64,
     pub leakage: f64,
+    /// How far the resiliently coupled drive is allowed to stray from its
+    /// nominal speed.
+    pub drive_wobble: f64,
     pub transformer_drive: f64,
     pub transformer_hysteresis: f64,
     pub rotary_mode: RotaryMode,
@@ -88,6 +91,7 @@ impl Default for Settings {
             contact_spread: 0.55,
             contact_bounce: 0.45,
             leakage: 0.2,
+            drive_wobble: 1.0,
             transformer_drive: 0.38,
             transformer_hysteresis: 0.32,
             rotary_mode: RotaryMode::Off,
@@ -140,6 +144,7 @@ impl Settings {
             && unit(self.contact_spread)
             && unit(self.contact_bounce)
             && unit(self.leakage)
+            && unit(self.drive_wobble)
             && unit(self.transformer_drive)
             && unit(self.transformer_hysteresis)
             && unit(self.rotary_mix)
@@ -234,6 +239,7 @@ impl Settings {
             63 => self.rotary_drum_mic_offset,
             64 => bool_value(self.rotary_horn_mic_sides),
             65 => bool_value(self.rotary_drum_mic_sides),
+            66 => self.drive_wobble,
             52 => self.rotary_mic_pattern,
             53 => self.rotary_horn_radius,
             54 => self.rotary_drum_radius,
@@ -312,6 +318,7 @@ impl Settings {
             63 => self.rotary_drum_mic_offset = value,
             64 if value == 0.0 || value == 1.0 => self.rotary_horn_mic_sides = value == 1.0,
             65 if value == 0.0 || value == 1.0 => self.rotary_drum_mic_sides = value == 1.0,
+            66 => self.drive_wobble = value,
             52 => self.rotary_mic_pattern = value,
             53 => self.rotary_horn_radius = value,
             54 => self.rotary_drum_radius = value,
@@ -346,6 +353,7 @@ impl Settings {
         let _ = engine.set_contact_spread(self.contact_spread as f32);
         let _ = engine.set_contact_bounce(self.contact_bounce as f32);
         let _ = engine.set_leakage(self.leakage as f32);
+        let _ = engine.set_drive_wobble(self.drive_wobble as f32);
         let _ = engine.set_transformer(
             self.transformer_drive as f32,
             self.transformer_hysteresis as f32,
@@ -395,7 +403,7 @@ impl Settings {
         ) {
             let _ = engine.set_rotary_stop_angles(horn, drum);
         }
-        engine.set_rotary_mains(self.rotary_mains);
+        engine.set_mains(self.rotary_mains);
         engine.set_rotary_microphone_type(self.rotary_microphone_type);
         engine.set_scanner_mode(self.scanner_mode);
         engine.set_scanner_manuals(self.upper_scanner, self.lower_scanner);
