@@ -1,13 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-const DELAY_CAPACITY: usize = 1024;
-const TAP_COUNT: usize = 16;
-// One mechanical scanner revolution traverses the delay line out and back.
-// These raised-cosine positions make the sixteenth-to-first transition cyclic.
-const TAP_POSITIONS: [f32; TAP_COUNT] = [
-    0.0, 0.038, 0.146, 0.309, 0.5, 0.691, 0.854, 0.962, 1.0, 0.962, 0.854, 0.691, 0.5, 0.309,
-    0.146, 0.038,
-];
+use crate::vibrato_line::VibratoLine;
 
 /// Six positions of the console vibrato/chorus selector plus bypass.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -37,37 +30,34 @@ impl ScannerMode {
         }
     }
 
-    const fn depth(self) -> f32 {
+    /// Tap set of the depth selector: V1 and C1 share one, V2 and C2 the next
+    /// and V3 and C3 the widest.
+    const fn depth(self) -> usize {
         match self {
-            Self::Off => 0.0,
-            Self::Vibrato1 | Self::Chorus1 => 0.34,
-            Self::Vibrato2 | Self::Chorus2 => 0.67,
-            Self::Vibrato3 | Self::Chorus3 => 1.0,
+            Self::Off | Self::Vibrato1 | Self::Chorus1 => 0,
+            Self::Vibrato2 | Self::Chorus2 => 1,
+            Self::Vibrato3 | Self::Chorus3 => 2,
         }
     }
 
+    /// Whether the switch leaves the 22 kΩ source resistor in circuit, which
+    /// is the whole electrical difference between chorus and vibrato.
     const fn chorus(self) -> bool {
         matches!(self, Self::Chorus1 | Self::Chorus2 | Self::Chorus3)
     }
 }
 
-/// Reduced real-time model of the LC vibrato line and rotating capacitive
-/// scanner. Sixteen delay taps are selected continuously at scanner speed.
+/// The console vibrato/chorus: an LC ladder scanned by a rotating capacitive
+/// pickup. See `vibrato_line` for the circuit itself.
 pub struct ScannerVibrato {
-    data: [f32; DELAY_CAPACITY],
-    write: usize,
-    phase: f32,
-    sample_rate: f32,
+    line: VibratoLine,
     mode: ScannerMode,
 }
 
 impl ScannerVibrato {
-    pub const fn new(sample_rate: f32) -> Self {
+    pub fn new(sample_rate: f32) -> Self {
         Self {
-            data: [0.0; DELAY_CAPACITY],
-            write: 0,
-            phase: 0.0,
-            sample_rate,
+            line: VibratoLine::new(sample_rate),
             mode: ScannerMode::Off,
         }
     }
@@ -77,74 +67,94 @@ impl ScannerVibrato {
     }
 
     pub fn process(&mut self, input: f32) -> f32 {
-        self.data[self.write] = input;
-        self.write = (self.write + 1) % DELAY_CAPACITY;
-
-        // The physical scanner rotates at approximately 6.9 Hz and bridges
-        // adjacent stator contacts. A parabolic bridge avoids switching edges.
-        self.phase += 6.9 * TAP_COUNT as f32 / self.sample_rate;
-        if self.phase >= TAP_COUNT as f32 {
-            self.phase -= TAP_COUNT as f32;
-        }
-
         if self.mode == ScannerMode::Off {
+            // The physical line keeps running with the console switched to
+            // bypass. Only the scanner angle is kept here: the ladder settles
+            // in about a millisecond, so restarting it on a switch costs less
+            // than solving it for a signal nothing listens to.
+            self.line.advance_scanner();
             return input;
         }
-        let tap = self.phase as usize;
-        let fraction = self.phase - tap as f32;
-        let blend = fraction * fraction * (3.0 - 2.0 * fraction);
-        let depth = self.mode.depth();
-        let maximum_delay = self.sample_rate * 0.00165 * depth;
-        let first = self.tap(tap, maximum_delay);
-        let second = self.tap((tap + 1) % TAP_COUNT, maximum_delay);
-        let scanned = first + blend * (second - first);
-        if self.mode.chorus() {
-            0.5 * (input + scanned)
-        } else {
-            scanned
-        }
+        self.line
+            .process(input, self.mode.depth(), self.mode.chorus())
     }
 
     pub fn reset(&mut self) {
-        self.data.fill(0.0);
-        self.write = 0;
-    }
-
-    fn tap(&self, tap: usize, maximum_delay: f32) -> f32 {
-        let position = TAP_POSITIONS[tap];
-        let delay = (2.0 + maximum_delay * position).clamp(1.0, (DELAY_CAPACITY - 2) as f32);
-        let whole = delay as usize;
-        let fraction = delay - whole as f32;
-        let newer = (self.write + DELAY_CAPACITY - whole - 1) % DELAY_CAPACITY;
-        let older = (newer + DELAY_CAPACITY - 1) % DELAY_CAPACITY;
-        self.data[newer] * (1.0 - fraction) + self.data[older] * fraction
+        self.line.reset();
     }
 }
 
 #[cfg(test)]
 mod tests {
+    extern crate std;
+
     use super::*;
 
     #[test]
-    fn bypass_is_exact_while_the_line_keeps_running() {
+    fn bypass_is_exact_while_the_scanner_keeps_turning() {
         let mut scanner = ScannerVibrato::new(48_000.0);
+        let start = scanner.line.phase();
         for index in 0..128 {
             let input = index as f32 / 128.0;
             assert_eq!(scanner.process(input), input);
         }
+        assert!(scanner.line.phase() > start);
     }
 
+    /// Chorus keeps the source resistor in circuit, so the first tap carries a
+    /// large direct component that vibrato does not have.
     #[test]
-    fn chorus_retains_a_direct_component() {
+    fn chorus_and_vibrato_differ_beyond_a_gain() {
         let mut vibrato = ScannerVibrato::new(48_000.0);
         let mut chorus = ScannerVibrato::new(48_000.0);
         vibrato.set_mode(ScannerMode::Vibrato3);
         chorus.set_mode(ScannerMode::Chorus3);
+        let mut vibrato_energy = 0.0;
+        let mut chorus_energy = 0.0;
         let mut difference = 0.0;
-        for index in 0..4096 {
+        for index in 0..4_096 {
             let input = if index == 0 { 1.0 } else { 0.0 };
-            difference += (vibrato.process(input) - chorus.process(input)).abs();
+            let left = vibrato.process(input);
+            let right = chorus.process(input);
+            vibrato_energy += left * left;
+            chorus_energy += right * right;
+            difference += (left - right).abs();
         }
+        assert!(vibrato_energy > 0.0 && chorus_energy > 0.0);
         assert!(difference > 0.1);
+        // The two impulse responses are not scalar multiples of each other.
+        let ratio = (chorus_energy / vibrato_energy).sqrt();
+        let mut shape_difference = 0.0;
+        let mut vibrato = ScannerVibrato::new(48_000.0);
+        let mut chorus = ScannerVibrato::new(48_000.0);
+        vibrato.set_mode(ScannerMode::Vibrato3);
+        chorus.set_mode(ScannerMode::Chorus3);
+        for index in 0..4_096 {
+            let input = if index == 0 { 1.0 } else { 0.0 };
+            shape_difference += (chorus.process(input) - ratio * vibrato.process(input)).abs();
+        }
+        assert!(shape_difference > 0.05, "{shape_difference}");
+    }
+
+    /// Wider depth settings reach further down the ladder, so they delay more.
+    #[test]
+    fn depth_settings_order_their_delay() {
+        let centroid = |mode| {
+            let mut scanner = ScannerVibrato::new(48_000.0);
+            scanner.set_mode(mode);
+            let mut weighted = 0.0;
+            let mut energy = 0.0;
+            for index in 0..2_048 {
+                let input = if index == 0 { 1.0 } else { 0.0 };
+                let sample = scanner.process(input);
+                let power = sample * sample;
+                weighted += power * index as f32;
+                energy += power;
+            }
+            weighted / energy
+        };
+        let narrow = centroid(ScannerMode::Vibrato1);
+        let wide = centroid(ScannerMode::Vibrato3);
+        assert!(wide > narrow, "narrow={narrow} wide={wide}");
     }
 }

@@ -68,14 +68,36 @@ the injection captures; the comparator fits T3 first and only then resolves T2
 and T1, and reports the manual paths as underdetermined when no injection
 triplet exists.
 
-## Version 0.15.0 limitations
+## Vibrato and chorus
+
+The vibrato/chorus is the documented circuit rather than a modulated delay: an
+eighteen-section LC ladder, terminated and tapped at nineteen nodes, scanned by
+a sixteen-stack capacitive rotor that crossfades between adjacent terminals as
+it travels out to the ninth terminal and back. The depth tablet selects which
+ladder nodes the nine terminals reach; the vibrato/chorus tablet shorts or
+restores the 22 kΩ source resistor, and the chorus character follows from that
+rather than from mixing a dry copy.
+
+The ladder is linear and its coefficients never change while audio runs, so it
+is discretised once per switch position with the trapezoidal rule. Each sample
+is one banded matrix-vector product: neighbouring sections occupy neighbouring
+state indices, and entries below a documented threshold are dropped, which a
+test checks against the dense transition over a full second.
+
+## Version 0.16.0 limitations
 
 - The classic B-3 pedal contact and resistor-panel topology is present. The
   L20 pedal-filter coefficient and console matching-network constants remain
   provisional; musical pedal sustain is intentionally absent because it is a
   feature of later digital Hammond instruments, not the electromechanical B-3.
-- Scanner and percussion routing follows the AO-28 schematic, but their
-  electrical constants are not yet calibrated against a reference console.
+- Percussion routing follows the AO-28 schematic, but its electrical
+  constants are not yet calibrated against a reference console.
+- The vibrato line uses the documented component values with an unwarped
+  bilinear transform, so its cutoff is placed by the components rather than
+  fitted; the scanner runs at 6.9 Hz and its plate overlap is modelled as a
+  linear crossfade. The AO-28 vibrato amplifier that drives and recovers the
+  line is not modelled: a make-up gain derived from the circuit stands in for
+  it, which is what keeps the chorus position from arriving 11 dB down.
 - Contact bounce, matching-transformer, console tube-stage, expression-network
   and Leslie constants are provisional.
 - The transformer model is an odd nonlinearity and therefore produces no
@@ -85,5 +107,7 @@ triplet exists.
 - Leslie cabinet reflections and angle-dependent filters are present, but
   their coefficients are not yet fitted to multi-angle cabinet measurements.
 - The engine is measured as sample-rate invariant from 32 to 192 kHz, but a
-  fully engaged console leaves little headroom at 192 kHz: roughly 2x real time
-  on the development machine. No optimisation pass has been made yet.
+  fully engaged console leaves little headroom at 192 kHz: roughly 1.7x real
+  time on the development machine, against 2.1x before the vibrato line landed.
+  The ladder is the largest single cost and an exact banded solve would be
+  cheaper than the banded transition it uses today.

@@ -28,11 +28,26 @@ work progresses.
 
 ## Published physical-model references
 
-The scanner implementation is an independent reduced Rust model informed by
-the Hammond service documentation, patent US2560568A and Werner, Dunkel and
-Germain's DAFx-2016 wave-digital-filter paper. Version 0.2 uses the documented
-16-contact scanning topology and console switch semantics, but does not copy
-the paper's WDF equations or third-party implementation code.
+The vibrato/chorus is an independent Rust implementation of the documented
+B-3 circuit, informed by the Hammond service documentation, patent US2560568A
+and Werner, Dunkel and Germain's DAFx-2016 wave-digital-filter paper.
+
+Version 0.2 used a reduced delay-line stand-in. Version 0.16.0 replaces it with
+the circuit itself: eighteen 500 mH sections, seventeen 0.004 µF shunt
+capacitors and a final 0.001 µF one, the six tap dividers, the 15 kΩ
+termination, the 22 kΩ source resistor that the vibrato/chorus switch shorts,
+the nineteen tap nodes, the three depth tap sets and the sixteen-stack scanner
+that crossfades between adjacent terminals. Those component values and tap
+tables are Hammond service-manual data, tabulated in Table 1 and Table 2 of the
+DAFx-2016 paper and used here as data, not as code.
+
+The discretisation is our own and deliberately different from the paper's: the
+ladder is linear, so RF-Organ solves it once with the trapezoidal rule into a
+fixed state transition rather than building a wave-digital tree. No WDF
+adaptor, scattering equation or third-party implementation code is reproduced.
+The insertion-loss make-up that keeps the chorus position usable is a
+provisional stand-in for the AO-28 vibrato amplifier, derived from the
+resistor network rather than fitted.
 
 See `docs/RESEARCH.md` for the Hammond service documentation, tonewheel,
 scanner-vibrato and Leslie papers that define the wider research baseline.

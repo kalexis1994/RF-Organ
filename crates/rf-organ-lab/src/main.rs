@@ -216,6 +216,10 @@ fn render_suite(destination: &Path, trims: captures::Trims) -> Result<(), Box<dy
         analysis.scanner_sidebands,
     )?;
     fs::write(
+        destination.join("scanner-line-response.csv"),
+        analysis.scanner_line_response,
+    )?;
+    fs::write(
         destination.join("leslie-rotor-response.csv"),
         analysis.leslie_rotor_response,
     )?;
@@ -410,7 +414,7 @@ fn manifest(trims: captures::Trims) -> String {
         .collect::<Vec<_>>()
         .join(",");
     format!(
-        "RF-Organ deterministic calibration suite\nversion={}\nsample_rate={}\nphrase_seconds={}\nnormalization=none\nformat=IEEE-float WAV stereo\nanalysis=frequency,level,pedal-spectrum,pedal-release,expression-response,tone-control-response,transformer-intermodulation,transformer-calibration,percussion-envelope,scanner-sidebands,leslie-rotor-response\n",
+        "RF-Organ deterministic calibration suite\nversion={}\nsample_rate={}\nphrase_seconds={}\nnormalization=none\nformat=IEEE-float WAV stereo\nanalysis=frequency,level,pedal-spectrum,pedal-release,expression-response,tone-control-response,transformer-intermodulation,transformer-calibration,percussion-envelope,scanner-sidebands,scanner-line-response,leslie-rotor-response\n",
         env!("CARGO_PKG_VERSION"),
         SAMPLE_RATE,
         SECONDS

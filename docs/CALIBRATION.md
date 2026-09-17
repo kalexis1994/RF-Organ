@@ -27,7 +27,8 @@ The suite contains:
   T1, T2 and T3 receive from the shared character control plus their own trim,
   and the product levels each one produces at three signal levels;
 - fast and slow percussion envelope curves measured in 10 ms RMS windows;
-- 1 kHz scanner carrier and ±6.9 Hz sideband levels for V1–V3 and C1–C3;
+- 1 kHz scanner carrier and the first three sideband pairs for V1–V3 and
+  C1–C3, plus the level a steady tone returns at across the audio band;
 - horn and drum acceleration/braking curves sampled every 10 ms, including
   measured 63% and 90% transition times;
 - pedal harmonic levels for the eight physical contacts, plus the complete
@@ -38,7 +39,16 @@ The suite contains:
 tables retain the underlying curves:
 
 - `percussion-envelope.csv` records both decay registrations;
-- `scanner-sidebands.csv` records carrier level in dBFS and sidebands in dBc;
+- `scanner-sidebands.csv` records carrier level in dBFS and the first three
+  sideband pairs in dBc. One scanner revolution travels out to the ninth
+  terminal and back, so the modulation is not a sinusoid and the pairs do not
+  fall off like a single-tone vibrato. At V3 the carrier is close to its first
+  Bessel null — the taps span the whole 0.85 ms ladder, which is about 2.7
+  radians of phase at 1 kHz — so the sidebands stand above what remains of it.
+- `scanner-line-response.csv` records the level a steady tone returns at, in
+  five bands and over a whole number of rotor revolutions, for each of the six
+  positions. It shows the ladder's own lowpass corner near 7 kHz and the
+  residual level difference between the vibrato and chorus positions.
 - `leslie-rotor-response.csv` records actual and target rotor speeds during
   Tremolo acceleration and Brake deceleration.
 - `pedal-spectrum.csv` records the eight contact frequencies and levels for
@@ -249,16 +259,18 @@ transition, expression and tone gain, transformer third-order product and pedal
 key-off time — at 32, 44.1, 48, 96 and 192 kHz, and reports the worst deviation
 from the 48 kHz column against a per-quantity tolerance. A quantity that drifts
 with the rate is a coefficient written in samples where it belongs in seconds or
-hertz, so the command exits non-zero and names it. At 0.15.0 all eleven hold:
-the largest deviation is 0.17 dBc on the scanner sideband and 10 ms on the
-percussion T60, which is one analysis window.
+hertz, so the command exits non-zero and names it. At 0.16.0 all eleven hold:
+the largest deviations are 10 ms on the percussion T60, which is one analysis
+window, and 0.05 dBc on the scanner sideband, which the LC ladder reproduces at
+every rate.
 
 `performance.csv` renders five seconds of a worst-case registration — both
 manuals and pedals held, full drawbars, percussion, C3 scanner and Tremolo
 rotation — and reports the real-time factor. On the development machine that is
-about 8.6x real time at 48 kHz and 2.1x at 192 kHz. Those numbers describe one
-machine and one build; they are a regression signal and the starting point for
-optimisation work, not a specification.
+about 7.0x real time at 48 kHz and 1.7x at 192 kHz, against 8.6x and 2.1x
+before the vibrato ladder replaced the delay-line stand-in. Those numbers
+describe one machine and one build; they are a regression signal and the
+starting point for optimisation work, not a specification.
 
 The full survey is also available as
 `cargo test --release -p rf-organ-lab -- --ignored`. Ordinary test runs keep the

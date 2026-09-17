@@ -14,6 +14,7 @@ mod percussion;
 mod scanner;
 mod tonewheel;
 mod transformer;
+mod vibrato_line;
 
 pub use electronics::{ConsoleElectronics, ConsoleElectronicsDiagnostics};
 pub use leslie::{Leslie, LeslieDiagnostics, LeslieMode};
@@ -23,6 +24,7 @@ pub use percussion::{PercussionDecay, PercussionHarmonic, PercussionVolume};
 pub use scanner::{ScannerMode, ScannerVibrato};
 pub use tonewheel::{TONEWHEEL_COUNT, gear_frequency};
 pub use transformer::{MatchingTransformer, TransformerDiagnostics, TransformerUnit};
+pub use vibrato_line::ROTOR_HZ as SCANNER_ROTOR_HZ;
 
 use manual::Manual;
 use pedal::Pedalboard;
@@ -476,15 +478,20 @@ mod tests {
 
     #[test]
     fn percussion_joins_after_the_scanner_return() {
-        let mut engine = OrganEngine::new(48_000.0).expect("valid engine");
-        assert!(engine.set_transformer(0.0, 0.0));
-        engine.set_scanner_mode(ScannerMode::Vibrato3);
-        engine.set_scanner_manuals(true, false);
+        let mut scanned = OrganEngine::new(48_000.0).expect("valid engine");
+        let mut silent = OrganEngine::new(48_000.0).expect("valid engine");
+        for engine in [&mut scanned, &mut silent] {
+            assert!(engine.set_transformer(0.0, 0.0));
+            engine.set_scanner_mode(ScannerMode::Vibrato3);
+            engine.set_scanner_manuals(true, false);
+        }
 
-        // A newly cleared scanner delays the upper impulse. The percussion
-        // channel reaches the V4A sum immediately and therefore remains exact.
-        let console = engine.route_ao28_inputs(0.5, 0.0, 0.0, 0.25);
-        assert_eq!(console, 0.25);
+        // Whatever the vibrato line does with the upper manual, the percussion
+        // channel reaches the V4A sum untouched: two identical consoles that
+        // differ only in percussion differ by exactly that much.
+        let with_percussion = scanned.route_ao28_inputs(0.5, 0.0, 0.0, 0.25);
+        let without_percussion = silent.route_ao28_inputs(0.5, 0.0, 0.0, 0.0);
+        assert!((with_percussion - without_percussion - 0.25).abs() < 1.0e-6);
     }
 
     #[test]

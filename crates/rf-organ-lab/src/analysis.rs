@@ -17,6 +17,7 @@ pub struct Artifacts {
     pub measurements: String,
     pub percussion_envelope: String,
     pub scanner_sidebands: String,
+    pub scanner_line_response: String,
     pub leslie_rotor_response: String,
     pub pedal_spectrum: String,
     pub pedal_release: String,
@@ -59,7 +60,7 @@ fn analyze_inner() -> Result<Artifacts, String> {
     measurements.extend(pedal);
     let (percussion, percussion_envelope) = percussion_probe()?;
     measurements.extend(percussion);
-    let (scanner, scanner_sidebands) = scanner_probe();
+    let (scanner, scanner_sidebands, scanner_line_response) = scanner_probe();
     measurements.extend(scanner);
     let (leslie, leslie_rotor_response) = leslie_probe();
     measurements.extend(leslie);
@@ -67,6 +68,7 @@ fn analyze_inner() -> Result<Artifacts, String> {
         measurements: measurement_csv(&measurements),
         percussion_envelope,
         scanner_sidebands,
+        scanner_line_response,
         leslie_rotor_response,
         pedal_spectrum,
         pedal_release,
@@ -583,9 +585,13 @@ fn percussion_curve(decay: PercussionDecay) -> Result<Vec<(f64, f64)>, String> {
         .collect())
 }
 
-fn scanner_probe() -> (Vec<Measurement>, String) {
+fn scanner_probe() -> (Vec<Measurement>, String, String) {
     const CARRIER: f64 = 1_000.0;
     const MODULATION: f64 = 6.9;
+    /// One revolution carries the scanner out to the far terminal and back,
+    /// so the modulation is not a sinusoid and the spectrum keeps going.
+    const ORDERS: [f64; 3] = [1.0, 2.0, 3.0];
+    const BANDS: [f64; 5] = [100.0, 440.0, 1_000.0, 4_000.0, 8_000.0];
     let modes = [
         ("v1", ScannerMode::Vibrato1),
         ("v2", ScannerMode::Vibrato2),
@@ -595,20 +601,35 @@ fn scanner_probe() -> (Vec<Measurement>, String) {
         ("c3", ScannerMode::Chorus3),
     ];
     let mut measurements = Vec::new();
-    let mut csv = String::from("mode,carrier_dbfs,lower_sideband_dbc,upper_sideband_dbc\n");
+    let mut csv = String::from(
+        "mode,carrier_dbfs,lower_sideband_dbc,upper_sideband_dbc,lower_sideband2_dbc,upper_sideband2_dbc,lower_sideband3_dbc,upper_sideband3_dbc\n",
+    );
+    let mut response = String::from("mode,frequency_hz,gain_db\n");
     for (name, mode) in modes {
         let samples = render_scanner(mode, CARRIER);
         let carrier = spectral_amplitude(&samples, CARRIER);
-        let lower = spectral_amplitude(&samples, CARRIER - MODULATION);
-        let upper = spectral_amplitude(&samples, CARRIER + MODULATION);
+        let sidebands = ORDERS.map(|order| {
+            (
+                decibels(spectral_amplitude(&samples, CARRIER - order * MODULATION) / carrier),
+                decibels(spectral_amplitude(&samples, CARRIER + order * MODULATION) / carrier),
+            )
+        });
         let carrier_dbfs = decibels(carrier);
-        let lower_dbc = decibels(lower / carrier);
-        let upper_dbc = decibels(upper / carrier);
+        let (lower_dbc, upper_dbc) = sidebands[0];
         writeln!(
             &mut csv,
-            "{name},{carrier_dbfs:.6},{lower_dbc:.6},{upper_dbc:.6}"
+            "{name},{carrier_dbfs:.6},{lower_dbc:.6},{upper_dbc:.6},{:.6},{:.6},{:.6},{:.6}",
+            sidebands[1].0, sidebands[1].1, sidebands[2].0, sidebands[2].1
         )
         .expect("string write cannot fail");
+        for frequency in BANDS {
+            writeln!(
+                &mut response,
+                "{name},{frequency:.3},{:.6}",
+                decibels(scanner_gain(mode, frequency))
+            )
+            .expect("string write cannot fail");
+        }
         let probe = match mode {
             ScannerMode::Vibrato1 => "scanner-v1",
             ScannerMode::Vibrato2 => "scanner-v2",
@@ -637,9 +658,38 @@ fn scanner_probe() -> (Vec<Measurement>, String) {
                 value: upper_dbc,
                 unit: "dBc",
             },
+            Measurement {
+                probe,
+                metric: "mid-gain",
+                value: decibels(scanner_gain(mode, 1_000.0)),
+                unit: "dB",
+            },
         ]);
     }
-    (measurements, csv)
+    (measurements, csv, response)
+}
+
+/// Level a steady tone comes back at, measured over a whole number of scanner
+/// revolutions so that the rotor's own cycle averages out exactly. It captures
+/// the ladder's lowpass shape together with the insertion loss of the selected
+/// switch position.
+fn scanner_gain(mode: ScannerMode, frequency: f64) -> f64 {
+    const AMPLITUDE: f64 = 0.5;
+    const REVOLUTIONS: f64 = 5.0;
+    let settle = SAMPLE_RATE / 4;
+    let window =
+        (REVOLUTIONS * SAMPLE_RATE as f64 / f64::from(rf_organ_dsp::SCANNER_ROTOR_HZ)) as usize;
+    let mut scanner = ScannerVibrato::new(SAMPLE_RATE as f32);
+    scanner.set_mode(mode);
+    let mut power = 0.0;
+    for frame in 0..settle + window {
+        let input = (TAU * frequency * frame as f64 / SAMPLE_RATE as f64).sin() as f32 * 0.5;
+        let sample = f64::from(scanner.process(input));
+        if frame >= settle {
+            power += sample * sample;
+        }
+    }
+    (2.0 * power / window as f64).sqrt() / AMPLITUDE
 }
 
 fn render_scanner(mode: ScannerMode, carrier: f64) -> Vec<f64> {
@@ -917,13 +967,47 @@ mod tests {
 
     #[test]
     fn scanner_probe_produces_finite_sideband_levels() {
-        let (measurements, csv) = with_analysis_stack(scanner_probe);
+        let (measurements, csv, response) = with_analysis_stack(scanner_probe);
         assert_eq!(csv.lines().count(), 7);
+        assert_eq!(response.lines().count(), 31);
         assert!(
             measurements
                 .iter()
                 .all(|measurement| measurement.value.is_finite())
         );
+        let gain = |probe| {
+            measurements
+                .iter()
+                .find(|measurement| measurement.probe == probe && measurement.metric == "mid-gain")
+                .expect("probe")
+                .value
+        };
+        // The ladder passes its own passband; no position may run away.
+        for probe in [
+            "scanner-v1",
+            "scanner-v2",
+            "scanner-v3",
+            "scanner-c1",
+            "scanner-c2",
+            "scanner-c3",
+        ] {
+            assert!(
+                (-12.0..3.0).contains(&gain(probe)),
+                "{probe} {}",
+                gain(probe)
+            );
+        }
+        // The line is a lowpass: 8 kHz comes back well below 1 kHz.
+        let high = response
+            .lines()
+            .find(|line| line.starts_with("v3,8000"))
+            .expect("v3 at 8 kHz")
+            .rsplit(',')
+            .next()
+            .expect("gain")
+            .parse::<f64>()
+            .expect("gain");
+        assert!(high < gain("scanner-v3") - 6.0, "8 kHz came back at {high}");
     }
 
     #[test]
