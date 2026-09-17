@@ -8,7 +8,7 @@ use rackforge_plugin_sdk::{
     MIDI2_KIND_NOTE_OFF, MIDI2_KIND_NOTE_ON, MidiEvent, MidiEvent2, ParameterEvent, Processor,
     export_processor,
 };
-use rf_organ_dsp::{LeslieMode, MIC_DISTANCE_RANGE_M, MIC_SPACING_MAX_M, OrganEngine, OrganPart};
+use rf_organ_dsp::{MIC_DISTANCE_RANGE_M, MIC_SPACING_MAX_M, OrganEngine, OrganPart, RotaryMode};
 pub use settings::{PARAMETER_COUNT, Settings, presets};
 
 pub const MAX_FRAMES: u32 = 4096;
@@ -60,17 +60,17 @@ impl RfOrganProcessor {
                 }
             }
             0xb0 => match index {
-                1 => engine.set_leslie_mode(if value < 64 {
-                    LeslieMode::Chorale
+                1 => engine.set_rotary_mode(if value < 64 {
+                    RotaryMode::Chorale
                 } else {
-                    LeslieMode::Tremolo
+                    RotaryMode::Tremolo
                 }),
                 // Rotor stop, the third position a cabinet's switch has.
                 // Releasing it returns the rotors to the selected speed.
-                4 => engine.set_leslie_mode(if value < 64 {
-                    LeslieMode::Brake
+                4 => engine.set_rotary_mode(if value < 64 {
+                    RotaryMode::Brake
                 } else {
-                    self.settings.leslie_mode
+                    self.settings.rotary_mode
                 }),
                 11 => {
                     let _ = engine.set_expression(f32::from(value) / 127.0);
@@ -118,15 +118,15 @@ impl RfOrganProcessor {
                     event.value as f32 / u32::MAX as f32
                 };
                 match event.index {
-                    1 => engine.set_leslie_mode(if value < 0.5 {
-                        LeslieMode::Chorale
+                    1 => engine.set_rotary_mode(if value < 0.5 {
+                        RotaryMode::Chorale
                     } else {
-                        LeslieMode::Tremolo
+                        RotaryMode::Tremolo
                     }),
-                    4 => engine.set_leslie_mode(if value < 0.5 {
-                        LeslieMode::Brake
+                    4 => engine.set_rotary_mode(if value < 0.5 {
+                        RotaryMode::Brake
                     } else {
-                        self.settings.leslie_mode
+                        self.settings.rotary_mode
                     }),
                     11 => {
                         let _ = engine.set_expression(value);
@@ -440,8 +440,8 @@ mod tests {
         };
         let (near, far) = MIC_DISTANCE_RANGE_M;
         let migrated = Settings {
-            leslie_mic_distance: f64::from(near) + 0.35 * f64::from(far - near),
-            leslie_mic_spacing: 0.75 * f64::from(MIC_SPACING_MAX_M),
+            rotary_mic_distance: f64::from(near) + 0.35 * f64::from(far - near),
+            rotary_mic_spacing: 0.75 * f64::from(MIC_SPACING_MAX_M),
             ..Settings::default()
         };
 
@@ -459,7 +459,7 @@ mod tests {
         place_in_units(&mut version_six);
         assert!(restored.load_state(&version_six));
         assert_eq!(restored.settings, migrated);
-        assert_eq!(restored.settings.leslie_mic_offset, 0.0);
+        assert_eq!(restored.settings.rotary_mic_offset, 0.0);
     }
 
     #[test]
@@ -494,7 +494,7 @@ mod tests {
         let mut processor = RfOrganProcessor::default();
         assert!(processor.load_preset("chorale-888"));
         assert!(processor.prepare(48_000.0, 64, 0, 2));
-        assert_eq!(processor.settings.leslie_mode, LeslieMode::Chorale);
+        assert_eq!(processor.settings.rotary_mode, RotaryMode::Chorale);
 
         let mut output = [0.0_f32; 128];
         let brake = [MidiEvent {
@@ -504,7 +504,7 @@ mod tests {
         }];
         processor.process(&[], &mut output, &brake, &[], 64, 0, 2);
         let engine = processor.engine.as_ref().expect("prepared engine");
-        assert_eq!(engine.leslie_mode(), LeslieMode::Brake);
+        assert_eq!(engine.rotary_mode(), RotaryMode::Brake);
 
         let release = [MidiEvent {
             frame: 0,
@@ -513,7 +513,7 @@ mod tests {
         }];
         processor.process(&[], &mut output, &release, &[], 64, 0, 2);
         let engine = processor.engine.as_ref().expect("prepared engine");
-        assert_eq!(engine.leslie_mode(), LeslieMode::Chorale);
+        assert_eq!(engine.rotary_mode(), RotaryMode::Chorale);
     }
 
     #[test]

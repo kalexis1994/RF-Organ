@@ -75,9 +75,9 @@ input:disabled, select:disabled { opacity: .45; }
 .switch input { width: 20px; height: 20px; accent-color: var(--gold); }
 .rotary-state { display: grid; justify-items: center; gap: 5px; color: #998a78; font-size: .65rem; letter-spacing: .15em; }
 .rotary-state span { width: 34px; height: 34px; display: block; border: 5px dotted var(--rotor); border-radius: 50%; }
-[data-leslie="chorale"] .rotary-state span { --rotor: #d3ad63; animation: spin 2.2s linear infinite; }
-[data-leslie="tremolo"] .rotary-state span { --rotor: #df873d; animation: spin .45s linear infinite; }
-[data-leslie="brake"] .rotary-state span { --rotor: #bb7448; }
+[data-rotary="chorale"] .rotary-state span { --rotor: #d3ad63; animation: spin 2.2s linear infinite; }
+[data-rotary="tremolo"] .rotary-state span { --rotor: #df873d; animation: spin .45s linear infinite; }
+[data-rotary="brake"] .rotary-state span { --rotor: #bb7448; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .advanced summary { cursor: pointer; color: var(--gold); font-weight: 800; }
 .advanced-grid { margin-top: 18px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }

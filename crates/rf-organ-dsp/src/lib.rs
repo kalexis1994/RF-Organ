@@ -7,27 +7,27 @@
 //! establish a physically informed baseline and remain subject to measurement.
 
 mod electronics;
-mod leslie;
 mod manual;
 mod pedal;
 mod percussion;
+mod rotary;
 mod scanner;
 mod tonewheel;
 mod transformer;
 mod vibrato_line;
 
 pub use electronics::{ConsoleElectronics, ConsoleElectronicsDiagnostics};
-pub use leslie::{
-    DRUM_RADIUS_DEFAULT_M, DRUM_RADIUS_RANGE_M, HORN_RADIUS_DEFAULT_M, HORN_RADIUS_RANGE_M, Leslie,
-    LeslieDiagnostics, LeslieGeometry, LeslieMode, MIC_DISTANCE_DEFAULT_M, MIC_DISTANCE_RANGE_M,
-    MIC_OFFSET_MAX_M, MIC_PATTERN_DEFAULT, MIC_SPACING_DEFAULT_M, MIC_SPACING_MAX_M,
-    MicrophoneArray,
-};
 pub use manual::{
     DRAWBAR_COUNT, MANUAL_FIRST_NOTE, MANUAL_KEY_COUNT, compartment_companions, drawbar_wheel,
 };
 pub use pedal::{PEDAL_DRAWBAR_COUNT, PEDAL_FIRST_NOTE, PEDAL_KEY_COUNT};
 pub use percussion::{PercussionDecay, PercussionHarmonic, PercussionVolume};
+pub use rotary::{
+    DRUM_RADIUS_DEFAULT_M, DRUM_RADIUS_RANGE_M, HORN_RADIUS_DEFAULT_M, HORN_RADIUS_RANGE_M,
+    MIC_DISTANCE_DEFAULT_M, MIC_DISTANCE_RANGE_M, MIC_OFFSET_MAX_M, MIC_PATTERN_DEFAULT,
+    MIC_SPACING_DEFAULT_M, MIC_SPACING_MAX_M, MicrophoneArray, Rotary, RotaryDiagnostics,
+    RotaryGeometry, RotaryMode,
+};
 pub use scanner::{ScannerMode, ScannerVibrato};
 pub use tonewheel::{TONEWHEEL_COUNT, gear_frequency, gear_teeth};
 pub use transformer::{MatchingTransformer, TransformerDiagnostics, TransformerUnit};
@@ -65,7 +65,7 @@ pub struct OrganEngine {
     output_transformer: MatchingTransformer,
     scanner: ScannerVibrato,
     percussion: Percussion,
-    leslie: Leslie,
+    rotary: Rotary,
     transformer_character: (f32, f32),
     transformer_trims: [(f32, f32); 3],
     output_level: f32,
@@ -94,7 +94,7 @@ impl OrganEngine {
             output_transformer: MatchingTransformer::new(sample_rate),
             scanner: ScannerVibrato::new(sample_rate),
             percussion: Percussion::new(sample_rate),
-            leslie: Leslie::new(sample_rate),
+            rotary: Rotary::new(sample_rate),
             transformer_character: (0.35, 0.25),
             transformer_trims: [(0.0, 0.0); 3],
             output_level: 0.72,
@@ -340,32 +340,32 @@ impl OrganEngine {
         self.percussion.set_decay(decay);
     }
 
-    pub fn set_leslie_mode(&mut self, mode: LeslieMode) {
-        self.leslie.set_mode(mode);
+    pub fn set_rotary_mode(&mut self, mode: RotaryMode) {
+        self.rotary.set_mode(mode);
     }
 
-    pub const fn leslie_mode(&self) -> LeslieMode {
-        self.leslie.mode()
+    pub const fn rotary_mode(&self) -> RotaryMode {
+        self.rotary.mode()
     }
 
-    pub fn set_leslie_mix(&mut self, value: f32) -> bool {
-        self.leslie.set_mix(value)
+    pub fn set_rotary_mix(&mut self, value: f32) -> bool {
+        self.rotary.set_mix(value)
     }
 
-    pub fn set_leslie_acceleration(&mut self, value: f32) -> bool {
-        self.leslie.set_acceleration(value)
+    pub fn set_rotary_acceleration(&mut self, value: f32) -> bool {
+        self.rotary.set_acceleration(value)
     }
 
-    pub fn set_leslie_cabinet(&mut self, reflections: f32, horn_drum_balance: f32) -> bool {
-        self.leslie.set_cabinet(reflections, horn_drum_balance)
+    pub fn set_rotary_cabinet(&mut self, reflections: f32, horn_drum_balance: f32) -> bool {
+        self.rotary.set_cabinet(reflections, horn_drum_balance)
     }
 
-    pub fn set_leslie_microphones(&mut self, array: MicrophoneArray) -> bool {
-        self.leslie.set_microphones(array)
+    pub fn set_rotary_microphones(&mut self, array: MicrophoneArray) -> bool {
+        self.rotary.set_microphones(array)
     }
 
-    pub fn set_leslie_rotor_radii(&mut self, horn_m: f32, drum_m: f32) -> bool {
-        self.leslie.set_rotor_radii(horn_m, drum_m)
+    pub fn set_rotary_rotor_radii(&mut self, horn_m: f32, drum_m: f32) -> bool {
+        self.rotary.set_rotor_radii(horn_m, drum_m)
     }
 
     pub fn next_sample(&mut self) -> [f32; 2] {
@@ -391,7 +391,7 @@ impl OrganEngine {
         let console = self.route_ao28_inputs(upper, lower, pedals, percussion);
         let console = self.electronics.process(console, self.expression);
         let organ = self.output_transformer.process(console) * self.output_level;
-        self.leslie.process(organ)
+        self.rotary.process(organ)
     }
 
     /// Routes the generator buses into the AO-28 input channels. T2 receives
@@ -419,7 +419,7 @@ impl OrganEngine {
         self.output_transformer.reset();
         self.scanner.reset();
         self.percussion.reset();
-        self.leslie.reset();
+        self.rotary.reset();
         self.expression = 1.0;
         self.held_notes = 0;
     }
@@ -462,11 +462,11 @@ mod tests {
     }
 
     #[test]
-    fn leslie_is_inside_the_instrument_path() {
+    fn rotary_is_inside_the_instrument_path() {
         let mut engine = OrganEngine::new(48_000.0).expect("valid engine");
         assert!(engine.note_on(60, 1.0));
-        engine.set_leslie_mode(LeslieMode::Tremolo);
-        assert!(engine.set_leslie_mix(1.0));
+        engine.set_rotary_mode(RotaryMode::Tremolo);
+        assert!(engine.set_rotary_mix(1.0));
         let mut stereo_difference = 0.0;
         for _ in 0..24_000 {
             let [left, right] = engine.next_sample();

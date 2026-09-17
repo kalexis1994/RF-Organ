@@ -4,8 +4,9 @@ use core::f32::consts::TAU;
 const DELAY_CAPACITY: usize = 8192;
 
 /// Rotor speeds, as the cabinet's own specification gives them. Hammond's
-/// documented ranges for a digital Leslie are 20 to 120 rpm slow and 200 to
-/// 500 rpm fast, and its worked example of a transition is 40 to 400 rpm.
+/// documented ranges for a digital rotating cabinet are 20 to 120 rpm slow
+/// and 200 to 500 rpm fast, and its worked example of a transition is 40 to
+/// 400 rpm.
 const HORN_SLOW_RPM: f32 = 40.0;
 const HORN_FAST_RPM: f32 = 400.0;
 const DRUM_SLOW_RPM: f32 = 40.0;
@@ -144,7 +145,7 @@ fn microphone_path(
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[repr(u8)]
-pub enum LeslieMode {
+pub enum RotaryMode {
     #[default]
     Off = 0,
     Brake = 1,
@@ -196,7 +197,7 @@ fn stands(distance: f32, spacing: f32, offset: f32) -> [Placement; 4] {
 /// The cabinet's geometry, in metres, for tools that need to predict what it
 /// should be doing rather than take its word for it.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct LeslieGeometry {
+pub struct RotaryGeometry {
     pub horn_radius_m: f32,
     pub drum_radius_m: f32,
     pub sound_speed_m_per_s: f32,
@@ -208,7 +209,7 @@ pub struct LeslieGeometry {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct LeslieDiagnostics {
+pub struct RotaryDiagnostics {
     pub horn_speed_hz: f32,
     pub horn_target_hz: f32,
     pub drum_speed_hz: f32,
@@ -223,7 +224,7 @@ pub struct LeslieDiagnostics {
     pub drum_transition_seconds: f32,
 }
 
-impl LeslieMode {
+impl RotaryMode {
     pub const fn from_index(index: u8) -> Option<Self> {
         match index {
             0 => Some(Self::Off),
@@ -365,9 +366,9 @@ impl Rotor {
     }
 }
 
-pub struct Leslie {
+pub struct Rotary {
     sample_rate: f32,
-    mode: LeslieMode,
+    mode: RotaryMode,
     mix: f32,
     crossover: f32,
     low_state: f32,
@@ -388,12 +389,12 @@ pub struct Leslie {
     horn_drum_balance: f32,
 }
 
-impl Leslie {
+impl Rotary {
     pub fn new(sample_rate: f32) -> Self {
         let x = TAU * 800.0 / sample_rate;
         Self {
             sample_rate,
-            mode: LeslieMode::Off,
+            mode: RotaryMode::Off,
             mix: 0.82,
             crossover: x / (1.0 + x),
             low_state: 0.0,
@@ -431,21 +432,21 @@ impl Leslie {
         }
     }
 
-    pub fn set_mode(&mut self, mode: LeslieMode) {
+    pub fn set_mode(&mut self, mode: RotaryMode) {
         if mode == self.mode {
             return;
         }
         self.mode = mode;
         let (horn, drum) = match mode {
-            LeslieMode::Off | LeslieMode::Brake => (0.0, 0.0),
-            LeslieMode::Chorale => (self.horn.slow_hz, self.drum.slow_hz),
-            LeslieMode::Tremolo => (self.horn.fast_hz, self.drum.fast_hz),
+            RotaryMode::Off | RotaryMode::Brake => (0.0, 0.0),
+            RotaryMode::Chorale => (self.horn.slow_hz, self.drum.slow_hz),
+            RotaryMode::Tremolo => (self.horn.fast_hz, self.drum.fast_hz),
         };
         self.horn.aim(horn, self.sample_rate);
         self.drum.aim(drum, self.sample_rate);
     }
 
-    pub const fn mode(&self) -> LeslieMode {
+    pub const fn mode(&self) -> RotaryMode {
         self.mode
     }
 
@@ -622,7 +623,7 @@ impl Leslie {
             - 0.18 * self.cabinet_right.read(self.sample_rate * 0.0117);
         wet_left += 0.65 * self.reflections * reflection_left;
         wet_right += 0.65 * self.reflections * reflection_right;
-        let wet = if self.mode == LeslieMode::Off {
+        let wet = if self.mode == RotaryMode::Off {
             0.0
         } else {
             self.mix
@@ -634,8 +635,8 @@ impl Leslie {
     }
 
     /// Read-only geometry for deterministic calibration tools.
-    pub fn geometry(&self) -> LeslieGeometry {
-        LeslieGeometry {
+    pub fn geometry(&self) -> RotaryGeometry {
+        RotaryGeometry {
             horn_radius_m: self.horn_radius,
             drum_radius_m: self.drum_radius,
             sound_speed_m_per_s: SOUND_SPEED_M_PER_S,
@@ -646,8 +647,8 @@ impl Leslie {
     }
 
     /// Read-only mechanical state for deterministic calibration tools.
-    pub const fn diagnostics(&self) -> LeslieDiagnostics {
-        LeslieDiagnostics {
+    pub const fn diagnostics(&self) -> RotaryDiagnostics {
+        RotaryDiagnostics {
             horn_speed_hz: self.horn.speed_hz,
             horn_target_hz: self.horn.target_hz,
             drum_speed_hz: self.drum.speed_hz,
@@ -713,24 +714,24 @@ mod tests {
     /// a stand outside them is refused rather than folded back in.
     #[test]
     fn the_microphones_span_their_documented_ranges() {
-        let mut leslie = Leslie::new(48_000.0);
+        let mut rotary = Rotary::new(48_000.0);
         let (near, far) = MIC_DISTANCE_RANGE_M;
-        assert!(leslie.set_microphones(MicrophoneArray {
+        assert!(rotary.set_microphones(MicrophoneArray {
             distance_m: near,
             spacing_m: 0.0,
             offset_m: 0.0,
             pattern: 0.0,
         }));
-        let close = leslie.geometry();
+        let close = rotary.geometry();
         assert!((close.mic_distance_m - near).abs() < 1.0e-6);
         assert_eq!(close.mic_half_width_m, 0.0);
-        assert!(leslie.set_microphones(MicrophoneArray {
+        assert!(rotary.set_microphones(MicrophoneArray {
             distance_m: far,
             spacing_m: MIC_SPACING_MAX_M,
             offset_m: MIC_OFFSET_MAX_M,
             pattern: 1.0,
         }));
-        let wide = leslie.geometry();
+        let wide = rotary.geometry();
         assert!((wide.mic_distance_m - far).abs() < 1.0e-6);
         assert!((wide.mic_half_width_m - 0.5 * MIC_SPACING_MAX_M).abs() < 1.0e-6);
         assert!((wide.mic_centre_m - MIC_OFFSET_MAX_M).abs() < 1.0e-6);
@@ -756,12 +757,12 @@ mod tests {
                 ..MicrophoneArray::default()
             },
         ] {
-            assert!(!leslie.set_microphones(refused), "{refused:?}");
+            assert!(!rotary.set_microphones(refused), "{refused:?}");
         }
-        assert!(!leslie.set_rotor_radii(HORN_RADIUS_RANGE_M.1 + 0.01, DRUM_RADIUS_DEFAULT_M));
-        assert!(!leslie.set_rotor_radii(HORN_RADIUS_DEFAULT_M, 0.0));
-        assert!(leslie.set_rotor_radii(0.2, 0.1));
-        assert_eq!(leslie.geometry().horn_radius_m, 0.2);
+        assert!(!rotary.set_rotor_radii(HORN_RADIUS_RANGE_M.1 + 0.01, DRUM_RADIUS_DEFAULT_M));
+        assert!(!rotary.set_rotor_radii(HORN_RADIUS_DEFAULT_M, 0.0));
+        assert!(rotary.set_rotor_radii(0.2, 0.1));
+        assert_eq!(rotary.geometry().horn_radius_m, 0.2);
     }
 
     /// A microphone pair that meets in the middle hears one signal: the two
@@ -769,20 +770,20 @@ mod tests {
     /// to fold it down.
     #[test]
     fn no_spacing_leaves_no_stereo() {
-        let mut leslie = Leslie::new(48_000.0);
-        assert!(leslie.set_mix(1.0));
-        assert!(leslie.set_cabinet(0.0, 0.0));
-        assert!(leslie.set_microphones(MicrophoneArray {
+        let mut rotary = Rotary::new(48_000.0);
+        assert!(rotary.set_mix(1.0));
+        assert!(rotary.set_cabinet(0.0, 0.0));
+        assert!(rotary.set_microphones(MicrophoneArray {
             distance_m: 0.4,
             spacing_m: 0.0,
             offset_m: 0.0,
             ..MicrophoneArray::default()
         }));
-        leslie.set_mode(LeslieMode::Tremolo);
+        rotary.set_mode(RotaryMode::Tremolo);
         let mut worst = 0.0_f32;
         for index in 0..48_000 {
             let input = (index as f32 * 0.01).sin();
-            let [left, right] = leslie.process(input);
+            let [left, right] = rotary.process(input);
             worst = worst.max((left - right).abs());
         }
         assert!(worst < 1.0e-6, "channels differ by {worst}");
@@ -793,14 +794,14 @@ mod tests {
     /// same side at once.
     #[test]
     fn the_offset_separates_the_rotors() {
-        let mut leslie = Leslie::new(48_000.0);
-        assert!(leslie.set_microphones(MicrophoneArray {
+        let mut rotary = Rotary::new(48_000.0);
+        assert!(rotary.set_microphones(MicrophoneArray {
             distance_m: 0.4,
             spacing_m: 0.2,
             offset_m: 0.3,
             ..MicrophoneArray::default()
         }));
-        let geometry = leslie.geometry();
+        let geometry = rotary.geometry();
         assert!(geometry.mic_centre_m > 0.0);
         let horn_left = geometry.mic_centre_m + geometry.mic_half_width_m;
         let drum_left = -geometry.mic_centre_m + geometry.mic_half_width_m;
@@ -809,19 +810,19 @@ mod tests {
 
     #[test]
     fn off_is_an_exact_bypass_while_rotors_keep_state() {
-        let mut leslie = Leslie::new(48_000.0);
+        let mut rotary = Rotary::new(48_000.0);
         for index in 0..1024 {
             let input = index as f32 / 1024.0 - 0.5;
-            assert_eq!(leslie.process(input), [input, input]);
+            assert_eq!(rotary.process(input), [input, input]);
         }
     }
 
     #[test]
     fn cabinet_reflections_create_a_distinct_tail() {
-        let mut dry_cabinet = Leslie::new(48_000.0);
-        let mut live_cabinet = Leslie::new(48_000.0);
-        dry_cabinet.set_mode(LeslieMode::Brake);
-        live_cabinet.set_mode(LeslieMode::Brake);
+        let mut dry_cabinet = Rotary::new(48_000.0);
+        let mut live_cabinet = Rotary::new(48_000.0);
+        dry_cabinet.set_mode(RotaryMode::Brake);
+        live_cabinet.set_mode(RotaryMode::Brake);
         assert!(dry_cabinet.set_mix(1.0));
         assert!(live_cabinet.set_mix(1.0));
         assert!(dry_cabinet.set_cabinet(0.0, 0.0));
@@ -840,17 +841,17 @@ mod tests {
 
     #[test]
     fn diagnostics_report_rotor_targets_and_motion() {
-        let mut leslie = Leslie::new(48_000.0);
-        leslie.set_mode(LeslieMode::Tremolo);
-        let initial = leslie.diagnostics();
+        let mut rotary = Rotary::new(48_000.0);
+        rotary.set_mode(RotaryMode::Tremolo);
+        let initial = rotary.diagnostics();
         // 400 rpm on the horn and 340 on the drum, as a cabinet is specified.
         assert!((initial.horn_target_hz * 60.0 - 400.0).abs() < 0.01);
         assert!((initial.drum_target_hz * 60.0 - 340.0).abs() < 0.01);
         assert_eq!(initial.horn_speed_hz, 0.0);
         for _ in 0..48_000 {
-            leslie.process(0.0);
+            rotary.process(0.0);
         }
-        let moving = leslie.diagnostics();
+        let moving = rotary.diagnostics();
         assert!(moving.horn_speed_rpm > moving.drum_speed_rpm);
         assert!(moving.horn_speed_hz <= moving.horn_target_hz);
         assert!(moving.horn_transition_seconds >= 0.8);
@@ -859,10 +860,10 @@ mod tests {
 
     /// Seconds a rotor needs to reach a speed, sampled at the frame it
     /// arrives.
-    fn settle_seconds(leslie: &mut Leslie, horn: bool) -> f32 {
+    fn settle_seconds(rotary: &mut Rotary, horn: bool) -> f32 {
         for frame in 0..48_000 * 20 {
-            leslie.process(0.0);
-            let state = leslie.diagnostics();
+            rotary.process(0.0);
+            let state = rotary.diagnostics();
             let (speed, target) = if horn {
                 (state.horn_speed_hz, state.horn_target_hz)
             } else {
@@ -881,21 +882,21 @@ mod tests {
     /// does, in proportion to the speed given up.
     #[test]
     fn transitions_run_at_a_constant_rate() {
-        let mut leslie = Leslie::new(48_000.0);
-        assert!(leslie.set_acceleration(0.5));
+        let mut rotary = Rotary::new(48_000.0);
+        assert!(rotary.set_acceleration(0.5));
         // From the slow speed, so the rotor crosses exactly the span the
         // transition time is defined over.
-        leslie.set_mode(LeslieMode::Chorale);
-        settle_seconds(&mut leslie, true);
-        leslie.set_mode(LeslieMode::Tremolo);
-        let rise = settle_seconds(&mut leslie, true);
+        rotary.set_mode(RotaryMode::Chorale);
+        settle_seconds(&mut rotary, true);
+        rotary.set_mode(RotaryMode::Tremolo);
+        let rise = settle_seconds(&mut rotary, true);
         assert!(
             (rise - HORN_RISE_SECONDS - MODE_DELAY_SECONDS).abs() < 0.1,
             "horn rise took {rise} s"
         );
 
-        leslie.set_mode(LeslieMode::Chorale);
-        let fall = settle_seconds(&mut leslie, true);
+        rotary.set_mode(RotaryMode::Chorale);
+        let fall = settle_seconds(&mut rotary, true);
         assert!(
             (fall - HORN_FALL_SECONDS - MODE_DELAY_SECONDS).abs() < 0.1,
             "horn fall took {fall} s"
@@ -903,8 +904,8 @@ mod tests {
 
         // From the slow speed a stop gives up a tenth of the range, so it
         // takes about a tenth of the brake time.
-        leslie.set_mode(LeslieMode::Brake);
-        let brake = settle_seconds(&mut leslie, true);
+        rotary.set_mode(RotaryMode::Brake);
+        let brake = settle_seconds(&mut rotary, true);
         let expected = HORN_BRAKE_SECONDS * HORN_SLOW_RPM / HORN_FAST_RPM + MODE_DELAY_SECONDS;
         assert!(
             (brake - expected).abs() < 0.1,
@@ -916,12 +917,12 @@ mod tests {
     /// setting of the control can make either move faster than a cabinet can.
     #[test]
     fn transition_times_stay_inside_the_documented_range() {
-        let mut leslie = Leslie::new(48_000.0);
+        let mut rotary = Rotary::new(48_000.0);
         for step in 0..=10 {
-            assert!(leslie.set_acceleration(step as f32 / 10.0));
-            leslie.set_mode(LeslieMode::Chorale);
-            leslie.set_mode(LeslieMode::Tremolo);
-            let state = leslie.diagnostics();
+            assert!(rotary.set_acceleration(step as f32 / 10.0));
+            rotary.set_mode(RotaryMode::Chorale);
+            rotary.set_mode(RotaryMode::Tremolo);
+            let state = rotary.diagnostics();
             assert!(
                 (HORN_TIME_FLOOR..=TIME_CEILING).contains(&state.horn_transition_seconds),
                 "horn at {}",

@@ -5,6 +5,18 @@ source code from the projects below. Their publications, data tables and source
 code are used as technical references and are credited here as implementation
 work progresses.
 
+## Trademarks
+
+HAMMOND, B-3 and LESLIE are trademarks of Hammond Suzuki. RF-Organ is not
+affiliated with, endorsed by or sponsored by Hammond Suzuki or any of its
+subsidiaries. Those names appear in this repository only where they are needed
+to say factually which published instrument or document a model was derived
+from, which is how the rest of these notices work. They are not used as the
+name of this product, of any of its modules, of any of its controls or of any
+of its presets: the module that models a rotating-baffle cabinet is called the
+rotary speaker throughout, and no logo, typeface or other branding of those
+marks is reproduced anywhere.
+
 ## setBfree
 
 - Project: https://github.com/pantherb/setBfree
@@ -59,10 +71,10 @@ licence applies to them. Their subject is the drawbar layout every tonewheel
 console shares - two brown, four white and three black - which Hammond's
 manual refers to when it calls the 2 2/3' the first black drawbar.
 
-## Leslie cabinet documentation
+## Rotary cabinet documentation
 
 Version 0.21.0 takes the mechanical description Hammond publishes for a
-digital Leslie: the horn turns counter-clockwise and the drum clockwise; slow
+digital rotating cabinet: the horn turns counter-clockwise and the drum clockwise; slow
 speeds run from 20 to 120 rpm and fast speeds from 200 to 500 rpm; a rise, a
 fall and a brake time are separate per rotor, floored at 0.8 s for the horn and
 1.0 s for the drum and ceilinged at 12.5 s; a mode switch can be delayed by up
@@ -174,7 +186,8 @@ recovery after release and the nine contact closure times, and the comparator
 turns a reference capture into candidate values for them directly.
 
 See `docs/RESEARCH.md` for the Hammond service documentation, tonewheel,
-scanner-vibrato and Leslie papers that define the wider research baseline.
+scanner-vibrato and rotating-cabinet papers that define the wider research
+baseline.
 
 ## Hammond pedal-switch service documentation
 

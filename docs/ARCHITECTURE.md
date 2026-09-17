@@ -19,7 +19,7 @@ percussion amplifier ------------------------------------------------------+    
                                                                                   v
                                                  preamp + expression + tone + V3B + T3
                                                                                   |
-                                                            integrated Leslie + output
+                                                            integrated rotary + output
 ```
 
 ## Boundaries
@@ -28,7 +28,7 @@ percussion amplifier ------------------------------------------------------+    
 `rf-organ-plugin` translates sample-accurate host events, programs and state
 into calls on the DSP engine.
 
-The Leslie is not a separately installed effect. It is a self-contained Rust
+The rotary speaker is not a separately installed effect. It is a self-contained Rust
 module inside `rf-organ-dsp`, which gives the user one instrument while keeping
 the rotating-speaker model independently testable and replaceable.
 
@@ -158,7 +158,7 @@ slow speed takes a tenth of the time braking from fast does, and the drum takes
 several times longer than the horn either way. A mode switch waits briefly
 before the rotor responds, as a relay and a clutch do.
 
-## Version 0.24.0 limitations
+## Version 0.25.0 limitations
 
 - The classic B-3 pedal contact and resistor-panel topology is present. The
   L20 pedal-filter coefficient and console matching-network constants remain
@@ -198,12 +198,12 @@ before the rotor responds, as a relay and a clutch do.
   line is not modelled: a make-up gain derived from the circuit stands in for
   it, which is what keeps the chorus position from arriving 11 dB down.
 - Contact bounce, matching-transformer, console tube-stage, expression-network
-  and Leslie constants are provisional.
+  and rotary constants are provisional.
 - The transformer model is an odd nonlinearity and therefore produces no
   genuine second-order difference product. Its asymmetric magnetic behaviour is
   not modelled yet, so the fit uses the third-order product; see
   `docs/CALIBRATION.md`.
-- Leslie cabinet reflections and angle-dependent filters are present, but
+- Cabinet reflections and angle-dependent filters are present, but
   their coefficients are not yet fitted to multi-angle cabinet measurements.
 - The microphones are placed geometrically, in centimetres, and the delay,
   level, direction and Doppler all come from the length of the line between a

@@ -7,9 +7,9 @@
 //! in `docs/CALIBRATION.md` lines up with the generated files.
 
 use rf_organ_dsp::{
-    DRAWBAR_COUNT, LeslieMode, MANUAL_FIRST_NOTE, MatchingTransformer, OrganEngine, OrganPart,
-    PEDAL_DRAWBAR_COUNT, PercussionDecay, PercussionHarmonic, PercussionVolume, ScannerMode,
-    TransformerUnit, drawbar_wheel, gear_frequency,
+    DRAWBAR_COUNT, MANUAL_FIRST_NOTE, MatchingTransformer, OrganEngine, OrganPart,
+    PEDAL_DRAWBAR_COUNT, PercussionDecay, PercussionHarmonic, PercussionVolume, RotaryMode,
+    ScannerMode, TransformerUnit, drawbar_wheel, gear_frequency,
 };
 use std::f64::consts::{PI, TAU};
 
@@ -31,14 +31,14 @@ pub const PHRASE_CAPTURES: [&str; 9] = [
     "01-direct-888",
     "02-third-percussion",
     "03-scanner-c3",
-    "04-leslie-chorale",
-    "05-leslie-tremolo",
+    "04-rotary-chorale",
+    "05-rotary-tremolo",
     "06-full-console",
     "07-pedal-16ft",
     "08-pedal-8ft",
     "09-pedal-16ft-8ft",
 ];
-pub const IMPULSE_CAPTURE: &str = "leslie-cabinet-impulse";
+pub const IMPULSE_CAPTURE: &str = "rotary-cabinet-impulse";
 /// Key struck in the percussion captures, and the registration behind it. The
 /// 888 registration puts nothing on the 2 2/3' bus, so the third-harmonic
 /// percussion stands alone in the spectrum at three times the 8' frequency.
@@ -444,7 +444,7 @@ pub fn render_expression_phrase(capture: &ExpressionCapture) -> Vec<f32> {
     let _ = engine.set_expression(capture.position);
     engine.set_scanner_mode(ScannerMode::Off);
     engine.set_scanner_manuals(false, false);
-    engine.set_leslie_mode(LeslieMode::Off);
+    engine.set_rotary_mode(RotaryMode::Off);
 
     let mut output = Vec::with_capacity(frames * 2);
     for frame in 0..frames {
@@ -485,7 +485,7 @@ pub fn render_percussion_phrase(capture: &PercussionCapture) -> Vec<f32> {
     let _ = engine.set_expression_character(0.0);
     engine.set_scanner_mode(ScannerMode::Off);
     engine.set_scanner_manuals(false, false);
-    engine.set_leslie_mode(LeslieMode::Off);
+    engine.set_rotary_mode(RotaryMode::Off);
     engine.set_percussion_enabled(true);
     engine.set_percussion_harmonic(PercussionHarmonic::Third);
     engine.set_percussion_volume(capture.volume);
@@ -592,7 +592,7 @@ fn manual_engine(capture: &TransformerCapture, trims: Trims) -> OrganEngine {
     let _ = engine.set_expression_character(0.0);
     engine.set_scanner_mode(ScannerMode::Off);
     engine.set_scanner_manuals(false, false);
-    engine.set_leslie_mode(LeslieMode::Off);
+    engine.set_rotary_mode(RotaryMode::Off);
     engine
 }
 

@@ -27,8 +27,8 @@ const CONTROL_IDS: [&str; 51] = [
     "leakage",
     "transformer-drive",
     "transformer-memory",
-    "leslie-mode",
-    "leslie-mix",
+    "rotary-mode",
+    "rotary-mix",
     "rotor-inertia",
     "scanner-mode",
     "percussion",
@@ -130,7 +130,7 @@ impl App {
             .document_element()
             .expect("document root")
             .set_attribute(
-                "data-leslie",
+                "data-rotary",
                 match self.client.display(16) as u8 {
                     0 => "off",
                     1 => "brake",

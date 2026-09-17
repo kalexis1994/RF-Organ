@@ -9,8 +9,8 @@ mod wav;
 
 use captures::{PHRASE_SECONDS as SECONDS, SAMPLE_RATE, TRANSFORMER_CAPTURES};
 use rf_organ_dsp::{
-    Leslie, LeslieMode, OrganEngine, OrganPart, PercussionDecay, PercussionHarmonic,
-    PercussionVolume, ScannerMode, TONEWHEEL_COUNT, gear_frequency,
+    OrganEngine, OrganPart, PercussionDecay, PercussionHarmonic, PercussionVolume, Rotary,
+    RotaryMode, ScannerMode, TONEWHEEL_COUNT, gear_frequency,
 };
 use std::env;
 use std::error::Error;
@@ -230,9 +230,9 @@ fn render_suite(destination: &Path, trims: captures::Trims) -> Result<(), Box<dy
             wav::encode_f32(&samples, 2, SAMPLE_RATE)?,
         )?;
     }
-    let impulse = render_leslie_impulse();
+    let impulse = render_rotary_impulse();
     fs::write(
-        destination.join("leslie-cabinet-impulse.wav"),
+        destination.join("rotary-cabinet-impulse.wav"),
         wav::encode_f32(&impulse, 2, SAMPLE_RATE)?,
     )?;
     fs::write(destination.join("manifest.txt"), manifest(trims))?;
@@ -259,12 +259,12 @@ fn render_suite(destination: &Path, trims: captures::Trims) -> Result<(), Box<dy
         analysis.scanner_line_response,
     )?;
     fs::write(
-        destination.join("leslie-rotor-response.csv"),
-        analysis.leslie_rotor_response,
+        destination.join("rotary-rotor-response.csv"),
+        analysis.rotary_rotor_response,
     )?;
     fs::write(
-        destination.join("leslie-doppler.csv"),
-        analysis.leslie_doppler,
+        destination.join("rotary-doppler.csv"),
+        analysis.rotary_doppler,
     )?;
     fs::write(
         destination.join("pedal-spectrum.csv"),
@@ -368,7 +368,7 @@ fn configure(engine: &mut OrganEngine, scenario: Scenario) {
     let _ = engine.set_transformer(captures::CHARACTER.0, captures::CHARACTER.1);
     let _ = engine.set_console(0.32, 0.0, 0.0);
     let _ = engine.set_expression_character(0.55);
-    let _ = engine.set_leslie_cabinet(0.22, 0.0);
+    let _ = engine.set_rotary_cabinet(0.22, 0.0);
     match scenario {
         Scenario::Direct => {}
         Scenario::Percussion => {
@@ -381,12 +381,12 @@ fn configure(engine: &mut OrganEngine, scenario: Scenario) {
             engine.set_scanner_mode(ScannerMode::Chorus3);
             engine.set_scanner_manuals(true, false);
         }
-        Scenario::Chorale => engine.set_leslie_mode(LeslieMode::Chorale),
-        Scenario::Tremolo => engine.set_leslie_mode(LeslieMode::Tremolo),
+        Scenario::Chorale => engine.set_rotary_mode(RotaryMode::Chorale),
+        Scenario::Tremolo => engine.set_rotary_mode(RotaryMode::Tremolo),
         Scenario::FullConsole => {
             engine.set_scanner_mode(ScannerMode::Chorus3);
             engine.set_scanner_manuals(true, true);
-            engine.set_leslie_mode(LeslieMode::Chorale);
+            engine.set_rotary_mode(RotaryMode::Chorale);
             let _ = engine.set_transformer(0.62, 0.38);
             let _ = engine.set_console(0.48, 0.18, -0.08);
             for (index, position) in [8, 8, 8, 8, 6, 8, 4, 8, 6].into_iter().enumerate() {
@@ -435,20 +435,20 @@ fn phrase_events(engine: &mut OrganEngine, scenario: Scenario, frame: usize) {
         engine.all_notes_off();
     }
     if matches!(scenario, Scenario::Tremolo) && frame == SAMPLE_RATE as usize * 2 {
-        engine.set_leslie_mode(LeslieMode::Chorale);
+        engine.set_rotary_mode(RotaryMode::Chorale);
     }
 }
 
-fn render_leslie_impulse() -> Vec<f32> {
-    let mut leslie = Leslie::new(SAMPLE_RATE as f32);
-    leslie.set_mode(LeslieMode::Brake);
-    let _ = leslie.set_mix(1.0);
-    let _ = leslie.set_cabinet(1.0, 0.0);
+fn render_rotary_impulse() -> Vec<f32> {
+    let mut rotary = Rotary::new(SAMPLE_RATE as f32);
+    rotary.set_mode(RotaryMode::Brake);
+    let _ = rotary.set_mix(1.0);
+    let _ = rotary.set_cabinet(1.0, 0.0);
     let frames = SAMPLE_RATE as usize / 2;
     let mut output = Vec::with_capacity(frames * 2);
     for frame in 0..frames {
         let input = if frame == 0 { 1.0 } else { 0.0 };
-        output.extend_from_slice(&leslie.process(input));
+        output.extend_from_slice(&rotary.process(input));
     }
     output
 }
@@ -469,7 +469,7 @@ fn manifest(trims: captures::Trims) -> String {
         .collect::<Vec<_>>()
         .join(",");
     format!(
-        "RF-Organ deterministic calibration suite\nversion={}\nsample_rate={}\nphrase_seconds={}\nnormalization=none\nformat=IEEE-float WAV stereo\nanalysis=frequency,level,generator-taper,generator-leakage,pedal-spectrum,pedal-release,expression-response,tone-control-response,console-distortion,transformer-intermodulation,transformer-calibration,percussion-envelope,percussion-recovery,keying-contacts,scanner-sidebands,scanner-line-response,leslie-rotor-response,leslie-doppler\n",
+        "RF-Organ deterministic calibration suite\nversion={}\nsample_rate={}\nphrase_seconds={}\nnormalization=none\nformat=IEEE-float WAV stereo\nanalysis=frequency,level,generator-taper,generator-leakage,pedal-spectrum,pedal-release,expression-response,tone-control-response,console-distortion,transformer-intermodulation,transformer-calibration,percussion-envelope,percussion-recovery,keying-contacts,scanner-sidebands,scanner-line-response,rotary-rotor-response,rotary-doppler\n",
         env!("CARGO_PKG_VERSION"),
         SAMPLE_RATE,
         SECONDS

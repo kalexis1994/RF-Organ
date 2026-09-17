@@ -5,7 +5,7 @@
 RF-Organ is a physically informed tonewheel-organ instrument for RackForge.
 It is written in Rust and licensed under GPL-2.0-or-later.
 
-The current `0.24.0` baseline establishes the real-time architecture:
+The current `0.25.0` baseline establishes the real-time architecture:
 
 - one continuously rotating bank of 91 shared tonewheels;
 - 60 Hz gear-ratio tuning instead of ideal equal temperament;
@@ -30,7 +30,7 @@ The current `0.24.0` baseline establishes the real-time architecture:
   and a dedicated post-scanner summing path, cancelling the 1' drawbar and
   taking Hammond's documented 6 dB out of the upper drawbars at Normal volume,
   with an attack and a recovery after release rather than a gate;
-- an integrated Leslie with counter-rotating horn and drum at their
+- an integrated rotary speaker with counter-rotating horn and drum at their
   specified speeds, separate rise, fall and brake times per rotor, spectral
   directivity, microphone geometry and early cabinet reflections;
 - a RackForge play surface implemented in Rust/WASM, with console-style
@@ -47,7 +47,7 @@ testable scaffold for measurement and calibration, not a finished clone.
 - Channel 1 notes: upper manual, MIDI notes 36 through 96.
 - Channel 2 notes: lower manual, MIDI notes 36 through 96.
 - Channel 3 notes: pedal clavier, MIDI notes 24 through 48.
-- CC 1: Leslie speed, Chorale below 64 and Tremolo at or above 64.
+- CC 1: rotary speed, Chorale below 64 and Tremolo at or above 64.
 - CC 4: rotor stop, braking below 64 and returning to the selected speed at or
   above 64.
 - CC 11: expression pedal.
@@ -126,7 +126,7 @@ cost of each subsystem is the difference between two rows.
 
 The output includes scalar measurements, expression, tone-control and
 transformer-intermodulation response, percussion envelopes, scanner sidebands,
-isolated pedal spectra and key-off response, and Leslie acceleration/braking
+isolated pedal spectra and key-off response, and rotary acceleration/braking
 curves alongside the audio renders.
 The comparator aligns reference captures without resampling or normalizing
 them, then reports level, crest, envelope and stereo differences. Isolated
@@ -138,3 +138,12 @@ an injection measurement the two manual paths are reported as underdetermined
 rather than fitted. A capture-quality gate prevents clipped, mistimed, noisy or
 unstable recordings from producing coefficients.
 See `docs/CALIBRATION.md` for the comparison and provenance protocol.
+
+## Trademarks
+
+HAMMOND, B-3 and LESLIE are trademarks of Hammond Suzuki. RF-Organ is an
+independent implementation and is not affiliated with, endorsed by or sponsored
+by Hammond Suzuki. Those names are used here only to state factually which
+published instrument or document a model was derived from; the module that
+models a rotating-baffle cabinet is called the rotary speaker throughout. See
+`THIRD_PARTY_NOTICES.md`.

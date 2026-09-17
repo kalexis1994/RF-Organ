@@ -11,9 +11,9 @@
 use crate::captures::CHARACTER;
 use crate::signal::{decay_time, decibels, rms, spectral_amplitude, zero_crossing_frequency};
 use rf_organ_dsp::{
-    ConsoleElectronics, DRAWBAR_COUNT, Leslie, LeslieMode, MANUAL_FIRST_NOTE, MatchingTransformer,
-    OrganEngine, OrganPart, PercussionDecay, PercussionHarmonic, PercussionVolume, ScannerMode,
-    ScannerVibrato, drawbar_wheel, gear_frequency,
+    ConsoleElectronics, DRAWBAR_COUNT, MANUAL_FIRST_NOTE, MatchingTransformer, OrganEngine,
+    OrganPart, PercussionDecay, PercussionHarmonic, PercussionVolume, Rotary, RotaryMode,
+    ScannerMode, ScannerVibrato, drawbar_wheel, gear_frequency,
 };
 use std::f64::consts::TAU;
 use std::fmt::Write as _;
@@ -82,8 +82,8 @@ fn survey_inner() -> Result<Vec<Invariant>, String> {
         ("chord-888", "steady-level", "dBFS", 0.5, chord_level),
         ("percussion-fast", "t60", "s", 0.02, percussion_t60),
         ("scanner-c3", "sideband", "dBc", 1.0, scanner_sideband),
-        ("leslie-tremolo", "horn-rate", "Hz", 0.05, leslie_horn_rate),
-        ("leslie-tremolo", "horn-t63", "s", 0.05, leslie_horn_t63),
+        ("rotary-tremolo", "horn-rate", "Hz", 0.05, rotary_horn_rate),
+        ("rotary-tremolo", "horn-t63", "s", 0.05, rotary_horn_t63),
         ("expression-50", "mid-gain", "dB", 0.3, expression_gain),
         ("tone-plus-9", "high-gain", "dB", 0.5, tone_gain),
         (
@@ -168,7 +168,7 @@ fn clean_engine(rate: u32) -> Result<OrganEngine, String> {
     assert!(engine.set_output_level(1.0));
     engine.set_scanner_mode(ScannerMode::Off);
     engine.set_scanner_manuals(false, false);
-    engine.set_leslie_mode(LeslieMode::Off);
+    engine.set_rotary_mode(RotaryMode::Off);
     Ok(engine)
 }
 
@@ -250,29 +250,29 @@ fn scanner_sideband(rate: u32) -> Result<f64, String> {
     Ok(decibels(0.5 * (lower + upper) / carrier))
 }
 
-fn leslie_rotor(rate: u32, seconds: usize) -> (f64, Option<f64>) {
-    let mut leslie = Leslie::new(rate as f32);
-    assert!(leslie.set_acceleration(0.5));
-    leslie.set_mode(LeslieMode::Tremolo);
+fn rotary_rotor(rate: u32, seconds: usize) -> (f64, Option<f64>) {
+    let mut rotary = Rotary::new(rate as f32);
+    assert!(rotary.set_acceleration(0.5));
+    rotary.set_mode(RotaryMode::Tremolo);
     let mut t63 = None;
     for frame in 0..=rate as usize * seconds {
         if frame > 0 {
-            leslie.process(0.0);
+            rotary.process(0.0);
         }
-        let state = leslie.diagnostics();
+        let state = rotary.diagnostics();
         if t63.is_none() && state.horn_speed_hz >= state.horn_target_hz * 0.632_120_55 {
             t63 = Some(frame as f64 / f64::from(rate));
         }
     }
-    (f64::from(leslie.diagnostics().horn_speed_hz), t63)
+    (f64::from(rotary.diagnostics().horn_speed_hz), t63)
 }
 
-fn leslie_horn_rate(rate: u32) -> Result<f64, String> {
-    Ok(leslie_rotor(rate, 8).0)
+fn rotary_horn_rate(rate: u32) -> Result<f64, String> {
+    Ok(rotary_rotor(rate, 8).0)
 }
 
-fn leslie_horn_t63(rate: u32) -> Result<f64, String> {
-    leslie_rotor(rate, 8)
+fn rotary_horn_t63(rate: u32) -> Result<f64, String> {
+    rotary_rotor(rate, 8)
         .1
         .ok_or_else(|| format!("horn never reached 63% at {rate} Hz"))
 }
@@ -469,7 +469,7 @@ fn console(rate: u32, load: Load) -> Result<OrganEngine, String> {
     assert!(engine.set_console(0.48, 0.18, -0.08));
     engine.set_scanner_mode(ScannerMode::Off);
     engine.set_scanner_manuals(false, false);
-    engine.set_leslie_mode(LeslieMode::Off);
+    engine.set_rotary_mode(RotaryMode::Off);
     if load == Load::Idle {
         return Ok(engine);
     }
@@ -490,7 +490,7 @@ fn console(rate: u32, load: Load) -> Result<OrganEngine, String> {
     if load == Load::Vibrato {
         return Ok(engine);
     }
-    engine.set_leslie_mode(LeslieMode::Tremolo);
+    engine.set_rotary_mode(RotaryMode::Tremolo);
     Ok(engine)
 }
 

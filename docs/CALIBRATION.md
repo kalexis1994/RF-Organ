@@ -19,7 +19,7 @@ The suite contains:
 - an eighteen-file two-manual transformer grid: C, F and the C+F dyad at three
   documented drawbar levels, for the combined T2+T3 and T1+T3 paths;
 - a nine-file T3 injection grid at three documented injection levels;
-- the integrated Leslie cabinet impulse response;
+- the integrated rotary cabinet impulse response;
 - an end-to-end A4 frequency, RMS and peak probe;
 - expression gain at 80 Hz, 1 kHz and 8 kHz for five pedal positions;
 - AO-28 tone-control response at 100 Hz, 1 kHz and 10 kHz across ±9 dB;
@@ -75,7 +75,7 @@ tables retain the underlying curves:
   five bands and over a whole number of rotor revolutions, for each of the six
   positions. It shows the ladder's own lowpass corner near 7 kHz and the
   residual level difference between the vibrato and chorus positions.
-- `leslie-rotor-response.csv` records actual and target rotor speeds, in both
+- `rotary-rotor-response.csv` records actual and target rotor speeds, in both
   hertz and rpm, through all three transitions: slow to fast, fast to slow and
   fast to a stop. Each one starts from a settled rotor, so the measured time is
   comparable with the figure a cabinet is specified by. At the middle of the
@@ -255,7 +255,7 @@ are 8' drawbar positions 4, 6 and 8, one 6 dB step apart:
 
 Begin at 250 ms, hold for at least 2.5 seconds, release at 3 seconds and
 capture four seconds total. Use full expression, Normal volume,
-maximum-bandwidth AO-28 tone, and disable percussion, vibrato and Leslie
+maximum-bandwidth AO-28 tone, and disable percussion, vibrato and rotary
 rotation. Preserve one recording gain across all eighteen files and do not
 normalize them: the drawbar step is the measured quantity.
 
@@ -332,7 +332,7 @@ is how much the transformers move the answer.
 
 ## Rotary geometry protocol
 
-`leslie-doppler.csv` and the `doppler-` and `arrival-` rows of
+`rotary-doppler.csv` and the `doppler-` and `arrival-` rows of
 `measurements.csv` come from a probe that feeds one steady tone into the
 cabinet, demodulates each output channel against that tone, and reads the
 pitch deviation off the drift of the resulting phase. It reports, for each

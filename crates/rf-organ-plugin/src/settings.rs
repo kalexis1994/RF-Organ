@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 use rf_organ_dsp::{
     DRAWBAR_COUNT, DRUM_RADIUS_DEFAULT_M, DRUM_RADIUS_RANGE_M, HORN_RADIUS_DEFAULT_M,
-    HORN_RADIUS_RANGE_M, LeslieMode, MIC_DISTANCE_DEFAULT_M, MIC_DISTANCE_RANGE_M,
-    MIC_OFFSET_MAX_M, MIC_PATTERN_DEFAULT, MIC_SPACING_DEFAULT_M, MIC_SPACING_MAX_M,
-    MicrophoneArray, OrganEngine, OrganPart, PEDAL_DRAWBAR_COUNT, PercussionDecay,
-    PercussionHarmonic, PercussionVolume, ScannerMode, TransformerUnit,
+    HORN_RADIUS_RANGE_M, MIC_DISTANCE_DEFAULT_M, MIC_DISTANCE_RANGE_M, MIC_OFFSET_MAX_M,
+    MIC_PATTERN_DEFAULT, MIC_SPACING_DEFAULT_M, MIC_SPACING_MAX_M, MicrophoneArray, OrganEngine,
+    OrganPart, PEDAL_DRAWBAR_COUNT, PercussionDecay, PercussionHarmonic, PercussionVolume,
+    RotaryMode, ScannerMode, TransformerUnit,
 };
 
 pub const PARAMETER_COUNT: usize = 55;
@@ -27,9 +27,9 @@ pub struct Settings {
     pub leakage: f64,
     pub transformer_drive: f64,
     pub transformer_hysteresis: f64,
-    pub leslie_mode: LeslieMode,
-    pub leslie_mix: f64,
-    pub leslie_acceleration: f64,
+    pub rotary_mode: RotaryMode,
+    pub rotary_mix: f64,
+    pub rotary_acceleration: f64,
     pub scanner_mode: ScannerMode,
     pub percussion_enabled: bool,
     pub percussion_harmonic: PercussionHarmonic,
@@ -44,17 +44,17 @@ pub struct Settings {
     pub console_treble: f64,
     pub expression_character: f64,
     /// Microphone placement in metres, as a tape measure would give it.
-    pub leslie_mic_distance: f64,
-    pub leslie_mic_spacing: f64,
-    pub leslie_mic_offset: f64,
+    pub rotary_mic_distance: f64,
+    pub rotary_mic_spacing: f64,
+    pub rotary_mic_offset: f64,
     /// Omnidirectional at zero, cardioid at a half, figure of eight at one.
-    pub leslie_mic_pattern: f64,
+    pub rotary_mic_pattern: f64,
     /// The radius each rotor's mouth turns at, in metres. Undocumented, so it
     /// is a control; see `THIRD_PARTY_NOTICES.md`.
-    pub leslie_horn_radius: f64,
-    pub leslie_drum_radius: f64,
-    pub leslie_reflections: f64,
-    pub leslie_horn_drum_balance: f64,
+    pub rotary_horn_radius: f64,
+    pub rotary_drum_radius: f64,
+    pub rotary_reflections: f64,
+    pub rotary_horn_drum_balance: f64,
     pub transformer_trims: [[f64; 2]; 3],
 }
 
@@ -69,9 +69,9 @@ impl Default for Settings {
             leakage: 0.2,
             transformer_drive: 0.38,
             transformer_hysteresis: 0.32,
-            leslie_mode: LeslieMode::Off,
-            leslie_mix: 0.82,
-            leslie_acceleration: 0.5,
+            rotary_mode: RotaryMode::Off,
+            rotary_mix: 0.82,
+            rotary_acceleration: 0.5,
             scanner_mode: ScannerMode::Off,
             percussion_enabled: false,
             percussion_harmonic: PercussionHarmonic::Third,
@@ -85,14 +85,14 @@ impl Default for Settings {
             console_bass: 0.0,
             console_treble: 0.0,
             expression_character: 0.55,
-            leslie_mic_distance: MIC_DISTANCE_DEFAULT_M as f64,
-            leslie_mic_spacing: MIC_SPACING_DEFAULT_M as f64,
-            leslie_mic_offset: 0.0,
-            leslie_mic_pattern: MIC_PATTERN_DEFAULT as f64,
-            leslie_horn_radius: HORN_RADIUS_DEFAULT_M as f64,
-            leslie_drum_radius: DRUM_RADIUS_DEFAULT_M as f64,
-            leslie_reflections: 0.22,
-            leslie_horn_drum_balance: 0.0,
+            rotary_mic_distance: MIC_DISTANCE_DEFAULT_M as f64,
+            rotary_mic_spacing: MIC_SPACING_DEFAULT_M as f64,
+            rotary_mic_offset: 0.0,
+            rotary_mic_pattern: MIC_PATTERN_DEFAULT as f64,
+            rotary_horn_radius: HORN_RADIUS_DEFAULT_M as f64,
+            rotary_drum_radius: DRUM_RADIUS_DEFAULT_M as f64,
+            rotary_reflections: 0.22,
+            rotary_horn_drum_balance: 0.0,
             transformer_trims: [[0.0; 2]; 3],
         }
     }
@@ -110,36 +110,36 @@ impl Settings {
             && unit(self.leakage)
             && unit(self.transformer_drive)
             && unit(self.transformer_hysteresis)
-            && unit(self.leslie_mix)
-            && unit(self.leslie_acceleration)
+            && unit(self.rotary_mix)
+            && unit(self.rotary_acceleration)
             && unit(self.console_drive)
             && bipolar(self.console_bass)
             && bipolar(self.console_treble)
             && unit(self.expression_character)
             && finite_range(
-                self.leslie_mic_distance,
+                self.rotary_mic_distance,
                 MIC_DISTANCE_RANGE_M.0 as f64,
                 MIC_DISTANCE_RANGE_M.1 as f64,
             )
-            && finite_range(self.leslie_mic_spacing, 0.0, MIC_SPACING_MAX_M as f64)
+            && finite_range(self.rotary_mic_spacing, 0.0, MIC_SPACING_MAX_M as f64)
             && finite_range(
-                self.leslie_mic_offset,
+                self.rotary_mic_offset,
                 -(MIC_OFFSET_MAX_M as f64),
                 MIC_OFFSET_MAX_M as f64,
             )
-            && unit(self.leslie_mic_pattern)
+            && unit(self.rotary_mic_pattern)
             && finite_range(
-                self.leslie_horn_radius,
+                self.rotary_horn_radius,
                 HORN_RADIUS_RANGE_M.0 as f64,
                 HORN_RADIUS_RANGE_M.1 as f64,
             )
             && finite_range(
-                self.leslie_drum_radius,
+                self.rotary_drum_radius,
                 DRUM_RADIUS_RANGE_M.0 as f64,
                 DRUM_RADIUS_RANGE_M.1 as f64,
             )
-            && unit(self.leslie_reflections)
-            && bipolar(self.leslie_horn_drum_balance)
+            && unit(self.rotary_reflections)
+            && bipolar(self.rotary_horn_drum_balance)
             && self
                 .transformer_trims
                 .iter()
@@ -159,9 +159,9 @@ impl Settings {
             13 => self.leakage,
             14 => self.transformer_drive,
             15 => self.transformer_hysteresis,
-            16 => f64::from(self.leslie_mode as u8),
-            17 => self.leslie_mix,
-            18 => self.leslie_acceleration,
+            16 => f64::from(self.rotary_mode as u8),
+            17 => self.rotary_mix,
+            18 => self.rotary_acceleration,
             19 => f64::from(self.scanner_mode as u8),
             20 => {
                 if self.percussion_enabled {
@@ -185,18 +185,18 @@ impl Settings {
             38 => self.console_bass,
             39 => self.console_treble,
             40 => self.expression_character,
-            41 => self.leslie_mic_distance,
-            42 => self.leslie_mic_spacing,
-            43 => self.leslie_reflections,
-            44 => self.leslie_horn_drum_balance,
+            41 => self.rotary_mic_distance,
+            42 => self.rotary_mic_spacing,
+            43 => self.rotary_reflections,
+            44 => self.rotary_horn_drum_balance,
             45..=50 => {
                 let trim = (index - TRANSFORMER_TRIM_FIRST) as usize;
                 self.transformer_trims[trim / 2][trim % 2]
             }
-            51 => self.leslie_mic_offset,
-            52 => self.leslie_mic_pattern,
-            53 => self.leslie_horn_radius,
-            54 => self.leslie_drum_radius,
+            51 => self.rotary_mic_offset,
+            52 => self.rotary_mic_pattern,
+            53 => self.rotary_horn_radius,
+            54 => self.rotary_drum_radius,
             _ => return None,
         })
     }
@@ -219,10 +219,10 @@ impl Settings {
             14 => self.transformer_drive = value,
             15 => self.transformer_hysteresis = value,
             16 if value.fract() == 0.0 => {
-                self.leslie_mode = LeslieMode::from_index(value as u8)?;
+                self.rotary_mode = RotaryMode::from_index(value as u8)?;
             }
-            17 => self.leslie_mix = value,
-            18 => self.leslie_acceleration = value,
+            17 => self.rotary_mix = value,
+            18 => self.rotary_acceleration = value,
             19 if value.fract() == 0.0 => {
                 self.scanner_mode = ScannerMode::from_index(value as u8)?;
             }
@@ -252,18 +252,18 @@ impl Settings {
             38 => self.console_bass = value,
             39 => self.console_treble = value,
             40 => self.expression_character = value,
-            41 => self.leslie_mic_distance = value,
-            42 => self.leslie_mic_spacing = value,
-            43 => self.leslie_reflections = value,
-            44 => self.leslie_horn_drum_balance = value,
+            41 => self.rotary_mic_distance = value,
+            42 => self.rotary_mic_spacing = value,
+            43 => self.rotary_reflections = value,
+            44 => self.rotary_horn_drum_balance = value,
             45..=50 => {
                 let trim = (index - TRANSFORMER_TRIM_FIRST) as usize;
                 self.transformer_trims[trim / 2][trim % 2] = value;
             }
-            51 => self.leslie_mic_offset = value,
-            52 => self.leslie_mic_pattern = value,
-            53 => self.leslie_horn_radius = value,
-            54 => self.leslie_drum_radius = value,
+            51 => self.rotary_mic_offset = value,
+            52 => self.rotary_mic_pattern = value,
+            53 => self.rotary_horn_radius = value,
+            54 => self.rotary_drum_radius = value,
             _ => return None,
         }
         self.valid().then_some(self)
@@ -300,22 +300,22 @@ impl Settings {
             self.console_treble as f32,
         );
         let _ = engine.set_expression_character(self.expression_character as f32);
-        engine.set_leslie_mode(self.leslie_mode);
-        let _ = engine.set_leslie_mix(self.leslie_mix as f32);
-        let _ = engine.set_leslie_acceleration(self.leslie_acceleration as f32);
-        let _ = engine.set_leslie_cabinet(
-            self.leslie_reflections as f32,
-            self.leslie_horn_drum_balance as f32,
+        engine.set_rotary_mode(self.rotary_mode);
+        let _ = engine.set_rotary_mix(self.rotary_mix as f32);
+        let _ = engine.set_rotary_acceleration(self.rotary_acceleration as f32);
+        let _ = engine.set_rotary_cabinet(
+            self.rotary_reflections as f32,
+            self.rotary_horn_drum_balance as f32,
         );
-        let _ = engine.set_leslie_microphones(MicrophoneArray {
-            distance_m: self.leslie_mic_distance as f32,
-            spacing_m: self.leslie_mic_spacing as f32,
-            offset_m: self.leslie_mic_offset as f32,
-            pattern: self.leslie_mic_pattern as f32,
+        let _ = engine.set_rotary_microphones(MicrophoneArray {
+            distance_m: self.rotary_mic_distance as f32,
+            spacing_m: self.rotary_mic_spacing as f32,
+            offset_m: self.rotary_mic_offset as f32,
+            pattern: self.rotary_mic_pattern as f32,
         });
-        let _ = engine.set_leslie_rotor_radii(
-            self.leslie_horn_radius as f32,
-            self.leslie_drum_radius as f32,
+        let _ = engine.set_rotary_rotor_radii(
+            self.rotary_horn_radius as f32,
+            self.rotary_drum_radius as f32,
         );
         engine.set_scanner_mode(self.scanner_mode);
         engine.set_scanner_manuals(self.upper_scanner, self.lower_scanner);
@@ -340,11 +340,11 @@ pub fn presets() -> [(&'static str, &'static str, &'static str, Settings); 8] {
             "Chorale 888",
             "888 registration with C3 scanner chorus through the integrated slow rotary cabinet.",
             Settings {
-                leslie_mode: LeslieMode::Chorale,
+                rotary_mode: RotaryMode::Chorale,
                 scanner_mode: ScannerMode::Chorus3,
                 upper_scanner: true,
-                leslie_mic_distance: 0.9,
-                leslie_mic_spacing: 0.24,
+                rotary_mic_distance: 0.9,
+                rotary_mic_spacing: 0.24,
                 ..straight
             },
         ),
@@ -354,17 +354,17 @@ pub fn presets() -> [(&'static str, &'static str, &'static str, Settings); 8] {
             "Third-harmonic single-trigger percussion with fast integrated rotary motion.",
             Settings {
                 drawbars: [8, 8, 8, 0, 0, 0, 0, 8, 0],
-                leslie_mode: LeslieMode::Tremolo,
+                rotary_mode: RotaryMode::Tremolo,
                 transformer_drive: 0.52,
                 console_drive: 0.44,
                 percussion_enabled: true,
                 percussion_harmonic: PercussionHarmonic::Third,
                 percussion_volume: PercussionVolume::Normal,
                 percussion_decay: PercussionDecay::Fast,
-                leslie_mic_distance: 0.25,
-                leslie_mic_spacing: 0.38,
-                leslie_reflections: 0.16,
-                leslie_horn_drum_balance: 0.12,
+                rotary_mic_distance: 0.25,
+                rotary_mic_spacing: 0.38,
+                rotary_reflections: 0.16,
+                rotary_horn_drum_balance: 0.12,
                 ..straight
             },
         ),
@@ -374,13 +374,13 @@ pub fn presets() -> [(&'static str, &'static str, &'static str, Settings); 8] {
             "Hollow comping registration with third-harmonic percussion and slow rotary motion.",
             Settings {
                 drawbars: [8, 0, 8, 0, 0, 0, 0, 0, 0],
-                leslie_mode: LeslieMode::Chorale,
+                rotary_mode: RotaryMode::Chorale,
                 percussion_enabled: true,
                 percussion_harmonic: PercussionHarmonic::Third,
                 percussion_volume: PercussionVolume::Normal,
                 percussion_decay: PercussionDecay::Fast,
-                leslie_mic_distance: 0.5,
-                leslie_mic_spacing: 0.28,
+                rotary_mic_distance: 0.5,
+                rotary_mic_spacing: 0.28,
                 ..straight
             },
         ),
@@ -392,7 +392,7 @@ pub fn presets() -> [(&'static str, &'static str, &'static str, Settings); 8] {
                 drawbars: [8, 8, 8, 0, 0, 0, 0, 0, 0],
                 scanner_mode: ScannerMode::Chorus3,
                 upper_scanner: true,
-                leslie_mode: LeslieMode::Off,
+                rotary_mode: RotaryMode::Off,
                 output_level: 0.66,
                 ..straight
             },
@@ -405,7 +405,7 @@ pub fn presets() -> [(&'static str, &'static str, &'static str, Settings); 8] {
                 drawbars: [0, 0, 0, 0, 0, 0, 0, 0, 0],
                 lower_drawbars: [8, 4, 6, 0, 0, 0, 0, 0, 0],
                 pedal_drawbars: [8, 6],
-                leslie_mode: LeslieMode::Off,
+                rotary_mode: RotaryMode::Off,
                 leakage: 0.14,
                 ..straight
             },
@@ -418,12 +418,12 @@ pub fn presets() -> [(&'static str, &'static str, &'static str, Settings); 8] {
                 drawbars: [8, 8, 8, 8, 8, 8, 8, 8, 8],
                 lower_drawbars: [8, 8, 8, 0, 0, 0, 0, 0, 0],
                 pedal_drawbars: [8, 8],
-                leslie_mode: LeslieMode::Tremolo,
+                rotary_mode: RotaryMode::Tremolo,
                 transformer_drive: 0.66,
                 console_drive: 0.52,
-                leslie_mic_distance: 0.22,
-                leslie_mic_spacing: 0.36,
-                leslie_reflections: 0.26,
+                rotary_mic_distance: 0.22,
+                rotary_mic_spacing: 0.36,
+                rotary_reflections: 0.26,
                 ..straight
             },
         ),
@@ -433,7 +433,7 @@ pub fn presets() -> [(&'static str, &'static str, &'static str, Settings); 8] {
             "Full drawbars, C3 scanner chorus, transformer drive and slow rotary motion.",
             Settings {
                 drawbars: [8, 8, 8, 8, 6, 8, 4, 8, 6],
-                leslie_mode: LeslieMode::Chorale,
+                rotary_mode: RotaryMode::Chorale,
                 transformer_drive: 0.62,
                 console_drive: 0.48,
                 console_bass: 0.18,
@@ -444,10 +444,10 @@ pub fn presets() -> [(&'static str, &'static str, &'static str, Settings); 8] {
                 pedal_drawbars: [8, 8],
                 upper_scanner: true,
                 lower_scanner: true,
-                leslie_mic_distance: 0.45,
-                leslie_mic_spacing: 0.32,
-                leslie_reflections: 0.3,
-                leslie_horn_drum_balance: -0.08,
+                rotary_mic_distance: 0.45,
+                rotary_mic_spacing: 0.32,
+                rotary_reflections: 0.3,
+                rotary_horn_drum_balance: -0.08,
                 ..straight
             },
         ),

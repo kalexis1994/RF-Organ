@@ -3,10 +3,10 @@
 use crate::captures::{C_NOTE, CHARACTER, F_NOTE, Level, note_frequency};
 use crate::signal::{decay_time, decibels, peak, rms, zero_crossing_frequency};
 use rf_organ_dsp::{
-    ConsoleElectronics, DRAWBAR_COUNT, Leslie, LeslieGeometry, LeslieMode, MANUAL_FIRST_NOTE,
-    MANUAL_KEY_COUNT, MatchingTransformer, MicrophoneArray, OrganEngine, OrganPart,
-    PercussionDecay, PercussionHarmonic, PercussionVolume, ScannerMode, ScannerVibrato,
-    TransformerUnit, compartment_companions, drawbar_wheel, gear_frequency,
+    ConsoleElectronics, DRAWBAR_COUNT, MANUAL_FIRST_NOTE, MANUAL_KEY_COUNT, MatchingTransformer,
+    MicrophoneArray, OrganEngine, OrganPart, PercussionDecay, PercussionHarmonic, PercussionVolume,
+    Rotary, RotaryGeometry, RotaryMode, ScannerMode, ScannerVibrato, TransformerUnit,
+    compartment_companions, drawbar_wheel, gear_frequency,
 };
 use std::f64::consts::{PI, TAU};
 use std::fmt::Write as _;
@@ -21,8 +21,8 @@ pub struct Artifacts {
     pub keying_contacts: String,
     pub scanner_sidebands: String,
     pub scanner_line_response: String,
-    pub leslie_rotor_response: String,
-    pub leslie_doppler: String,
+    pub rotary_rotor_response: String,
+    pub rotary_doppler: String,
     pub pedal_spectrum: String,
     pub pedal_release: String,
     pub expression_response: String,
@@ -77,9 +77,9 @@ fn analyze_inner() -> Result<Artifacts, String> {
     measurements.extend(keying);
     let (scanner, scanner_sidebands, scanner_line_response) = scanner_probe();
     measurements.extend(scanner);
-    let (leslie, leslie_rotor_response) = leslie_probe();
-    measurements.extend(leslie);
-    let (doppler, leslie_doppler) = leslie_doppler_probe();
+    let (rotary, rotary_rotor_response) = rotary_probe();
+    measurements.extend(rotary);
+    let (doppler, rotary_doppler) = rotary_doppler_probe();
     measurements.extend(doppler);
     Ok(Artifacts {
         measurements: measurement_csv(&measurements),
@@ -88,8 +88,8 @@ fn analyze_inner() -> Result<Artifacts, String> {
         keying_contacts,
         scanner_sidebands,
         scanner_line_response,
-        leslie_rotor_response,
-        leslie_doppler,
+        rotary_rotor_response,
+        rotary_doppler,
         pedal_spectrum,
         pedal_release,
         expression_response,
@@ -1263,10 +1263,10 @@ fn render_scanner(mode: ScannerMode, carrier: f64) -> Vec<f64> {
 /// them: the time to cross the whole speed range. Every phase starts from a
 /// settled rotor, so the rise covers slow to fast, the fall covers fast to
 /// slow, and the brake covers fast to a standstill.
-fn leslie_probe() -> (Vec<Measurement>, String) {
+fn rotary_probe() -> (Vec<Measurement>, String) {
     const PHASE_SECONDS: usize = 20;
-    let mut leslie = Leslie::new(SAMPLE_RATE as f32);
-    assert!(leslie.set_acceleration(0.5));
+    let mut rotary = Rotary::new(SAMPLE_RATE as f32);
+    assert!(rotary.set_acceleration(0.5));
     let mut csv = String::from(
         "phase,time_seconds,horn_hz,drum_hz,horn_rpm,drum_rpm,horn_target_hz,drum_target_hz\n",
     );
@@ -1274,20 +1274,20 @@ fn leslie_probe() -> (Vec<Measurement>, String) {
 
     // Settle at the slow speed first; a cabinet switched on from rest is not
     // what any of these times describe.
-    leslie.set_mode(LeslieMode::Chorale);
+    rotary.set_mode(RotaryMode::Chorale);
     for _ in 0..SAMPLE_RATE * PHASE_SECONDS {
-        leslie.process(0.0);
+        rotary.process(0.0);
     }
-    let settle = leslie.diagnostics();
+    let settle = rotary.diagnostics();
     measurements.extend([
         Measurement {
-            probe: "leslie-horn",
+            probe: "rotary-horn",
             metric: "chorale-speed",
             value: f64::from(settle.horn_speed_rpm),
             unit: "rpm",
         },
         Measurement {
-            probe: "leslie-drum",
+            probe: "rotary-drum",
             metric: "chorale-speed",
             value: f64::from(settle.drum_speed_rpm),
             unit: "rpm",
@@ -1295,27 +1295,27 @@ fn leslie_probe() -> (Vec<Measurement>, String) {
     ]);
 
     for (phase, mode) in [
-        ("rise", LeslieMode::Tremolo),
-        ("fall", LeslieMode::Chorale),
-        ("brake", LeslieMode::Brake),
+        ("rise", RotaryMode::Tremolo),
+        ("fall", RotaryMode::Chorale),
+        ("brake", RotaryMode::Brake),
     ] {
-        let before = leslie.diagnostics();
+        let before = rotary.diagnostics();
         if phase == "brake" {
             // Braking is specified from the fast speed.
-            leslie.set_mode(LeslieMode::Tremolo);
+            rotary.set_mode(RotaryMode::Tremolo);
             for _ in 0..SAMPLE_RATE * PHASE_SECONDS {
-                leslie.process(0.0);
+                rotary.process(0.0);
             }
         }
-        let start = leslie.diagnostics();
-        leslie.set_mode(mode);
+        let start = rotary.diagnostics();
+        rotary.set_mode(mode);
         let mut horn_arrived = None;
         let mut drum_arrived = None;
         for frame in 0..=SAMPLE_RATE * PHASE_SECONDS {
             if frame > 0 {
-                leslie.process(0.0);
+                rotary.process(0.0);
             }
-            let state = leslie.diagnostics();
+            let state = rotary.diagnostics();
             let time = frame as f64 / SAMPLE_RATE as f64;
             if horn_arrived.is_none() && (state.horn_speed_hz - state.horn_target_hz).abs() < 1.0e-6
             {
@@ -1329,17 +1329,17 @@ fn leslie_probe() -> (Vec<Measurement>, String) {
                 write_rotor_row(&mut csv, phase, time, state);
             }
         }
-        let arrived = leslie.diagnostics();
+        let arrived = rotary.diagnostics();
         let span = |from: f32, to: f32| f64::from((to - from).abs() * 60.0);
         for (probe, measured, from, to) in [
             (
-                "leslie-horn",
+                "rotary-horn",
                 horn_arrived,
                 start.horn_speed_hz,
                 arrived.horn_speed_hz,
             ),
             (
-                "leslie-drum",
+                "rotary-drum",
                 drum_arrived,
                 start.drum_speed_hz,
                 arrived.drum_speed_hz,
@@ -1371,16 +1371,16 @@ fn leslie_probe() -> (Vec<Measurement>, String) {
         let _ = before;
     }
 
-    let final_state = leslie.diagnostics();
+    let final_state = rotary.diagnostics();
     measurements.extend([
         Measurement {
-            probe: "leslie-horn",
+            probe: "rotary-horn",
             metric: "stopped-speed",
             value: f64::from(final_state.horn_speed_rpm),
             unit: "rpm",
         },
         Measurement {
-            probe: "leslie-drum",
+            probe: "rotary-drum",
             metric: "stopped-speed",
             value: f64::from(final_state.drum_speed_rpm),
             unit: "rpm",
@@ -1404,7 +1404,7 @@ struct GeometryPrediction {
     arrival_span_us: f64,
 }
 
-fn predict(geometry: LeslieGeometry, radius: f32, rotor_hz: f64) -> GeometryPrediction {
+fn predict(geometry: RotaryGeometry, radius: f32, rotor_hz: f64) -> GeometryPrediction {
     const STEPS: usize = 4096;
     let distance = f64::from(geometry.mic_distance_m);
     let half_width = f64::from(geometry.mic_half_width_m);
@@ -1462,7 +1462,7 @@ fn unwrap(previous: &mut f64, total: &mut f64, phase: f64) -> f64 {
 /// radiating point over the speed of sound. This probe measures what comes out
 /// of the cabinet and compares it against both the exact path and that
 /// formula: the radii are provisional, but what they produce is not guesswork.
-fn leslie_doppler_probe() -> (Vec<Measurement>, String) {
+fn rotary_doppler_probe() -> (Vec<Measurement>, String) {
     const SETTLE_SECONDS: usize = 12;
     const CAPTURE_SECONDS: usize = 3;
     // The deviation is read over a tenth of a rotation, which is long enough
@@ -1476,32 +1476,32 @@ fn leslie_doppler_probe() -> (Vec<Measurement>, String) {
     let mut measurements = Vec::new();
 
     for (probe, carrier, balance, horn) in [
-        ("leslie-horn", 2_000.0_f64, 1.0_f32, true),
-        ("leslie-drum", 400.0_f64, -1.0_f32, false),
+        ("rotary-horn", 2_000.0_f64, 1.0_f32, true),
+        ("rotary-drum", 400.0_f64, -1.0_f32, false),
     ] {
-        let mut leslie = Leslie::new(SAMPLE_RATE as f32);
-        assert!(leslie.set_mix(1.0));
-        assert!(leslie.set_acceleration(0.5));
+        let mut rotary = Rotary::new(SAMPLE_RATE as f32);
+        assert!(rotary.set_mix(1.0));
+        assert!(rotary.set_acceleration(0.5));
         // One rotor at a time, with the room switched off: this probe is about
         // the path to the microphones, not about the cabinet's walls.
-        assert!(leslie.set_cabinet(0.0, balance));
-        assert!(leslie.set_microphones(MicrophoneArray::default()));
-        leslie.set_mode(LeslieMode::Tremolo);
+        assert!(rotary.set_cabinet(0.0, balance));
+        assert!(rotary.set_microphones(MicrophoneArray::default()));
+        rotary.set_mode(RotaryMode::Tremolo);
 
         let omega = TAU * carrier / SAMPLE_RATE as f64;
         let mut frame = 0_usize;
         for _ in 0..SAMPLE_RATE * SETTLE_SECONDS {
             let input = (omega * frame as f64).sin() as f32;
-            leslie.process(input);
+            rotary.process(input);
             frame += 1;
         }
-        let state = leslie.diagnostics();
+        let state = rotary.diagnostics();
         let rotor_hz = if horn {
             f64::from(state.horn_speed_hz)
         } else {
             f64::from(state.drum_speed_hz)
         };
-        let geometry = leslie.geometry();
+        let geometry = rotary.geometry();
         let radius = if horn {
             geometry.horn_radius_m
         } else {
@@ -1531,7 +1531,7 @@ fn leslie_doppler_probe() -> (Vec<Measurement>, String) {
         for _ in 0..SAMPLE_RATE * CAPTURE_SECONDS {
             let angle = omega * frame as f64;
             let input = angle.sin() as f32;
-            let output = leslie.process(input);
+            let output = rotary.process(input);
             let (cosine, sine) = (angle.cos(), angle.sin());
             for channel in 0..2 {
                 let value = f64::from(output[channel]);
@@ -1662,7 +1662,7 @@ fn clean_engine() -> Result<OrganEngine, String> {
     assert!(engine.set_output_level(1.0));
     engine.set_scanner_mode(ScannerMode::Off);
     engine.set_scanner_manuals(false, false);
-    engine.set_leslie_mode(LeslieMode::Off);
+    engine.set_rotary_mode(RotaryMode::Off);
     Ok(engine)
 }
 
@@ -1687,7 +1687,7 @@ fn write_rotor_row(
     csv: &mut String,
     phase: &str,
     time: f64,
-    state: rf_organ_dsp::LeslieDiagnostics,
+    state: rf_organ_dsp::RotaryDiagnostics,
 ) {
     writeln!(
         csv,
@@ -1892,7 +1892,7 @@ mod tests {
     /// deviation is larger and no longer symmetric.
     #[test]
     fn doppler_follows_the_path_that_causes_it() {
-        let (measurements, csv) = with_analysis_stack(leslie_doppler_probe);
+        let (measurements, csv) = with_analysis_stack(rotary_doppler_probe);
         let value = |probe: &str, metric: &str| {
             measurements
                 .iter()
@@ -1907,16 +1907,16 @@ mod tests {
                 .all(|measurement| measurement.value.is_finite())
         );
 
-        let drum_error = value("leslie-drum", "doppler-geometry-error");
+        let drum_error = value("rotary-drum", "doppler-geometry-error");
         assert!(drum_error.abs() < 2.0, "drum is off by {drum_error} cents");
-        let drum_rise = value("leslie-drum", "doppler-rise");
-        let drum_fall = value("leslie-drum", "doppler-fall");
+        let drum_rise = value("rotary-drum", "doppler-rise");
+        let drum_fall = value("rotary-drum", "doppler-fall");
         assert!(
             (drum_rise + drum_fall).abs() < 1.0,
             "drum sweep is lopsided: {drum_rise} and {drum_fall}"
         );
-        let span = value("leslie-drum", "arrival-span");
-        let predicted = value("leslie-drum", "arrival-span-geometric");
+        let span = value("rotary-drum", "arrival-span");
+        let predicted = value("rotary-drum", "arrival-span-geometric");
         assert!(
             (span - predicted).abs() < 0.1 * predicted,
             "arrival span {span} against {predicted} microseconds"
@@ -1924,19 +1924,19 @@ mod tests {
 
         // The horn's own deviation still has to be of the size the geometry
         // sets, even with the shelf on top of it.
-        let horn_error = value("leslie-horn", "doppler-geometry-error");
+        let horn_error = value("rotary-horn", "doppler-geometry-error");
         assert!(horn_error > 0.0 && horn_error < 25.0, "horn {horn_error}");
         assert!(
-            value("leslie-horn", "doppler-geometric") > value("leslie-drum", "doppler-geometric")
+            value("rotary-horn", "doppler-geometric") > value("rotary-drum", "doppler-geometric")
         );
-        for rotor in ["leslie-horn", "leslie-drum"] {
+        for rotor in ["rotary-horn", "rotary-drum"] {
             assert!(value(rotor, "level-swing") > 1.0);
         }
     }
 
     #[test]
-    fn leslie_probe_observes_independent_rotor_inertia() {
-        let (measurements, _) = with_analysis_stack(leslie_probe);
+    fn rotary_probe_observes_independent_rotor_inertia() {
+        let (measurements, _) = with_analysis_stack(rotary_probe);
         let horn = measurements[2].value;
         let drum = measurements[3].value;
         assert!(horn > 0.0 && drum > horn, "horn={horn} drum={drum}");

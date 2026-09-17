@@ -1238,7 +1238,7 @@ fn capture_quality(capture: &str, audio: &Audio) -> Result<QualityMeasurement, S
     } else {
         rms(&audio.frames[..noise_end])
     };
-    let impulse = capture == "leslie-cabinet-impulse";
+    let impulse = capture == "rotary-cabinet-impulse";
     let steady_start = if impulse {
         onset
     } else {
@@ -1804,7 +1804,7 @@ mod tests {
 
     #[test]
     fn external_reference_manifest_requires_provenance_and_unchanged_level() {
-        let valid = "RF-Organ reference capture\ncapture_id=b3-2026-01\nsource=private session\nrights=private measurement\nconsole=Hammond B-3\nsignal_chain=Leslie 122, pair at 1 m\nsample_rate=48000\nnormalization=none\n";
+        let valid = "RF-Organ reference capture\ncapture_id=b3-2026-01\nsource=private session\nrights=private measurement\nconsole=Hammond B-3\nsignal_chain=Rotary 122, pair at 1 m\nsample_rate=48000\nnormalization=none\n";
         assert!(validate_reference_manifest(valid).is_ok());
         assert!(
             validate_reference_manifest(&valid.replace("normalization=none", "normalization=peak"))
