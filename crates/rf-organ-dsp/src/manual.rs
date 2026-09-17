@@ -262,16 +262,14 @@ impl Manual {
             if gain == 0.0 {
                 continue;
             }
-            let pair = compartment_pair(index);
-            let leak = pair.map_or(0.0, |pair| wheels[pair]);
-            output += gain * (wheels[index] + leakage * leak);
+            output += gain * (wheels[index] + leakage * compartment_leak(wheels, index));
         }
         if suppress_ninth_drawbar {
             let level = DRAWBAR_LEVELS[self.drawbars[8] as usize];
             for key in self.keys.iter().filter(|key| key.sounding()) {
                 let contact = key.contacts[8];
                 let index = contact.wheel as usize;
-                let leak = compartment_pair(index).map_or(0.0, |pair| wheels[pair]);
+                let leak = compartment_leak(wheels, index);
                 output -= contact.gate * level * (wheels[index] + leakage * leak);
             }
         }
@@ -317,6 +315,15 @@ impl Manual {
     }
 }
 
+/// Sum of what the other wheels in a compartment put into this one.
+fn compartment_leak(wheels: &[f32; TONEWHEEL_COUNT], index: usize) -> f32 {
+    let mut leak = 0.0;
+    for companion in COMPARTMENTS[index].iter().flatten() {
+        leak += wheels[usize::from(*companion)];
+    }
+    leak
+}
+
 fn key_index(note: u8) -> Option<usize> {
     (MANUAL_FIRST_NOTE..=MANUAL_LAST_NOTE)
         .contains(&note)
@@ -335,18 +342,83 @@ fn hash(mut value: u32) -> u32 {
     value ^ (value >> 16)
 }
 
-fn compartment_pair(index: usize) -> Option<usize> {
-    match index {
-        0..=35 => Some(index + 48),
-        41..=47 => Some(index + 43),
-        48..=83 => Some(index - 48),
-        84..=90 => Some(index - 43),
-        _ => None,
+/// The generator is divided into compartments of four wheels, magnetically
+/// shielded from the rest. The service manual lays them out by tooth count:
+/// one compartment of a speed holds 2, 32, 8 and 128, the other holds 4, 64,
+/// 16 and 192, and where a speed has no 192-tooth wheel that position is
+/// marked blank. Wheels of one speed share a driving gear, so a wheel's
+/// companions are the rest of its own compartment.
+///
+/// The table is built at compile time. The hot path looks a wheel up on every
+/// sample it is keyed, and working the topology out there cost the engine a
+/// third of its headroom.
+static COMPARTMENTS: [[Option<u8>; 3]; TONEWHEEL_COUNT] = build_compartments();
+
+pub fn compartment_companions(index: usize) -> [Option<usize>; 3] {
+    match COMPARTMENTS.get(index) {
+        Some(companions) => [
+            companions[0].map(usize::from),
+            companions[1].map(usize::from),
+            companions[2].map(usize::from),
+        ],
+        None => [None; 3],
+    }
+}
+
+const fn build_compartments() -> [[Option<u8>; 3]; TONEWHEEL_COUNT] {
+    let mut table = [[None; 3]; TONEWHEEL_COUNT];
+    let mut index = 0;
+    while index < TONEWHEEL_COUNT {
+        table[index] = companions_of(index);
+        index += 1;
+    }
+    table
+}
+
+const fn companions_of(index: usize) -> [Option<u8>; 3] {
+    let speed = match wheel_speed(index) {
+        Some(speed) => speed,
+        None => return [None; 3],
+    };
+    // Even octaves are the 2-32-8-128 compartment; odd octaves and the
+    // 192-tooth wheel are the 4-64-16-192 one.
+    let even = index < 84 && (index / 12).is_multiple_of(2);
+    let mut companions = [None; 3];
+    let mut found = 0;
+    let mut octave = 0;
+    while octave < 7 {
+        let candidate = 12 * octave + speed;
+        if octave.is_multiple_of(2) == even && candidate < 84 && candidate != index {
+            companions[found] = Some(candidate as u8);
+            found += 1;
+        }
+        octave += 1;
+    }
+    if !even && speed >= 5 {
+        let top = 84 + speed - 5;
+        if top != index && found < 3 {
+            companions[found] = Some(top as u8);
+        }
+    }
+    companions
+}
+
+/// Index of the driving gear a wheel runs from. Wheels sharing one are the
+/// ones that can share a compartment.
+const fn wheel_speed(index: usize) -> Option<usize> {
+    if index >= TONEWHEEL_COUNT {
+        None
+    } else if index >= 84 {
+        Some(index % 12 + 5)
+    } else {
+        Some(index % 12)
     }
 }
 
 #[cfg(test)]
 mod tests {
+    extern crate std;
+
     use super::*;
 
     #[test]
@@ -398,11 +470,52 @@ mod tests {
     }
 
     #[test]
-    fn compartment_pairs_are_reciprocal() {
+    fn compartments_are_reciprocal_and_hold_the_documented_tooth_counts() {
+        let teeth = |wheel: usize| crate::tonewheel::gear_teeth(wheel).expect("wheel");
         for wheel in 0..TONEWHEEL_COUNT {
-            if let Some(pair) = compartment_pair(wheel) {
-                assert_eq!(compartment_pair(pair), Some(wheel));
+            for companion in compartment_companions(wheel).into_iter().flatten() {
+                assert!(
+                    compartment_companions(companion).contains(&Some(wheel)),
+                    "{wheel} and {companion} disagree"
+                );
+                assert_ne!(companion, wheel);
             }
+        }
+
+        // The lowest wheel shares its compartment with the 32, 8 and 128 tooth
+        // wheels of the same speed, and its neighbour compartment holds 4, 64,
+        // 16 and a blank where no 192-tooth wheel of that speed exists.
+        let mut lowest = compartment_companions(0)
+            .into_iter()
+            .flatten()
+            .map(teeth)
+            .collect::<std::vec::Vec<_>>();
+        lowest.sort_unstable();
+        assert_eq!(lowest, [8, 32, 128]);
+
+        let mut second = compartment_companions(12)
+            .into_iter()
+            .flatten()
+            .map(teeth)
+            .collect::<std::vec::Vec<_>>();
+        second.sort_unstable();
+        assert_eq!(second, [16, 64]);
+
+        // A speed that does have a 192-tooth wheel fills the fourth position.
+        let mut filled = compartment_companions(17)
+            .into_iter()
+            .flatten()
+            .map(teeth)
+            .collect::<std::vec::Vec<_>>();
+        filled.sort_unstable();
+        assert_eq!(filled, [16, 64, 192]);
+
+        // Every wheel now belongs to a compartment; none is left out.
+        for wheel in 0..TONEWHEEL_COUNT {
+            assert!(
+                compartment_companions(wheel).iter().any(Option::is_some),
+                "wheel {wheel} has no compartment"
+            );
         }
     }
 }

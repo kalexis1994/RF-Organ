@@ -132,7 +132,20 @@ compared with the ends; the laboratory fits it from captures with the pedal
 parked at documented positions, and reports the bias of that estimator by
 fitting the model's own captures first.
 
-## Version 0.19.0 limitations
+## Generator
+
+The 91 wheels turn continuously and each one carries its own output level, so
+a measured generator's taper can be applied wheel by wheel; it is flat until
+one is measured. Each wheel also carries a once-per-revolution level change for
+the eccentricity Hammond documents, at a rate of its tone divided by its tooth
+count — about 16 Hz at the bottom of the generator and 31 Hz at the top.
+
+Leakage follows the compartments the service manual describes: four wheels to a
+compartment, grouped by tooth count, so a wheel hears up to three companions
+rather than one partner. The table is built at compile time because the keyed
+path reads it every sample.
+
+## Version 0.20.0 limitations
 
 - The classic B-3 pedal contact and resistor-panel topology is present. The
   L20 pedal-filter coefficient and console matching-network constants remain
@@ -150,6 +163,15 @@ fitting the model's own captures first.
   resistors and capacitors. Every console stage constant is therefore
   provisional, with a measurement surface and a reference protocol rather than
   a fitted value.
+- The generator taper is flat. The service manual's table of generator output
+  voltages is in the same unreadable scan, so no per-wheel levels are claimed;
+  the laboratory measures the taper the model produces and the API applies one
+  wheel at a time once a console is measured.
+- Leakage keeps a constant level against what is played, while Hammond
+  describes it as rising with the number of notes held and exposes a control
+  for that rate. The laboratory reports leakage against note count, which is
+  where that gap will be closed.
+- Wow and flutter are not modelled. Eccentricity is, at a provisional depth.
 - The vibrato line uses the documented component values with an unwarped
   bilinear transform, so its cutoff is placed by the components rather than
   fitted; the scanner runs at 6.9 Hz and its plate overlap is modelled as a

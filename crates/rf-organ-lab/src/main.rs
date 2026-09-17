@@ -283,6 +283,14 @@ fn render_suite(destination: &Path, trims: captures::Trims) -> Result<(), Box<dy
         analysis.console_distortion,
     )?;
     fs::write(
+        destination.join("generator-taper.csv"),
+        analysis.generator_taper,
+    )?;
+    fs::write(
+        destination.join("generator-leakage.csv"),
+        analysis.generator_leakage,
+    )?;
+    fs::write(
         destination.join("transformer-intermodulation.csv"),
         analysis.transformer_intermodulation,
     )?;
@@ -457,7 +465,7 @@ fn manifest(trims: captures::Trims) -> String {
         .collect::<Vec<_>>()
         .join(",");
     format!(
-        "RF-Organ deterministic calibration suite\nversion={}\nsample_rate={}\nphrase_seconds={}\nnormalization=none\nformat=IEEE-float WAV stereo\nanalysis=frequency,level,pedal-spectrum,pedal-release,expression-response,tone-control-response,console-distortion,transformer-intermodulation,transformer-calibration,percussion-envelope,percussion-recovery,keying-contacts,scanner-sidebands,scanner-line-response,leslie-rotor-response\n",
+        "RF-Organ deterministic calibration suite\nversion={}\nsample_rate={}\nphrase_seconds={}\nnormalization=none\nformat=IEEE-float WAV stereo\nanalysis=frequency,level,generator-taper,generator-leakage,pedal-spectrum,pedal-release,expression-response,tone-control-response,console-distortion,transformer-intermodulation,transformer-calibration,percussion-envelope,percussion-recovery,keying-contacts,scanner-sidebands,scanner-line-response,leslie-rotor-response\n",
         env!("CARGO_PKG_VERSION"),
         SAMPLE_RATE,
         SECONDS

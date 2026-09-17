@@ -49,6 +49,36 @@ The insertion-loss make-up that keeps the chorus position usable is a
 provisional stand-in for the AO-28 vibrato amplifier, derived from the
 resistor network rather than fitted.
 
+## Generator compartments and wheel motion
+
+Version 0.20.0 takes three documented things about the generator.
+
+The B-3/C-3 service manual describes the generator as divided into
+compartments, each holding four tone wheels driven by one gear and shielded
+magnetically from the rest, and lays the compartments out by tooth count: one
+holds 2, 32, 8 and 128, the next holds 4, 64, 16 and 192, and a speed with no
+192-tooth wheel leaves that position blank. RF-Organ derives its compartment
+table from that layout, so leakage now reaches a wheel from up to three
+companions instead of the single four-octave partner it used before, and every
+wheel belongs to a compartment where five previously belonged to none.
+
+Hammond's XK-7/XK-7D manual describes what differs between individual
+generators — level, wow and flutter, and eccentricity — and defines them: wow
+is a once-per-revolution change of pitch or phase caused by gear backlash, and
+eccentricity is a wheel stamped off-centre whose high spots pass nearer to and
+further from the pickup once per revolution, so the tone becomes slightly
+louder and softer. RF-Organ models the eccentricity as that once-per-revolution
+level change, at a depth that is provisional; wow and flutter are not modelled
+yet.
+
+Münster and Pfeifle's ISMA-2019 measurements of a Model A report the induced
+voltage as approximately sine-like with strong amplitude fluctuation caused by
+the unsteady motion of the wheels, which is the same effect from the other
+side. Their paper gives no per-wheel table, and the service manual's own
+generator output voltages are in a scan that does not survive character
+recognition, so the per-wheel taper stays flat and exposed rather than
+invented.
+
 ## AO-28 stage shape
 
 Version 0.19.0 records what could not be sourced. The B-3/C-3 preamplifier

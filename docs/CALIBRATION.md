@@ -11,6 +11,8 @@ cargo run --release -p rf-organ-lab -- render artifacts/calibration
 The suite contains:
 
 - the 91 physical generator frequencies as CSV;
+- the generator's taper and eccentricity, measured key by key;
+- leakage against the number of notes held;
 - direct 888, percussion, scanner C3, Chorale and Tremolo phrases;
 - a complete two-manual and pedal-console phrase;
 - isolated low-C pedal captures for 16', 8' and both drawbars;
@@ -44,6 +46,18 @@ The suite contains:
 `measurements.csv` is the compact comparison surface. The detailed
 tables retain the underlying curves:
 
+- `generator-taper.csv` plays each manual key alone through its 8' contact,
+  which reaches exactly one wheel, and reports that wheel's level against the
+  median of the generator together with the sideband a revolution away from
+  the tone. The taper column is what a measured console replaces; the sideband
+  column is the eccentricity, and at the current provisional depth it sits
+  about 42 dB under the tone.
+- `generator-leakage.csv` reports leakage against the number of keys held,
+  measured at the frequencies of the compartment companions of the wheels
+  being keyed rather than as broadband noise. The model's leakage holds a
+  constant level against what is played; Hammond describes a console's as
+  rising with the number of notes, so this table is where that difference will
+  show against a reference capture.
 - `percussion-envelope.csv` records all four tablet combinations;
 - `percussion-recovery.csv` records the peak of a strike against the gap since
   the last release, which is how fast detached playing loses the effect;

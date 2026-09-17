@@ -18,11 +18,13 @@ mod vibrato_line;
 
 pub use electronics::{ConsoleElectronics, ConsoleElectronicsDiagnostics};
 pub use leslie::{Leslie, LeslieDiagnostics, LeslieMode};
-pub use manual::{DRAWBAR_COUNT, MANUAL_FIRST_NOTE, MANUAL_KEY_COUNT, drawbar_wheel};
+pub use manual::{
+    DRAWBAR_COUNT, MANUAL_FIRST_NOTE, MANUAL_KEY_COUNT, compartment_companions, drawbar_wheel,
+};
 pub use pedal::{PEDAL_DRAWBAR_COUNT, PEDAL_FIRST_NOTE, PEDAL_KEY_COUNT};
 pub use percussion::{PercussionDecay, PercussionHarmonic, PercussionVolume};
 pub use scanner::{ScannerMode, ScannerVibrato};
-pub use tonewheel::{TONEWHEEL_COUNT, gear_frequency};
+pub use tonewheel::{TONEWHEEL_COUNT, gear_frequency, gear_teeth};
 pub use transformer::{MatchingTransformer, TransformerDiagnostics, TransformerUnit};
 pub use vibrato_line::ROTOR_HZ as SCANNER_ROTOR_HZ;
 
@@ -216,6 +218,24 @@ impl OrganEngine {
         self.upper.set_contact_bounce(value)
             && self.lower.set_contact_bounce(value)
             && self.pedals.set_contact_bounce(value)
+    }
+
+    /// Depth of the once-per-revolution level change of an off-centre wheel.
+    pub fn set_eccentricity(&mut self, depth: f32) -> bool {
+        self.tonewheels.set_eccentricity(depth)
+    }
+
+    pub const fn eccentricity(&self) -> f32 {
+        self.tonewheels.eccentricity()
+    }
+
+    /// Output level of one generator wheel, one-based terminal `index + 1`.
+    pub fn set_wheel_level(&mut self, index: usize, level: f32) -> bool {
+        self.tonewheels.set_level(index, level)
+    }
+
+    pub fn wheel_level(&self, index: usize) -> Option<f32> {
+        self.tonewheels.level(index)
     }
 
     pub fn set_leakage(&mut self, value: f32) -> bool {

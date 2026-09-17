@@ -3,9 +3,10 @@
 use crate::captures::{C_NOTE, CHARACTER, F_NOTE, Level, note_frequency};
 use crate::signal::{decay_time, decibels, peak, rms, zero_crossing_frequency};
 use rf_organ_dsp::{
-    ConsoleElectronics, DRAWBAR_COUNT, Leslie, LeslieMode, MANUAL_FIRST_NOTE, MatchingTransformer,
-    OrganEngine, OrganPart, PercussionDecay, PercussionHarmonic, PercussionVolume, ScannerMode,
-    ScannerVibrato, TransformerUnit, drawbar_wheel, gear_frequency,
+    ConsoleElectronics, DRAWBAR_COUNT, Leslie, LeslieMode, MANUAL_FIRST_NOTE, MANUAL_KEY_COUNT,
+    MatchingTransformer, OrganEngine, OrganPart, PercussionDecay, PercussionHarmonic,
+    PercussionVolume, ScannerMode, ScannerVibrato, TransformerUnit, compartment_companions,
+    drawbar_wheel, gear_frequency,
 };
 use std::f64::consts::TAU;
 use std::fmt::Write as _;
@@ -26,6 +27,8 @@ pub struct Artifacts {
     pub expression_response: String,
     pub tone_control_response: String,
     pub console_distortion: String,
+    pub generator_taper: String,
+    pub generator_leakage: String,
     pub transformer_intermodulation: String,
     pub transformer_calibration: String,
 }
@@ -51,6 +54,10 @@ pub fn analyze() -> Result<Artifacts, String> {
 fn analyze_inner() -> Result<Artifacts, String> {
     let mut measurements = Vec::new();
     measurements.extend(tonewheel_probe()?);
+    let (taper, generator_taper) = generator_taper_probe()?;
+    measurements.extend(taper);
+    let (leakage, generator_leakage) = generator_leakage_probe()?;
+    measurements.extend(leakage);
     let (expression, expression_response) = expression_probe();
     measurements.extend(expression);
     let (tone_control, tone_control_response) = tone_control_probe();
@@ -84,6 +91,8 @@ fn analyze_inner() -> Result<Artifacts, String> {
         expression_response,
         tone_control_response,
         console_distortion,
+        generator_taper,
+        generator_leakage,
         transformer_intermodulation,
         transformer_calibration,
     })
@@ -586,6 +595,176 @@ fn render_pedal_release() -> Result<Vec<f64>, String> {
     Ok((0..SAMPLE_RATE / 10)
         .map(|_| f64::from(engine.next_sample()[0]))
         .collect())
+}
+
+/// Every manual key played alone through its 8-foot contact, which is the
+/// one wheel that contact reaches. It gives the generator's taper — how loud
+/// each wheel is against its neighbours — and the once-per-revolution level
+/// change of an off-centre wheel, both in the same pass and both measurable
+/// the same way on a console.
+fn generator_taper_probe() -> Result<(Vec<Measurement>, String), String> {
+    const BUS: usize = 2;
+    const SETTLE: usize = SAMPLE_RATE / 4;
+    const WINDOW: usize = SAMPLE_RATE / 2;
+    let mut csv = String::from(
+        "key,midi_note,wheel,frequency_hz,revolutions_hz,level_dbfs,level_relative_db,eccentricity_sideband_dbc\n",
+    );
+    let mut rows = Vec::with_capacity(MANUAL_KEY_COUNT);
+    for key in 0..MANUAL_KEY_COUNT {
+        let note = MANUAL_FIRST_NOTE + key as u8;
+        let wheel = drawbar_wheel(key, BUS).ok_or_else(|| format!("no 8' wheel for key {key}"))?;
+        let frequency = f64::from(gear_frequency(wheel).ok_or_else(|| "missing wheel".to_owned())?);
+        let teeth =
+            f64::from(rf_organ_dsp::gear_teeth(wheel).ok_or_else(|| "missing teeth".to_owned())?);
+        let revolutions = frequency / teeth;
+
+        let mut engine = clean_engine()?;
+        assert!(engine.set_manual_drawbar(OrganPart::Upper, BUS, 8));
+        assert!(engine.note_on_part(OrganPart::Upper, note, 1.0));
+        let mut samples = Vec::with_capacity(WINDOW);
+        for frame in 0..SETTLE + WINDOW {
+            let sample = f64::from(engine.next_sample()[0]);
+            if frame >= SETTLE {
+                samples.push(sample);
+            }
+        }
+        let carrier = spectral_amplitude(&samples, frequency);
+        if carrier <= 1.0e-12 {
+            return Err(format!("key {key} produced no tone"));
+        }
+        let lower = spectral_amplitude(&samples, frequency - revolutions);
+        let upper = spectral_amplitude(&samples, frequency + revolutions);
+        rows.push((
+            key,
+            note,
+            wheel,
+            frequency,
+            revolutions,
+            carrier,
+            decibels(0.5 * (lower + upper) / carrier),
+        ));
+    }
+
+    let median = {
+        let mut levels = rows.iter().map(|row| row.5).collect::<Vec<_>>();
+        levels.sort_by(f64::total_cmp);
+        levels[levels.len() / 2]
+    };
+    let mut spread: f64 = 0.0;
+    for (key, note, wheel, frequency, revolutions, carrier, sideband) in &rows {
+        let relative = decibels(carrier / median);
+        spread = spread.max(relative.abs());
+        writeln!(
+            &mut csv,
+            "{},{note},{},{frequency:.6},{revolutions:.6},{:.6},{relative:.6},{sideband:.6}",
+            key + 1,
+            wheel + 1,
+            decibels(*carrier)
+        )
+        .expect("string write cannot fail");
+    }
+    let sidebands = rows.iter().map(|row| row.6).sum::<f64>() / rows.len() as f64;
+    Ok((
+        vec![
+            Measurement {
+                probe: "generator-taper",
+                metric: "worst-deviation",
+                value: spread,
+                unit: "dB",
+            },
+            Measurement {
+                probe: "generator-eccentricity",
+                metric: "mean-sideband",
+                value: sidebands,
+                unit: "dBc",
+            },
+        ],
+        csv,
+    ))
+}
+
+/// Leakage against how many keys are held. Hammond describes the hash as
+/// rising with the number of notes played at once, and the compartment
+/// neighbours of the wheels being keyed are where it comes from, so it is
+/// measured at those neighbours' own frequencies rather than as broadband
+/// noise.
+fn generator_leakage_probe() -> Result<(Vec<Measurement>, String), String> {
+    const BUS: usize = 2;
+    const SETTLE: usize = SAMPLE_RATE / 4;
+    const WINDOW: usize = SAMPLE_RATE / 2;
+    // Five of the ninety-one wheels have no compartment neighbour in the
+    // model's wiring, so these chords stay in the range that does and the
+    // report says how many of the keyed wheels were paired.
+    const CHORDS: [(&str, &[u8]); 4] = [
+        ("one", &[48]),
+        ("two", &[48, 52]),
+        ("four", &[48, 52, 55, 59]),
+        ("eight", &[36, 40, 43, 47, 48, 52, 55, 59]),
+    ];
+    let mut csv = String::from(
+        "notes,keys,companion_wheels,fundamental_dbfs,leakage_dbfs,leakage_dbc
+",
+    );
+    let mut measurements = Vec::new();
+    for (name, notes) in CHORDS {
+        let mut engine = clean_engine()?;
+        assert!(engine.set_leakage(0.2));
+        assert!(engine.set_manual_drawbar(OrganPart::Upper, BUS, 8));
+        for note in notes {
+            assert!(engine.note_on_part(OrganPart::Upper, *note, 1.0));
+        }
+        let mut samples = Vec::with_capacity(WINDOW);
+        for frame in 0..SETTLE + WINDOW {
+            let sample = f64::from(engine.next_sample()[0]);
+            if frame >= SETTLE {
+                samples.push(sample);
+            }
+        }
+        let mut played = 0.0;
+        let mut leaked = 0.0;
+        let mut paired = 0;
+        for note in notes {
+            let key = usize::from(note - MANUAL_FIRST_NOTE);
+            let wheel = drawbar_wheel(key, BUS).ok_or_else(|| "missing wheel".to_owned())?;
+            let frequency =
+                f64::from(gear_frequency(wheel).ok_or_else(|| "missing wheel".to_owned())?);
+            let amplitude = spectral_amplitude(&samples, frequency);
+            played += amplitude * amplitude;
+            // Everything else in the same compartment bleeds into this wheel's
+            // pickup, and each companion sits at its own frequency.
+            for companion in compartment_companions(wheel).into_iter().flatten() {
+                let neighbour = f64::from(
+                    gear_frequency(companion).ok_or_else(|| "missing companion".to_owned())?,
+                );
+                let leak = spectral_amplitude(&samples, neighbour);
+                leaked += leak * leak;
+                paired += 1;
+            }
+        }
+        let fundamental = played.sqrt();
+        let leakage = leaked.sqrt();
+        let relative = decibels(leakage / fundamental);
+        writeln!(
+            &mut csv,
+            "{name},{},{paired},{:.6},{:.6},{relative:.6}",
+            notes.len(),
+            decibels(fundamental),
+            decibels(leakage)
+        )
+        .expect("string write cannot fail");
+        measurements.push(Measurement {
+            probe: match name {
+                "one" => "leakage-one-note",
+                "two" => "leakage-two-notes",
+                "four" => "leakage-four-notes",
+                _ => "leakage-eight-notes",
+            },
+            metric: "leakage-level",
+            value: relative,
+            unit: "dBc",
+        });
+    }
+    Ok((measurements, csv))
 }
 
 fn tonewheel_probe() -> Result<Vec<Measurement>, String> {
@@ -1281,6 +1460,63 @@ mod tests {
             .unwrap()
             .join()
             .unwrap()
+    }
+
+    /// The taper is flat until a console is measured, and the eccentricity
+    /// shows up as a sideband a revolution away from each tone.
+    #[test]
+    fn generator_taper_is_flat_and_eccentricity_is_audible_in_the_sidebands() {
+        let (measurements, csv) = with_analysis_stack(|| generator_taper_probe().unwrap());
+        assert_eq!(csv.lines().count(), MANUAL_KEY_COUNT + 1);
+        let value = |probe| {
+            measurements
+                .iter()
+                .find(|measurement| measurement.probe == probe)
+                .expect("probe")
+                .value
+        };
+        // Foldback makes several keys share a wheel, but no wheel may sit far
+        // from its neighbours while the taper is flat.
+        assert!(
+            value("generator-taper") < 1.0,
+            "{}",
+            value("generator-taper")
+        );
+        let sideband = value("generator-eccentricity");
+        assert!(
+            (-60.0..-20.0).contains(&sideband),
+            "eccentricity sideband was {sideband} dBc"
+        );
+    }
+
+    /// Hammond describes leakage as rising with the number of notes held.
+    #[test]
+    fn leakage_rises_with_the_number_of_notes() {
+        let (measurements, csv) = with_analysis_stack(|| generator_leakage_probe().unwrap());
+        assert_eq!(csv.lines().count(), 5);
+        let value = |probe| {
+            measurements
+                .iter()
+                .find(|measurement| measurement.probe == probe)
+                .expect("probe")
+                .value
+        };
+        // Every keyed wheel has companions in its compartment.
+        for line in csv.lines().skip(1) {
+            let fields = line.split(',').collect::<Vec<_>>();
+            let keys: usize = fields[1].parse().expect("keys");
+            let paired: usize = fields[2].parse().expect("paired");
+            assert!(paired >= keys * 2, "{line}");
+        }
+        assert!(value("leakage-eight-notes") > value("leakage-one-note"));
+        for probe in [
+            "leakage-one-note",
+            "leakage-two-notes",
+            "leakage-four-notes",
+            "leakage-eight-notes",
+        ] {
+            assert!(value(probe) < 0.0, "{probe} leaked at {}", value(probe));
+        }
     }
 
     #[test]
