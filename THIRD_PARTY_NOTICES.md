@@ -82,6 +82,16 @@ switch can be delayed by up to a second before the rotor responds; and a time
 means the time to cross the whole speed range, so a shorter move takes
 proportionally less and the rate is what stays constant.
 
+Version 0.32.0 adds the last setting on that page: the step past the widest
+pair in the width control, which the manual calls "Side" and describes as
+placing the microphones "on each side of the cabinet" rather than in front of
+it. RF-Organ makes it a switch of its own instead of the last step of the
+width, so that the width beside it stays a width all the way along; the
+setting is the documented one either way. What it needs and the manual does
+not give on that page is how wide the cabinet is, since that is what a
+microphone put beside it has to clear, so the 36 cm half-footprint is
+provisional.
+
 Version 0.31.0 gives them a stand each as well. That manual's width, centre
 and distance are all listed per rotor, and RF-Organ had one of each shared
 between the two pairs, with the drum's centre wired to the negative of the

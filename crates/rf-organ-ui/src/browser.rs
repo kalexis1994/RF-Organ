@@ -14,7 +14,7 @@ use web_sys::{
 };
 
 const PLUGIN_ID: &str = "org.rackforge.organ";
-const CONTROL_IDS: [&str; 64] = [
+const CONTROL_IDS: [&str; 66] = [
     "output",
     "expression",
     "u16",
@@ -79,6 +79,8 @@ const CONTROL_IDS: [&str; 64] = [
     "drum-mic-distance",
     "drum-mic-spacing",
     "drum-mic-offset",
+    "horn-mic-sides",
+    "drum-mic-sides",
 ];
 
 /// Steps of the display's own rotor model per second.
@@ -201,11 +203,13 @@ impl App {
                 distance_m: self.client.display(41) as f32,
                 spacing_m: self.client.display(42) as f32,
                 offset_m: self.client.display(51) as f32,
+                at_the_sides: self.client.display(64) == 1.0,
             },
             drum: MicrophonePair {
                 distance_m: self.client.display(61) as f32,
                 spacing_m: self.client.display(62) as f32,
                 offset_m: self.client.display(63) as f32,
+                at_the_sides: self.client.display(65) == 1.0,
             },
             pattern: self.client.display(52) as f32,
         });

@@ -245,6 +245,10 @@ const SOUND_SPEED_M_PER_S: f32 = 343.0;
 pub const MIC_DISTANCE_RANGE_M: (f32, f32) = (0.12, 1.7);
 pub const MIC_SPACING_MAX_M: f32 = 0.4;
 pub const MIC_OFFSET_MAX_M: f32 = 0.5;
+/// Half the cabinet's own footprint, which is what a microphone put beside it
+/// has to clear. Hammond does not give it on the page the placement is on, so
+/// this is provisional.
+pub const CABINET_HALF_M: f32 = 0.36;
 
 /// Shortest path a rotor's mouth can be from a microphone, squared. The
 /// microphones cannot be put inside the cabinet, so no path is ever this
@@ -276,17 +280,24 @@ fn inverse_root(square: f32) -> f32 {
 struct Placement {
     distance: f32,
     lateral: f32,
+    /// How far the capsule is from the pivot. A source at the pivot reaches it
+    /// at unity, so this is what the level of a turning mouth is measured
+    /// against - and it has to be the whole distance, not the part of it that
+    /// happens to be in front, or a capsule put beside the cabinet would read
+    /// as being nowhere at all.
+    reference: f32,
     /// Unit vector from the microphone toward the pivot.
     axis: (f32, f32),
 }
 
 impl Placement {
     fn new(distance: f32, lateral: f32) -> Self {
-        let inverse =
-            inverse_root((distance * distance + lateral * lateral).max(NEAREST_SQUARED_M2));
+        let squared = (distance * distance + lateral * lateral).max(NEAREST_SQUARED_M2);
+        let inverse = inverse_root(squared);
         Self {
             distance,
             lateral,
+            reference: squared * inverse,
             axis: (distance * inverse, lateral * inverse),
         }
     }
@@ -329,7 +340,7 @@ fn microphone_path(
     let incidence = (place.axis.0 * along + place.axis.1 * across) * inverse;
     MicrophonePath {
         delay_samples: squared * inverse * samples_per_metre,
-        gain: place.distance * inverse * ((1.0 - pattern) + pattern * incidence),
+        gain: place.reference * inverse * ((1.0 - pattern) + pattern * incidence),
         length: squared * inverse,
         // The mouth radiates outward along the radius, so how far off axis
         // the microphone lies is the angle between that radius and the line
@@ -365,10 +376,17 @@ pub struct MicrophoneArray {
 /// Where one rotor's pair of microphones stands, in metres.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct MicrophonePair {
-    /// In front of the cabinet.
+    /// In front of the cabinet, or out from its flank when the pair is at the
+    /// sides.
     pub distance_m: f32,
-    /// Between the two.
+    /// Between the two. Ignored when the pair is at the sides, where the
+    /// cabinet itself is what separates them.
     pub spacing_m: f32,
+    /// Hammond's "Side": one microphone beyond each flank of the cabinet
+    /// rather than two in front of it. It is the step past the widest pair in
+    /// the manual's own width control; here it is its own switch, so that the
+    /// width beside it stays a width all the way along.
+    pub at_the_sides: bool,
     /// Of the pair's centre from the rotor's pivot. Hammond's own note is
     /// that a positive value on the horn and a negative one on the drum
     /// emphasise the different directions the two baffles approach from; that
@@ -388,11 +406,23 @@ impl MicrophonePair {
             && self.offset_m.abs() <= MIC_OFFSET_MAX_M
     }
 
+    /// Where the two capsules end up, as a distance in front and a half
+    /// separation to either side of the pair's centre. At the sides there is
+    /// nothing in front: the cabinet stands between them, so each is half its
+    /// footprint plus the distance out from the axis.
     const fn placement(&self) -> RotaryPlacement {
-        RotaryPlacement {
-            distance_m: self.distance_m,
-            half_width_m: 0.5 * self.spacing_m,
-            centre_m: self.offset_m,
+        if self.at_the_sides {
+            RotaryPlacement {
+                distance_m: 0.0,
+                half_width_m: CABINET_HALF_M + self.distance_m,
+                centre_m: self.offset_m,
+            }
+        } else {
+            RotaryPlacement {
+                distance_m: self.distance_m,
+                half_width_m: 0.5 * self.spacing_m,
+                centre_m: self.offset_m,
+            }
         }
     }
 }
@@ -403,6 +433,7 @@ impl Default for MicrophonePair {
             distance_m: MIC_DISTANCE_DEFAULT_M,
             spacing_m: MIC_SPACING_DEFAULT_M,
             offset_m: 0.0,
+            at_the_sides: false,
         }
     }
 }
@@ -425,10 +456,10 @@ impl Default for MicrophoneArray {
 /// the offset.
 fn stands(array: MicrophoneArray) -> [Placement; 4] {
     let pair = |pair: MicrophonePair| {
-        let half = 0.5 * pair.spacing_m;
+        let place = pair.placement();
         [
-            Placement::new(pair.distance_m, pair.offset_m + half),
-            Placement::new(pair.distance_m, pair.offset_m - half),
+            Placement::new(place.distance_m, place.centre_m + place.half_width_m),
+            Placement::new(place.distance_m, place.centre_m - place.half_width_m),
         ]
     };
     let [horn_left, horn_right] = pair(array.horn);
@@ -1336,6 +1367,7 @@ mod tests {
                 distance_m,
                 spacing_m: 0.0,
                 offset_m: 0.0,
+                at_the_sides: false,
             };
             assert!(rotary.set_microphones(MicrophoneArray {
                 horn: stand,
@@ -1363,6 +1395,83 @@ mod tests {
             "the pattern made no difference: {} against {}",
             near / far,
             omni_near / omni_far
+        );
+    }
+
+    /// Hammond's "Side" puts a microphone beyond each flank of the cabinet
+    /// instead of two in front of it, so the pair ends up wider apart than any
+    /// width in front can reach, level with the rotor rather than ahead of it,
+    /// and still aimed at the axis.
+    #[test]
+    fn the_sides_put_the_pair_around_the_cabinet() {
+        let mut rotary = Rotary::new(48_000.0);
+        let beside = MicrophonePair {
+            distance_m: 0.3,
+            spacing_m: MIC_SPACING_MAX_M,
+            offset_m: 0.0,
+            at_the_sides: true,
+        };
+        assert!(rotary.set_microphones(MicrophoneArray {
+            horn: beside,
+            drum: MicrophonePair::default(),
+            ..MicrophoneArray::default()
+        }));
+        let geometry = rotary.geometry();
+        assert_eq!(geometry.horn.distance_m, 0.0, "the pair is still in front");
+        assert!(
+            (geometry.horn.half_width_m - (CABINET_HALF_M + 0.3)).abs() < 1.0e-6,
+            "half width {}",
+            geometry.horn.half_width_m
+        );
+        assert!(geometry.horn.half_width_m > 0.5 * MIC_SPACING_MAX_M);
+        // The width in front is ignored there: the cabinet is what separates
+        // them.
+        assert!(rotary.set_microphones(MicrophoneArray {
+            horn: MicrophonePair {
+                spacing_m: 0.0,
+                ..beside
+            },
+            drum: MicrophonePair::default(),
+            ..MicrophoneArray::default()
+        }));
+        assert_eq!(rotary.geometry().horn, geometry.horn);
+    }
+
+    /// A pair beside the cabinet still hears it. The old level reference was
+    /// how far in front a capsule stood, which is nothing at all out there.
+    #[test]
+    fn a_pair_at_the_sides_still_hears_the_cabinet() {
+        let energy = |at_the_sides: bool| {
+            let mut rotary = Rotary::new(48_000.0);
+            assert!(rotary.set_mix(1.0));
+            assert!(rotary.set_cabinet(0.0));
+            assert!(rotary.set_levels(0.0, 0.0, LEVEL_SILENT_DB));
+            assert!(rotary.set_microphones(MicrophoneArray {
+                horn: MicrophonePair {
+                    distance_m: 0.3,
+                    spacing_m: 0.3,
+                    offset_m: 0.0,
+                    at_the_sides,
+                },
+                drum: MicrophonePair::default(),
+                ..MicrophoneArray::default()
+            }));
+            rotary.set_mode(RotaryMode::Tremolo);
+            let mut sum = 0.0_f32;
+            for index in 0..96_000 {
+                let tone = (index as f32 * TAU * 2_000.0 / 48_000.0).sin();
+                let [left, _] = rotary.process(tone);
+                if index > 48_000 {
+                    sum += left * left;
+                }
+            }
+            sum
+        };
+        let beside = energy(true);
+        let ahead = energy(false);
+        assert!(
+            beside > 0.2 * ahead,
+            "beside {beside} against ahead {ahead}"
         );
     }
 
@@ -1451,11 +1560,13 @@ mod tests {
                 distance_m: near,
                 spacing_m: 0.0,
                 offset_m: 0.0,
+                at_the_sides: false,
             },
             drum: MicrophonePair {
                 distance_m: near,
                 spacing_m: 0.0,
                 offset_m: 0.0,
+                at_the_sides: false,
             },
             pattern: 0.0,
         }));
@@ -1467,11 +1578,13 @@ mod tests {
                 distance_m: far,
                 spacing_m: MIC_SPACING_MAX_M,
                 offset_m: MIC_OFFSET_MAX_M,
+                at_the_sides: false,
             },
             drum: MicrophonePair {
                 distance_m: far,
                 spacing_m: MIC_SPACING_MAX_M,
                 offset_m: MIC_OFFSET_MAX_M,
+                at_the_sides: false,
             },
             pattern: 1.0,
         }));
@@ -1525,11 +1638,13 @@ mod tests {
                 distance_m: 0.25,
                 spacing_m: 0.1,
                 offset_m: 0.2,
+                at_the_sides: false,
             },
             drum: MicrophonePair {
                 distance_m: 1.1,
                 spacing_m: 0.36,
                 offset_m: -0.4,
+                at_the_sides: false,
             },
             pattern: 0.5,
         }));
@@ -1556,6 +1671,7 @@ mod tests {
             distance_m: 0.4,
             spacing_m: 0.0,
             offset_m: 0.0,
+            at_the_sides: false,
         };
         assert!(rotary.set_microphones(MicrophoneArray {
             horn: together,
@@ -1585,11 +1701,13 @@ mod tests {
                 distance_m: 0.4,
                 spacing_m: 0.2,
                 offset_m: 0.3,
+                at_the_sides: false,
             },
             drum: MicrophonePair {
                 distance_m: 0.4,
                 spacing_m: 0.2,
                 offset_m: -0.3,
+                at_the_sides: false,
             },
             ..MicrophoneArray::default()
         }));

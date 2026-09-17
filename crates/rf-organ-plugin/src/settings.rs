@@ -8,7 +8,7 @@ use rf_organ_dsp::{
     PercussionVolume, RotaryMode, SUB_LEVEL_DEFAULT_DB, ScannerMode, StopAngle, TransformerUnit,
 };
 
-pub const PARAMETER_COUNT: usize = 64;
+pub const PARAMETER_COUNT: usize = 66;
 /// Bipolar per-transformer calibration trims, ordered T1, T2, T3.
 pub const TRANSFORMER_TRIM_FIRST: u32 = 45;
 pub const DRAWBAR_FIRST: u32 = 2;
@@ -48,9 +48,13 @@ pub struct Settings {
     pub rotary_horn_mic_distance: f64,
     pub rotary_horn_mic_spacing: f64,
     pub rotary_horn_mic_offset: f64,
+    /// Hammond's "Side": the pair goes beyond the cabinet's flanks instead of
+    /// standing in front of it.
+    pub rotary_horn_mic_sides: bool,
     pub rotary_drum_mic_distance: f64,
     pub rotary_drum_mic_spacing: f64,
     pub rotary_drum_mic_offset: f64,
+    pub rotary_drum_mic_sides: bool,
     /// Omnidirectional at zero, cardioid at a half, figure of eight at one.
     pub rotary_mic_pattern: f64,
     /// The radius each rotor's mouth turns at, in metres. Undocumented, so it
@@ -105,9 +109,11 @@ impl Default for Settings {
             rotary_horn_mic_distance: MIC_DISTANCE_DEFAULT_M as f64,
             rotary_horn_mic_spacing: MIC_SPACING_DEFAULT_M as f64,
             rotary_horn_mic_offset: 0.0,
+            rotary_horn_mic_sides: false,
             rotary_drum_mic_distance: MIC_DISTANCE_DEFAULT_M as f64,
             rotary_drum_mic_spacing: MIC_SPACING_DEFAULT_M as f64,
             rotary_drum_mic_offset: 0.0,
+            rotary_drum_mic_sides: false,
             rotary_mic_pattern: MIC_PATTERN_DEFAULT as f64,
             rotary_horn_radius: HORN_RADIUS_DEFAULT_M as f64,
             rotary_drum_radius: DRUM_RADIUS_DEFAULT_M as f64,
@@ -226,6 +232,8 @@ impl Settings {
             61 => self.rotary_drum_mic_distance,
             62 => self.rotary_drum_mic_spacing,
             63 => self.rotary_drum_mic_offset,
+            64 => bool_value(self.rotary_horn_mic_sides),
+            65 => bool_value(self.rotary_drum_mic_sides),
             52 => self.rotary_mic_pattern,
             53 => self.rotary_horn_radius,
             54 => self.rotary_drum_radius,
@@ -302,6 +310,8 @@ impl Settings {
             61 => self.rotary_drum_mic_distance = value,
             62 => self.rotary_drum_mic_spacing = value,
             63 => self.rotary_drum_mic_offset = value,
+            64 if value == 0.0 || value == 1.0 => self.rotary_horn_mic_sides = value == 1.0,
+            65 if value == 0.0 || value == 1.0 => self.rotary_drum_mic_sides = value == 1.0,
             52 => self.rotary_mic_pattern = value,
             53 => self.rotary_horn_radius = value,
             54 => self.rotary_drum_radius = value,
@@ -365,11 +375,13 @@ impl Settings {
                 distance_m: self.rotary_horn_mic_distance as f32,
                 spacing_m: self.rotary_horn_mic_spacing as f32,
                 offset_m: self.rotary_horn_mic_offset as f32,
+                at_the_sides: self.rotary_horn_mic_sides,
             },
             drum: MicrophonePair {
                 distance_m: self.rotary_drum_mic_distance as f32,
                 spacing_m: self.rotary_drum_mic_spacing as f32,
                 offset_m: self.rotary_drum_mic_offset as f32,
+                at_the_sides: self.rotary_drum_mic_sides,
             },
             pattern: self.rotary_mic_pattern as f32,
         });

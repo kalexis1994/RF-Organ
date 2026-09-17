@@ -1852,6 +1852,7 @@ fn rotary_capsule_probe() -> Vec<Measurement> {
             distance_m,
             spacing_m: 0.0,
             offset_m: 0.0,
+            at_the_sides: false,
         };
         assert!(rotary.set_microphones(MicrophoneArray {
             horn: stand,

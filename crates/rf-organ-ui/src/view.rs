@@ -145,6 +145,7 @@ mod tests {
                         distance_m: distance,
                         spacing_m: spacing,
                         offset_m: offset,
+                        at_the_sides: false,
                     };
                     for (horn, drum) in [
                         (moved, MicrophonePair::default()),
