@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 use rf_organ_dsp::{
-    ConsoleElectronics, DRAWBAR_COUNT, Leslie, LeslieMode, MANUAL_FIRST_NOTE, OrganEngine,
-    OrganPart, PercussionDecay, PercussionHarmonic, PercussionVolume, ScannerMode, ScannerVibrato,
-    drawbar_wheel, gear_frequency,
+    ConsoleElectronics, DRAWBAR_COUNT, Leslie, LeslieMode, MANUAL_FIRST_NOTE, MatchingTransformer,
+    OrganEngine, OrganPart, PercussionDecay, PercussionHarmonic, PercussionVolume, ScannerMode,
+    ScannerVibrato, drawbar_wheel, gear_frequency,
 };
 use std::f64::consts::TAU;
 use std::fmt::Write as _;
@@ -20,6 +20,7 @@ pub struct Artifacts {
     pub pedal_release: String,
     pub expression_response: String,
     pub tone_control_response: String,
+    pub transformer_intermodulation: String,
 }
 
 #[derive(Clone, Copy)]
@@ -47,6 +48,8 @@ fn analyze_inner() -> Result<Artifacts, String> {
     measurements.extend(expression);
     let (tone_control, tone_control_response) = tone_control_probe();
     measurements.extend(tone_control);
+    let (transformer, transformer_intermodulation) = transformer_probe();
+    measurements.extend(transformer);
     let (pedal, pedal_spectrum, pedal_release) = pedal_probe()?;
     measurements.extend(pedal);
     let (percussion, percussion_envelope) = percussion_probe()?;
@@ -64,6 +67,7 @@ fn analyze_inner() -> Result<Artifacts, String> {
         pedal_release,
         expression_response,
         tone_control_response,
+        transformer_intermodulation,
     })
 }
 
@@ -203,6 +207,70 @@ fn tone_control_gain(
         spectral_amplitude(&samples, frequency) / AMPLITUDE,
         electronics.diagnostics(),
     )
+}
+
+fn transformer_probe() -> (Vec<Measurement>, String) {
+    const CONFIGURATIONS: [(&str, f32, f32); 5] = [
+        ("clean", 0.0, 0.0),
+        ("baseline", 0.38, 0.32),
+        ("drive", 0.75, 0.32),
+        ("memory", 0.38, 0.75),
+        ("maximum", 1.0, 1.0),
+    ];
+    const C_HZ: f64 = 523.3;
+    const F_HZ: f64 = 698.5;
+    const DIFFERENCE_HZ: f64 = F_HZ - C_HZ;
+    let mut measurements = Vec::new();
+    let mut csv = String::from(
+        "configuration,drive,hysteresis,c_hz,f_hz,difference_hz,c_dbfs,f_dbfs,difference_dbc\n",
+    );
+    for (name, drive, hysteresis) in CONFIGURATIONS {
+        let samples = render_transformer_pair(drive, hysteresis, C_HZ, F_HZ);
+        let c = spectral_amplitude(&samples, C_HZ);
+        let f = spectral_amplitude(&samples, F_HZ);
+        let difference = spectral_amplitude(&samples, DIFFERENCE_HZ);
+        let carrier = 0.5 * (c + f);
+        let difference_dbc = decibels(difference / carrier);
+        let probe = match name {
+            "clean" => "transformer-clean",
+            "baseline" => "transformer-baseline",
+            "drive" => "transformer-drive",
+            "memory" => "transformer-memory",
+            "maximum" => "transformer-maximum",
+            _ => unreachable!(),
+        };
+        measurements.push(Measurement {
+            probe,
+            metric: "difference-product",
+            value: difference_dbc,
+            unit: "dBc",
+        });
+        writeln!(
+            &mut csv,
+            "{name},{drive:.3},{hysteresis:.3},{C_HZ:.3},{F_HZ:.3},{DIFFERENCE_HZ:.3},{:.6},{:.6},{difference_dbc:.6}",
+            decibels(c),
+            decibels(f)
+        )
+        .expect("string write cannot fail");
+    }
+    (measurements, csv)
+}
+
+fn render_transformer_pair(drive: f32, hysteresis: f32, c_hz: f64, f_hz: f64) -> Vec<f64> {
+    const AMPLITUDE: f64 = 0.18;
+    const SETTLE: usize = SAMPLE_RATE / 2;
+    let mut transformer = MatchingTransformer::new(SAMPLE_RATE as f32);
+    assert!(transformer.set(drive, hysteresis));
+    let mut samples = Vec::with_capacity(SAMPLE_RATE);
+    for frame in 0..SETTLE + SAMPLE_RATE {
+        let time = frame as f64 / SAMPLE_RATE as f64;
+        let input = AMPLITUDE * ((TAU * c_hz * time).sin() + (TAU * f_hz * time).sin());
+        let output = transformer.process(input as f32);
+        if frame >= SETTLE {
+            samples.push(f64::from(output));
+        }
+    }
+    samples
 }
 
 fn pedal_probe() -> Result<(Vec<Measurement>, String, String), String> {
@@ -854,5 +922,21 @@ mod tests {
         assert!(gain("tone-plus-9", "high-gain") > 8.5);
         assert!(gain("tone-neutral", "mid-gain").abs() < 0.001);
         assert_eq!(csv.lines().count(), 16);
+    }
+
+    #[test]
+    fn transformer_probe_exposes_the_difference_product() {
+        let (measurements, csv) = with_analysis_stack(transformer_probe);
+        let level = |probe| {
+            measurements
+                .iter()
+                .find(|measurement| measurement.probe == probe)
+                .unwrap()
+                .value
+        };
+        assert!(level("transformer-clean") < -100.0);
+        assert!(level("transformer-baseline") > level("transformer-clean"));
+        assert!(level("transformer-maximum") > level("transformer-baseline"));
+        assert_eq!(csv.lines().count(), 6);
     }
 }

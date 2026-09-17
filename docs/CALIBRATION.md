@@ -18,6 +18,8 @@ The suite contains:
 - an end-to-end A4 frequency, RMS and peak probe;
 - expression gain at 80 Hz, 1 kHz and 8 kHz for five pedal positions;
 - AO-28 tone-control response at 100 Hz, 1 kHz and 10 kHz across ±9 dB;
+- direct two-tone transformer difference-product levels across five magnetic
+  settings;
 - fast and slow percussion envelope curves measured in 10 ms RMS windows;
 - 1 kHz scanner carrier and ±6.9 Hz sideband levels for V1–V3 and C1–C3;
 - horn and drum acceleration/braking curves sampled every 10 ms, including
@@ -44,6 +46,8 @@ tables retain the underlying curves:
   making the passive-network coefficients independently fit-able.
 - `tone-control-response.csv` records gain relative to neutral at three
   frequencies for five control positions, isolating the post-V4B shelf.
+- `transformer-intermodulation.csv` drives the reduced magnetic model with
+  523.3 Hz and 698.5 Hz and reports their 175.2 Hz difference product.
 
 These values describe the current model; they are regression baselines, not
 claims about a particular historical console. A coefficient becomes calibrated
@@ -97,6 +101,13 @@ When isolated pedal captures are present, comparison also writes:
 - `pedal-fit-candidates.csv`, with relative gain multipliers for each resistor
   bus and a provisional L20 effective-cutoff starting point.
 
+When either transformer dyad is present, its complete single-C, single-F and
+C+F triplet is required. `transformer-intermodulation-comparison.csv` subtracts
+the two single-note noise/leakage powers from the dyad difference product and
+reports model/reference dBFS, dBc and error. Upper captures measure T2+T3;
+lower captures measure T1+T3. A separate T3 coefficient cannot be inferred
+from these two combined paths alone.
+
 Bus candidates are normalized to an unaffected anchor inside the same
 registration, so recording gain cancels out. They are fitting aids rather than
 replacement resistor values. The L20 candidate uses the noise-corrected
@@ -121,9 +132,25 @@ The three pedal captures use low C (MIDI 24), begin at 250 ms, release at
 16' only, 8' only and both drawbars respectively. Match that protocol when
 recording a reference console.
 
+## Transformer reference protocol
+
+Files `10` through `15` use only the 8' drawbar and MIDI C5/F5 (72/77). Record
+single C, single F and the C+F dyad first on the upper manual, then repeat the
+triplet on the lower manual. Begin at 250 ms, release at 3 seconds, capture four
+seconds total, use full expression, Normal volume, maximum-bandwidth AO-28 tone,
+and disable percussion, vibrato and Leslie rotation. Preserve recording gain
+across all six files and do not normalize them.
+
+For an electrical reference, the documented G-G output must be recorded only
+through a correctly rated isolated differential interface by a qualified tube-
+equipment technician. A powered AO-28 contains hazardous voltages. Do not open
+the console, defeat its grounding, or attach ordinary audio equipment directly
+to internal terminals. Microphone captures remain useful for end-to-end
+comparison but cannot isolate T1/T2/T3 from the cabinet and room.
+
 An RF-Organ-generated calibration directory may be used as the reference for a
 self-check without an external manifest. Comparing a directory with itself
-must yield zero deltas and envelope correlation 1.0 for all ten WAV files.
+must yield zero deltas and envelope correlation 1.0 for all sixteen WAV files.
 
 The generated `artifacts/` directory is intentionally ignored by Git. Curated
 measurement data should only enter the repository with clear redistribution

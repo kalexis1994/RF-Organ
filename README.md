@@ -3,7 +3,7 @@
 RF-Organ is a physically informed tonewheel-organ instrument for RackForge.
 It is written in Rust and licensed under GPL-2.0-or-later.
 
-The current `0.12.0` baseline establishes the real-time architecture:
+The current `0.13.0` baseline establishes the real-time architecture:
 
 - one continuously rotating bank of 91 shared tonewheels;
 - 60 Hz gear-ratio tuning instead of ideal equal temperament;
@@ -66,9 +66,10 @@ cargo run --release -p rf-organ-lab -- render artifacts/calibration
 cargo run --release -p rf-organ-lab -- compare artifacts/calibration path/to/reference-captures artifacts/comparison
 ```
 
-The output includes scalar measurements, expression and tone-control response,
-percussion envelopes, scanner sidebands, isolated pedal spectra and key-off
-response, and Leslie acceleration/braking curves alongside the audio renders.
+The output includes scalar measurements, expression, tone-control and
+transformer-intermodulation response, percussion envelopes, scanner sidebands,
+isolated pedal spectra and key-off response, and Leslie acceleration/braking
+curves alongside the audio renders.
 The comparator aligns reference captures without resampling or normalizing
 them, then reports level, crest, envelope and stereo differences. Isolated
 pedal captures additionally produce per-harmonic errors and provisional

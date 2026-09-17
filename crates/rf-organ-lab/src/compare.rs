@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 use crate::wav::{self, Audio};
-use rf_organ_dsp::gear_frequency;
+use rf_organ_dsp::{MANUAL_FIRST_NOTE, drawbar_wheel, gear_frequency};
 use std::collections::BTreeMap;
 use std::f64::consts::TAU;
 use std::fmt::Write as _;
@@ -9,7 +9,7 @@ use std::fs;
 use std::path::Path;
 
 const SAMPLE_RATE: u32 = 48_000;
-const CAPTURES: [&str; 10] = [
+const CAPTURES: [&str; 16] = [
     "01-direct-888",
     "02-third-percussion",
     "03-scanner-c3",
@@ -19,6 +19,12 @@ const CAPTURES: [&str; 10] = [
     "07-pedal-16ft",
     "08-pedal-8ft",
     "09-pedal-16ft-8ft",
+    "10-upper-transformer-c",
+    "11-upper-transformer-f",
+    "12-upper-transformer-c-f",
+    "13-lower-transformer-c",
+    "14-lower-transformer-f",
+    "15-lower-transformer-c-f",
     "leslie-cabinet-impulse",
 ];
 const PEDAL_HARMONICS: [(usize, usize); 8] = [
@@ -36,6 +42,7 @@ pub struct Reports {
     pub capture_comparison: String,
     pub pedal_spectrum_comparison: String,
     pub pedal_fit_candidates: String,
+    pub transformer_intermodulation_comparison: String,
     pub reference_quality: String,
 }
 
@@ -125,10 +132,13 @@ pub fn compare_directories(model: &Path, reference: &Path) -> Result<Reports, St
     }
     let (pedal_spectrum_comparison, pedal_fit_candidates) =
         compare_pedal_captures(model, reference, &quality)?;
+    let transformer_intermodulation_comparison =
+        compare_transformer_captures(model, reference, &quality)?;
     Ok(Reports {
         capture_comparison: report,
         pedal_spectrum_comparison,
         pedal_fit_candidates,
+        transformer_intermodulation_comparison,
         reference_quality,
     })
 }
@@ -259,6 +269,123 @@ fn write_bus_candidates(
     }
 }
 
+fn compare_transformer_captures(
+    model: &Path,
+    reference: &Path,
+    quality: &BTreeMap<String, CaptureQuality>,
+) -> Result<String, String> {
+    let triplets = [
+        (
+            "t2+t3",
+            "10-upper-transformer-c",
+            "11-upper-transformer-f",
+            "12-upper-transformer-c-f",
+        ),
+        (
+            "t1+t3",
+            "13-lower-transformer-c",
+            "14-lower-transformer-f",
+            "15-lower-transformer-c-f",
+        ),
+    ];
+    let mut csv = String::from(
+        "path,c_hz,f_hz,difference_hz,model_difference_dbfs,reference_difference_dbfs,model_difference_dbc,reference_difference_dbc,reference_minus_model_db,qualification\n",
+    );
+    for (path, c_capture, f_capture, dyad_capture) in triplets {
+        if !reference.join(format!("{dyad_capture}.wav")).is_file() {
+            continue;
+        }
+        let load_triplet = |directory: &Path| -> Result<[Audio; 3], String> {
+            let c = directory.join(format!("{c_capture}.wav"));
+            let f = directory.join(format!("{f_capture}.wav"));
+            let dyad = directory.join(format!("{dyad_capture}.wav"));
+            for required in [&c, &f, &dyad] {
+                if !required.is_file() {
+                    return Err(format!(
+                        "transformer comparison requires the complete triplet: {}",
+                        required.display()
+                    ));
+                }
+            }
+            Ok([read_audio(&c)?, read_audio(&f)?, read_audio(&dyad)?])
+        };
+        let model_audio = load_triplet(model)?;
+        let reference_audio = load_triplet(reference)?;
+        let model_levels = transformer_intermodulation(&model_audio)?;
+        let reference_levels = transformer_intermodulation(&reference_audio)?;
+        let capture_quality = quality
+            .get(dyad_capture)
+            .ok_or_else(|| format!("missing quality result for {dyad_capture}"))?;
+        writeln!(
+            &mut csv,
+            "{path},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{}",
+            model_levels.c_hz,
+            model_levels.f_hz,
+            model_levels.difference_hz,
+            model_levels.difference_dbfs,
+            reference_levels.difference_dbfs,
+            model_levels.difference_dbc,
+            reference_levels.difference_dbc,
+            reference_levels.difference_dbc - model_levels.difference_dbc,
+            capture_quality.qualification
+        )
+        .expect("string write cannot fail");
+    }
+    Ok(csv)
+}
+
+#[derive(Clone, Copy)]
+struct TransformerIntermodulation {
+    c_hz: f64,
+    f_hz: f64,
+    difference_hz: f64,
+    difference_dbfs: f64,
+    difference_dbc: f64,
+}
+
+fn transformer_intermodulation(audio: &[Audio; 3]) -> Result<TransformerIntermodulation, String> {
+    let c_hz = manual_frequency(72)?;
+    let f_hz = manual_frequency(77)?;
+    let difference_hz = f_hz - c_hz;
+    let c_single = spectral_amplitude(transformer_steady(&audio[0])?, difference_hz);
+    let f_single = spectral_amplitude(transformer_steady(&audio[1])?, difference_hz);
+    let dyad = transformer_steady(&audio[2])?;
+    let c = spectral_amplitude(dyad, c_hz);
+    let f = spectral_amplitude(dyad, f_hz);
+    let raw_difference = spectral_amplitude(dyad, difference_hz);
+    let corrected_power =
+        (raw_difference * raw_difference - c_single * c_single - f_single * f_single).max(1.0e-30);
+    let difference = corrected_power.sqrt();
+    let carrier = 0.5 * (c + f);
+    Ok(TransformerIntermodulation {
+        c_hz,
+        f_hz,
+        difference_hz,
+        difference_dbfs: decibels(difference),
+        difference_dbc: decibels(difference / carrier),
+    })
+}
+
+fn transformer_steady(audio: &Audio) -> Result<&[[f64; 2]], String> {
+    let onset = onset(audio)?;
+    let start = onset + SAMPLE_RATE as usize / 2;
+    audio
+        .frames
+        .get(start..start + SAMPLE_RATE as usize)
+        .ok_or_else(|| "transformer capture needs one steady second".to_owned())
+}
+
+fn manual_frequency(note: u8) -> Result<f64, String> {
+    let key = usize::from(
+        note.checked_sub(MANUAL_FIRST_NOTE)
+            .ok_or_else(|| format!("note {note} is outside the manual"))?,
+    );
+    let wheel = drawbar_wheel(key, 2).ok_or_else(|| format!("no 8-foot wheel for note {note}"))?;
+    gear_frequency(wheel)
+        .map(f64::from)
+        .ok_or_else(|| format!("missing gear frequency for wheel {}", wheel + 1))
+}
+
 fn analyze_reference_quality(
     reference: &Path,
 ) -> Result<(String, BTreeMap<String, CaptureQuality>), String> {
@@ -376,6 +503,8 @@ fn capture_quality(capture: &str, audio: &Audio) -> Result<QualityMeasurement, S
     let tuning_target = match capture {
         "07-pedal-16ft" | "09-pedal-16ft-8ft" => gear_frequency(0).map(f64::from),
         "08-pedal-8ft" => gear_frequency(12).map(f64::from),
+        "10-upper-transformer-c" | "13-lower-transformer-c" => manual_frequency(72).ok(),
+        "11-upper-transformer-f" | "14-lower-transformer-f" => manual_frequency(77).ok(),
         _ => None,
     };
     let (early_tuning_cents, late_tuning_cents, drift_cents) = if let Some(target) = tuning_target {
@@ -941,6 +1070,36 @@ mod tests {
                 .skip(1)
                 .all(|line| line.contains(",1.000000,multiplier,0.000000,"))
         );
+    }
+
+    #[test]
+    fn transformer_triplet_isolates_the_difference_product() {
+        let c_hz = manual_frequency(72).unwrap();
+        let f_hz = manual_frequency(77).unwrap();
+        let difference_hz = f_hz - c_hz;
+        let capture = |c_level: f64, f_level: f64, difference_level: f64| {
+            let mut frames = vec![[0.0, 0.0]; SAMPLE_RATE as usize * 4];
+            for (index, frame) in frames.iter_mut().enumerate() {
+                if (SAMPLE_RATE as usize / 4..SAMPLE_RATE as usize * 3).contains(&index) {
+                    let time = index as f64 / f64::from(SAMPLE_RATE);
+                    let sample = c_level * (TAU * c_hz * time).sin()
+                        + f_level * (TAU * f_hz * time).sin()
+                        + difference_level * (TAU * difference_hz * time).sin();
+                    *frame = [sample, sample];
+                }
+            }
+            Audio {
+                sample_rate: SAMPLE_RATE,
+                frames,
+            }
+        };
+        let levels = transformer_intermodulation(&[
+            capture(0.2, 0.0, 0.0),
+            capture(0.0, 0.2, 0.0),
+            capture(0.2, 0.2, 0.01),
+        ])
+        .unwrap();
+        assert!((levels.difference_dbc + 26.020_599_913).abs() < 0.05);
     }
 
     #[test]

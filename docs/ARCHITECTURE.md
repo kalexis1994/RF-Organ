@@ -53,7 +53,11 @@ V3B/12BH7 stage drives T3, whose magnetic state is independent from the T1/T2
 input matching transformers. Plugin output level remains outside this physical
 console path as a host-facing master control.
 
-## Version 0.12.0 limitations
+The laboratory renders upper and lower C/F single-note and dyad triplets. These
+measure the combined T2+T3 and T1+T3 paths respectively; they do not claim to
+identify T3 independently without a qualified bench injection measurement.
+
+## Version 0.13.0 limitations
 
 - The classic B-3 pedal contact and resistor-panel topology is present. The
   L20 pedal-filter coefficient and console matching-network constants remain

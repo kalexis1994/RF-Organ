@@ -79,6 +79,10 @@ fn compare_suite(model: &Path, reference: &Path, destination: &Path) -> Result<(
         destination.join("reference-quality.csv"),
         reports.reference_quality,
     )?;
+    fs::write(
+        destination.join("transformer-intermodulation-comparison.csv"),
+        reports.transformer_intermodulation_comparison,
+    )?;
     println!(
         "RF_ORGAN_LAB_COMPARED model={} reference={} path={}",
         model.display(),
@@ -138,6 +142,10 @@ fn render_suite(destination: &Path) -> Result<(), Box<dyn Error>> {
         destination.join("tone-control-response.csv"),
         analysis.tone_control_response,
     )?;
+    fs::write(
+        destination.join("transformer-intermodulation.csv"),
+        analysis.transformer_intermodulation,
+    )?;
     println!("RF_ORGAN_LAB_RENDERED path={}", destination.display());
     Ok(())
 }
@@ -153,10 +161,16 @@ enum Scenario {
     Pedal16,
     Pedal8,
     PedalBoth,
+    UpperTransformerC,
+    UpperTransformerF,
+    UpperTransformerDyad,
+    LowerTransformerC,
+    LowerTransformerF,
+    LowerTransformerDyad,
 }
 
 impl Scenario {
-    const ALL: [Self; 9] = [
+    const ALL: [Self; 15] = [
         Self::Direct,
         Self::Percussion,
         Self::Scanner,
@@ -166,6 +180,12 @@ impl Scenario {
         Self::Pedal16,
         Self::Pedal8,
         Self::PedalBoth,
+        Self::UpperTransformerC,
+        Self::UpperTransformerF,
+        Self::UpperTransformerDyad,
+        Self::LowerTransformerC,
+        Self::LowerTransformerF,
+        Self::LowerTransformerDyad,
     ];
 
     const fn id(self) -> &'static str {
@@ -179,11 +199,29 @@ impl Scenario {
             Self::Pedal16 => "07-pedal-16ft",
             Self::Pedal8 => "08-pedal-8ft",
             Self::PedalBoth => "09-pedal-16ft-8ft",
+            Self::UpperTransformerC => "10-upper-transformer-c",
+            Self::UpperTransformerF => "11-upper-transformer-f",
+            Self::UpperTransformerDyad => "12-upper-transformer-c-f",
+            Self::LowerTransformerC => "13-lower-transformer-c",
+            Self::LowerTransformerF => "14-lower-transformer-f",
+            Self::LowerTransformerDyad => "15-lower-transformer-c-f",
         }
     }
 
     const fn is_pedal(self) -> bool {
         matches!(self, Self::Pedal16 | Self::Pedal8 | Self::PedalBoth)
+    }
+
+    const fn transformer_registration(self) -> Option<(OrganPart, bool, bool)> {
+        match self {
+            Self::UpperTransformerC => Some((OrganPart::Upper, true, false)),
+            Self::UpperTransformerF => Some((OrganPart::Upper, false, true)),
+            Self::UpperTransformerDyad => Some((OrganPart::Upper, true, true)),
+            Self::LowerTransformerC => Some((OrganPart::Lower, true, false)),
+            Self::LowerTransformerF => Some((OrganPart::Lower, false, true)),
+            Self::LowerTransformerDyad => Some((OrganPart::Lower, true, true)),
+            _ => None,
+        }
     }
 }
 
@@ -205,6 +243,24 @@ fn configure(engine: &mut OrganEngine, scenario: Scenario) {
     let _ = engine.set_console(0.32, 0.0, 0.0);
     let _ = engine.set_expression_character(0.55);
     let _ = engine.set_leslie_cabinet(0.35, 0.75, 0.22, 0.0);
+    if let Some((part, _, _)) = scenario.transformer_registration() {
+        for manual in [OrganPart::Upper, OrganPart::Lower] {
+            for drawbar in 0..rf_organ_dsp::DRAWBAR_COUNT {
+                let _ = engine.set_manual_drawbar(manual, drawbar, 0);
+            }
+        }
+        for drawbar in 0..rf_organ_dsp::PEDAL_DRAWBAR_COUNT {
+            let _ = engine.set_manual_drawbar(OrganPart::Pedal, drawbar, 0);
+        }
+        let _ = engine.set_manual_drawbar(part, 2, 8);
+        let _ = engine.set_output_level(1.0);
+        let _ = engine.set_console(0.0, 0.0, 0.0);
+        let _ = engine.set_expression_character(0.0);
+        engine.set_scanner_mode(ScannerMode::Off);
+        engine.set_scanner_manuals(false, false);
+        engine.set_leslie_mode(LeslieMode::Off);
+        return;
+    }
     match scenario {
         Scenario::Direct => {}
         Scenario::Percussion => {
@@ -245,6 +301,12 @@ fn configure(engine: &mut OrganEngine, scenario: Scenario) {
                 let _ = engine.set_manual_drawbar(OrganPart::Pedal, index, position);
             }
         }
+        Scenario::UpperTransformerC
+        | Scenario::UpperTransformerF
+        | Scenario::UpperTransformerDyad
+        | Scenario::LowerTransformerC
+        | Scenario::LowerTransformerF
+        | Scenario::LowerTransformerDyad => unreachable!(),
     }
 }
 
@@ -253,7 +315,14 @@ fn phrase_events(engine: &mut OrganEngine, scenario: Scenario, frame: usize) {
     let on = quarter;
     let off = SAMPLE_RATE as usize * 3;
     if frame == on {
-        if scenario.is_pedal() {
+        if let Some((part, c, f)) = scenario.transformer_registration() {
+            if c {
+                let _ = engine.note_on_part(part, 72, 1.0);
+            }
+            if f {
+                let _ = engine.note_on_part(part, 77, 1.0);
+            }
+        } else if scenario.is_pedal() {
             let _ = engine.note_on_part(OrganPart::Pedal, 24, 1.0);
         } else {
             for note in [48, 55, 60, 64] {
@@ -300,7 +369,7 @@ fn frequency_table() -> String {
 
 fn manifest() -> String {
     format!(
-        "RF-Organ deterministic calibration suite\nversion={}\nsample_rate={}\nphrase_seconds={}\nnormalization=none\nformat=IEEE-float WAV stereo\nanalysis=frequency,level,pedal-spectrum,pedal-release,expression-response,tone-control-response,percussion-envelope,scanner-sidebands,leslie-rotor-response\n",
+        "RF-Organ deterministic calibration suite\nversion={}\nsample_rate={}\nphrase_seconds={}\nnormalization=none\nformat=IEEE-float WAV stereo\nanalysis=frequency,level,pedal-spectrum,pedal-release,expression-response,tone-control-response,transformer-intermodulation,percussion-envelope,scanner-sidebands,leslie-rotor-response\n",
         env!("CARGO_PKG_VERSION"),
         SAMPLE_RATE,
         SECONDS
@@ -333,5 +402,21 @@ mod tests {
         assert_eq!(Scenario::PedalBoth.id(), "09-pedal-16ft-8ft");
         assert!(Scenario::PedalBoth.is_pedal());
         assert!(!Scenario::FullConsole.is_pedal());
+    }
+
+    #[test]
+    fn transformer_reference_scenarios_have_stable_capture_names() {
+        assert_eq!(Scenario::UpperTransformerC.id(), "10-upper-transformer-c");
+        assert_eq!(Scenario::UpperTransformerF.id(), "11-upper-transformer-f");
+        assert_eq!(
+            Scenario::UpperTransformerDyad.id(),
+            "12-upper-transformer-c-f"
+        );
+        assert_eq!(Scenario::LowerTransformerC.id(), "13-lower-transformer-c");
+        assert_eq!(Scenario::LowerTransformerF.id(), "14-lower-transformer-f");
+        assert_eq!(
+            Scenario::LowerTransformerDyad.id(),
+            "15-lower-transformer-c-f"
+        );
     }
 }

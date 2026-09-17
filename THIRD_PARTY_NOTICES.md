@@ -67,3 +67,8 @@ separate V3B/12BH7 stage and T3 magnetic state. The physical console offered
 tone cut only; RF-Organ retains the existing bipolar calibration parameter and
 uses Hammond's documented modern ±9 dB extension around neutral. The response
 and output-transformer coefficients remain provisional pending measurement.
+
+Version 0.13.0 adds an independently written two-tone transformer probe and
+upper/lower reference-capture triplets based on Hammond's published C/F
+difference-product listening test. It reports combined T2+T3 and T1+T3 paths;
+no individual transformer coefficient is presented as measured or fitted.
