@@ -103,6 +103,10 @@ impl Contact {
 #[derive(Clone, Copy)]
 struct Key {
     active: bool,
+    /// Whether this key has already touched a contact during the press it is
+    /// in, so that the percussion is discharged once per key and not once per
+    /// contact.
+    touched: bool,
     /// Whether any of this key's contacts still has work to do. A console has
     /// 549 manual contacts and almost all of them are idle at any moment.
     settling: bool,
@@ -112,6 +116,7 @@ struct Key {
 impl Key {
     const EMPTY: Self = Self {
         active: false,
+        touched: false,
         settling: false,
         contacts: [Contact::EMPTY; DRAWBAR_COUNT],
     };
@@ -133,6 +138,10 @@ pub struct Manual {
     event_counter: u32,
     /// Keys down right now, which is what the leakage grows with.
     held: u8,
+    /// Set for the one sample in which some key's first contact touched its
+    /// busbar. The percussion supply is discharged by a contact, not by a
+    /// decision, so this is what it waits for.
+    took_first_contact: bool,
     leakage_boost: f32,
 }
 
@@ -147,6 +156,7 @@ impl Manual {
             contact_bounce: 0.45,
             event_counter: 0,
             held: 0,
+            took_first_contact: false,
             leakage_boost: LEAKAGE_BOOST_DEFAULT,
         };
         for key in 0..MANUAL_KEY_COUNT {
@@ -247,7 +257,16 @@ impl Manual {
         }
     }
 
+    /// Whether a key's first contact touched during the last tick, and
+    /// clears the report.
+    pub fn took_first_contact(&mut self) -> bool {
+        let took = self.took_first_contact;
+        self.took_first_contact = false;
+        took
+    }
+
     pub fn tick_contacts(&mut self) {
+        let mut touched = false;
         for key in &mut self.keys {
             if !key.settling {
                 continue;
@@ -259,10 +278,19 @@ impl Manual {
                     let level = DRAWBAR_LEVELS[self.drawbars[bus] as usize];
                     self.wheel_gains[contact.wheel as usize] += (contact.gate - before) * level;
                 }
+                // The first of the nine to touch anything, whichever it is.
+                touched |= before == 0.0 && contact.gate > 0.0 && !key.touched;
                 settling |= !contact.settled();
+            }
+            if touched {
+                key.touched = true;
+            }
+            if !key.active && key.contacts.iter().all(|contact| contact.gate == 0.0) {
+                key.touched = false;
             }
             key.settling = settling;
         }
+        self.took_first_contact = touched;
     }
 
     /// How fast the leakage grows as more keys go down.

@@ -320,6 +320,16 @@ at Normal volume the upper drawbars are reduced "by a small amount (about
 6 dB)" while Soft leaves them alone. The 6 dB figure is the manufacturer's,
 and RF-Organ applies it as such.
 
+Version 0.39.0 takes one more sentence from the XK-7 manual, about when the
+envelope starts: "The Percussion 'decay' begins at the #1 contact and is
+released at a specified contact. If you press a key very slowly, you may hear
+the Percussion tone but only the end of the decay or no sound." RF-Organ
+triggered it at the key event instead, which is a different machine - the
+supply was discharged by a decision rather than by a contact touching a
+busbar. It is discharged by the contact now, and since the tone is already
+heard through the harmonic buses' own contacts, the behaviour that sentence
+describes is what the two together produce rather than a rule written down.
+
 Hammond documents no decay times, attack time or recovery behaviour in
 seconds, so those constants stay provisional and are exposed as measurements
 instead: the laboratory reports the four decay curves, the attack, the

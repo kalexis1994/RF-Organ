@@ -166,7 +166,7 @@ microphones, so moving them back zooms out instead of pushing them off the
 edge. The parameter table the surface validates against is the engine's, not a
 copy of it; a range that moves in the DSP moves there too.
 
-## Version 0.38.0 limitations
+## Version 0.39.0 limitations
 
 - The classic B-3 pedal contact and resistor-panel topology is present. The
   L20 pedal-filter coefficient and console matching-network constants remain
@@ -175,6 +175,16 @@ copy of it; a range that moves in the DSP moves there too.
 - Percussion routing follows the AO-28 schematic and Hammond's documented
   console behaviour, but its decay times, attack and recovery are provisional:
   the manufacturer publishes no figures in seconds for them.
+- The percussion supply is discharged by the first contact a key touches,
+  which is what Hammond describes, so a slower press starts its decay further
+  ahead of the harmonic bus it is heard through and delivers less. The
+  mechanism is there and measured; the amount is not, because it is set by the
+  contact spread, and this model's widest spread is eight milliseconds against
+  a decay of about a second - 0.05 dB, where Hammond describes losing most of
+  the tone. That gap is a statement about the contact model rather than the
+  percussion, and the percussion is now the way to measure it: a console
+  recorded at several touches gives the spread directly, without the keyboard
+  action study that sits behind a paywall.
 - Contact timing is a provisional deterministic model. The published keyboard
   action study is behind a paywall, so the laboratory measures the spread and
   the click rather than claiming a fitted one.

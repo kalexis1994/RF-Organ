@@ -416,6 +416,28 @@ A dynamic capsule reads 2.0 dB below a condenser at 10 kHz and 0.8 dB above it
 at 4 kHz. Both numbers are provisional and describe no particular microphone.
 To measure this properly you would need to know which two Hammond modelled.
 
+## Percussion touch protocol
+
+The `percussion-touch-` rows of `measurements.csv` press one key at four
+velocities and report each peak against the briskest. The model currently
+gives 0.00, 0.03, 0.05 and 0.03 dB, which is to say almost nothing, and the
+reason is worth reading rather than fixing by hand.
+
+The supply is discharged by the first contact the key touches and the tone is
+heard through the harmonic buses' contacts, so what a press loses is the time
+between those two. This model's widest spread is eight milliseconds and the
+slow decay is about a second, so eight milliseconds costs 0.05 dB - the
+arithmetic agrees with the measurement, and both agree that the contact spread
+is the thing that is too narrow.
+
+Hammond describes a press slow enough to hear "only the end of the decay or no
+sound", which at that decay needs hundreds of milliseconds between the first
+contact and the harmonic bus. So this measurement is an independent handle on
+the contact spread: record a console at several touches, read the percussion
+peak against the briskest, and the spread that explains the curve is the
+spread. It costs a recording rather than access to the keyboard action study
+that sits behind a paywall.
+
 ## Vibrato line protocol
 
 `scanner-line-cutoff.csv` reads the line's gain at four frequencies at each of

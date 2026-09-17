@@ -72,6 +72,8 @@ pub struct OrganEngine {
     output_transformer: MatchingTransformer,
     scanner: ScannerVibrato,
     percussion: Percussion,
+    /// A press is waiting for its first contact to discharge the supply.
+    percussion_armed: bool,
     rotary: Rotary,
     transformer_character: (f32, f32),
     transformer_trims: [(f32, f32); 3],
@@ -101,6 +103,7 @@ impl OrganEngine {
             output_transformer: MatchingTransformer::new(sample_rate),
             scanner: ScannerVibrato::new(sample_rate),
             percussion: Percussion::new(sample_rate),
+            percussion_armed: false,
             rotary: Rotary::new(sample_rate),
             transformer_character: (0.35, 0.25),
             transformer_trims: [(0.0, 0.0); 3],
@@ -131,8 +134,11 @@ impl OrganEngine {
             return false;
         }
         if !was_active {
+            // Single trigger: the supply has to have recovered, which it only
+            // does with every key up. What fires the envelope is not this
+            // event though - it is the contact this key is about to touch.
             if self.held_notes == 0 {
-                self.percussion.trigger();
+                self.percussion_armed = true;
             }
             self.held_notes = self.held_notes.saturating_add(1);
         }
@@ -430,6 +436,14 @@ impl OrganEngine {
     pub fn next_sample(&mut self) -> [f32; 2] {
         self.tonewheels.tick();
         self.upper.tick_contacts();
+        // Hammond's own description: the percussion decay "begins at the #1
+        // contact". A key pressed slowly touches that contact early and opens
+        // the harmonic bus late, so what is left to hear by then is the end of
+        // the decay, or nothing.
+        if self.upper.took_first_contact() && self.percussion_armed {
+            self.percussion_armed = false;
+            self.percussion.trigger();
+        }
         self.lower.tick_contacts();
         self.pedals.tick_contacts();
         let wheels = self.tonewheels.samples();
@@ -497,6 +511,57 @@ mod tests {
     extern crate std;
 
     use super::*;
+
+    /// Hammond: "The Percussion 'decay' begins at the #1 contact and is
+    /// released at a specified contact. If you press a key very slowly, you
+    /// may hear the Percussion tone but only the end of the decay or no
+    /// sound."
+    ///
+    /// What is checked here is the mechanism and not the amount. The supply is
+    /// discharged by whichever contact touches first, so a gentler press -
+    /// which spreads the nine contacts further apart - has to start its
+    /// percussion earlier relative to the tone it is heard through. How much
+    /// is then lost depends on how far apart a slow press really spreads them,
+    /// which is a provisional model of its own; the laboratory reports what it
+    /// currently comes to.
+    #[test]
+    fn the_percussion_starts_at_a_contact_and_not_at_a_decision() {
+        let onset = |velocity: f32| {
+            let mut engine = OrganEngine::new(48_000.0).expect("engine");
+            for drawbar in 0..DRAWBAR_COUNT {
+                assert!(engine.set_manual_drawbar(OrganPart::Upper, drawbar, 0));
+            }
+            assert!(engine.set_leakage(0.0));
+            assert!(engine.set_contact_spread(1.0));
+            assert!(engine.set_contact_bounce(0.0));
+            engine.set_percussion_enabled(true);
+            engine.set_percussion_volume(PercussionVolume::Normal);
+            engine.set_percussion_decay(PercussionDecay::Slow);
+            assert!(engine.note_on_part(OrganPart::Upper, 60, velocity));
+            let mut first = None;
+            for frame in 0..24_000 {
+                let [left, _] = engine.next_sample();
+                if first.is_none() && left.abs() > 1.0e-5 {
+                    first = Some(frame);
+                }
+            }
+            first.expect("the percussion sounded")
+        };
+        let brisk = onset(1.0);
+        let gentle = onset(0.05);
+        // A gentler press takes longer to touch anything at all.
+        assert!(
+            gentle > brisk,
+            "a gentle press sounded as soon as a brisk one: {gentle} against {brisk}"
+        );
+        // And what it loses is the time between its own contacts, which at the
+        // widest this model spreads them is eight milliseconds.
+        assert!(
+            gentle - brisk < 48 * 10,
+            "the press took {} samples longer than a brisk one",
+            gentle - brisk
+        );
+    }
 
     #[test]
     fn silence_does_not_stop_the_generator() {

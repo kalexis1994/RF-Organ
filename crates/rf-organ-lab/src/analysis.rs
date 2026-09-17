@@ -77,6 +77,7 @@ fn analyze_inner() -> Result<Artifacts, String> {
     measurements.extend(pedal);
     let (percussion, percussion_envelope, percussion_recovery) = percussion_probe()?;
     measurements.extend(percussion);
+    measurements.extend(percussion_touch_probe()?);
     let (keying, keying_contacts) = keying_probe()?;
     measurements.extend(keying);
     let (scanner, scanner_sidebands, scanner_line_response) = scanner_probe();
@@ -2202,6 +2203,55 @@ fn drive_wobble_probe() -> Result<(Vec<Measurement>, String), String> {
         ],
         csv,
     ))
+}
+
+/// How much percussion a key delivers, against how briskly it was pressed.
+///
+/// Hammond's own account: the decay "begins at the #1 contact and is released
+/// at a specified contact", and "if you press a key very slowly, you may hear
+/// the Percussion tone but only the end of the decay or no sound". Nothing
+/// here implements that rule as a rule. The supply is discharged by whichever
+/// contact touches first, the tone is heard through the harmonic bus contacts,
+/// and a gentler press puts more time between the two, which is the whole of
+/// the effect.
+fn percussion_touch_probe() -> Result<Vec<Measurement>, String> {
+    const VELOCITIES: [(&str, f32); 4] = [
+        ("brisk", 1.0),
+        ("firm", 0.6),
+        ("light", 0.25),
+        ("gentle", 0.05),
+    ];
+    let peak = |velocity: f32| -> Result<f64, String> {
+        let mut engine = clean_engine()?;
+        engine.set_percussion_enabled(true);
+        engine.set_percussion_volume(PercussionVolume::Normal);
+        engine.set_percussion_decay(PercussionDecay::Slow);
+        engine.set_percussion_harmonic(PercussionHarmonic::Third);
+        assert!(engine.set_contact_spread(1.0));
+        assert!(engine.note_on_part(OrganPart::Upper, C_NOTE, velocity));
+        let mut peak = 0.0_f64;
+        for _ in 0..SAMPLE_RATE / 2 {
+            peak = peak.max(f64::from(engine.next_sample()[0].abs()));
+        }
+        Ok(peak)
+    };
+    let brisk = peak(VELOCITIES[0].1)?;
+    let mut measurements = Vec::new();
+    for (name, velocity) in VELOCITIES {
+        let level = peak(velocity)?;
+        measurements.push(Measurement {
+            probe: match name {
+                "brisk" => "percussion-touch-brisk",
+                "firm" => "percussion-touch-firm",
+                "light" => "percussion-touch-light",
+                _ => "percussion-touch-gentle",
+            },
+            metric: "peak-against-brisk",
+            value: decibels(level / brisk.max(1.0e-15)),
+            unit: "dB",
+        });
+    }
+    Ok(measurements)
 }
 
 fn clean_engine() -> Result<OrganEngine, String> {
