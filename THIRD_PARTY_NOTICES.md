@@ -27,6 +27,28 @@ marks is reproduced anywhere.
 - RF-Organ translates the relevant concepts and tables into safe Rust; it does
   not link the setBfree C implementation.
 
+## Contact delay
+
+Version 0.40.0 takes the contact delay from the XK-7 manual's own contact
+page, where it is a control with a published range: a virtual contact may be
+delayed by up to 725.6 ms after the physical one is made. The same manual
+describes the 9 (+1 for percussion) contacts of a B-3/C-3 being simulated by
+6 physical contacts and software delays, with velocity measured between the
+first and the sixth.
+
+That number is what this model was missing. Its own spread - what a press
+gives the contacts on its own - tops out at eight milliseconds, which is three
+orders of magnitude short of what the same manual's percussion page needs when
+it describes a key "pressed very slowly" leaving "only the end of the decay or
+no sound". The delay is a control here because it is a control there, it starts
+at zero so that nothing already recorded moves, and at the published ceiling
+the percussion measures 15.3 dB down.
+
+What is still not documented is the mapping: how long a real key at a real
+speed actually takes between its first contact and its last. The published
+range bounds it and the percussion measures it; the keyboard action study that
+would settle it is behind a paywall.
+
 ## Dynamic contact-envelope research
 
 - Paper: Giulio Moro, Andrew P. McPherson and Mark B. Sandler, "Dynamic

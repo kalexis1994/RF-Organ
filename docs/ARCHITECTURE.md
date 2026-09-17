@@ -166,7 +166,7 @@ microphones, so moving them back zooms out instead of pushing them off the
 edge. The parameter table the surface validates against is the engine's, not a
 copy of it; a range that moves in the DSP moves there too.
 
-## Version 0.39.0 limitations
+## Version 0.40.0 limitations
 
 - The classic B-3 pedal contact and resistor-panel topology is present. The
   L20 pedal-filter coefficient and console matching-network constants remain
@@ -187,7 +187,11 @@ copy of it; a range that moves in the DSP moves there too.
   action study that sits behind a paywall.
 - Contact timing is a provisional deterministic model. The published keyboard
   action study is behind a paywall, so the laboratory measures the spread and
-  the click rather than claiming a fitted one.
+  the click rather than claiming a fitted one. What a press spreads on its own
+  reaches eight milliseconds; Hammond's own contact delay, which is documented
+  with a ceiling of 725.6 ms, is a separate control starting at zero. At that
+  ceiling the percussion measures 15.3 dB down, which is the behaviour the
+  percussion page describes and which eight milliseconds cannot produce.
 - The AO-28 component values are not available: the schematic in the service
   manual reachable from `docs/RESEARCH.md` is a scan that does not survive
   character recognition, and its parts list covers assemblies rather than

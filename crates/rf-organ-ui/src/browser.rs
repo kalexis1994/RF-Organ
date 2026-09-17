@@ -14,7 +14,7 @@ use web_sys::{
 };
 
 const PLUGIN_ID: &str = "org.rackforge.organ";
-const CONTROL_IDS: [&str; 72] = [
+const CONTROL_IDS: [&str; 73] = [
     "output",
     "expression",
     "u16",
@@ -87,6 +87,7 @@ const CONTROL_IDS: [&str; 72] = [
     "v4a-trim",
     "v4b-trim",
     "v3b-trim",
+    "contact-delay",
 ];
 
 /// Steps of the display's own rotor model per second.

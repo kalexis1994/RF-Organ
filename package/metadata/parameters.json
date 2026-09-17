@@ -785,6 +785,16 @@
       "kind": { "type": "float", "minimum": -1.0, "maximum": 1.0, "default": 0.0, "step": 0.001 },
       "flags": { "automatable": true, "advanced": true },
       "suggested_control": "knob"
+    },
+    {
+      "index": 72,
+      "id": "contact-delay",
+      "name": "Contact Delay",
+      "page": "generator",
+      "order": 13,
+      "kind": { "type": "float", "minimum": 0.0, "maximum": 1.0, "default": 0.0, "step": 0.001 },
+      "flags": { "automatable": true, "advanced": true },
+      "suggested_control": "knob"
     }
   ],
   "semantic_controls": [

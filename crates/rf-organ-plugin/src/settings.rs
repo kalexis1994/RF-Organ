@@ -9,7 +9,7 @@ use rf_organ_dsp::{
     STAGE_CHARACTER_RANGE, SUB_LEVEL_DEFAULT_DB, ScannerMode, StopAngle, TransformerUnit,
 };
 
-pub const PARAMETER_COUNT: usize = 72;
+pub const PARAMETER_COUNT: usize = 73;
 /// Per-stage offsets from the shared console character, ordered V4A, V4B, V3B.
 pub const CONSOLE_STAGE_TRIM_FIRST: u32 = 69;
 /// Bipolar per-transformer calibration trims, ordered T1, T2, T3.
@@ -28,6 +28,9 @@ pub struct Settings {
     pub drawbars: [u8; DRAWBAR_COUNT],
     pub contact_spread: f64,
     pub contact_bounce: f64,
+    /// Hammond's documented per-contact delay, as a fraction of its published
+    /// 725.6 ms ceiling.
+    pub contact_delay: f64,
     pub leakage: f64,
     /// How far the resiliently coupled drive is allowed to stray from its
     /// nominal speed.
@@ -99,6 +102,7 @@ impl Default for Settings {
             drawbars: [8, 8, 8, 0, 0, 0, 0, 0, 0],
             contact_spread: 0.55,
             contact_bounce: 0.45,
+            contact_delay: 0.0,
             leakage: 0.2,
             drive_wobble: 1.0,
             leakage_boost: LEAKAGE_BOOST_DEFAULT as f64,
@@ -155,6 +159,7 @@ impl Settings {
             && self.pedal_drawbars.iter().all(|position| *position <= 8)
             && unit(self.contact_spread)
             && unit(self.contact_bounce)
+            && unit(self.contact_delay)
             && unit(self.leakage)
             && unit(self.drive_wobble)
             && unit(self.leakage_boost)
@@ -262,6 +267,7 @@ impl Settings {
             67 => self.leakage_boost,
             68 => self.console_stage_character,
             69..=71 => self.console_stage_trims[(index - CONSOLE_STAGE_TRIM_FIRST) as usize],
+            72 => self.contact_delay,
             52 => self.rotary_mic_pattern,
             53 => self.rotary_horn_radius,
             54 => self.rotary_drum_radius,
@@ -346,6 +352,7 @@ impl Settings {
             69..=71 => {
                 self.console_stage_trims[(index - CONSOLE_STAGE_TRIM_FIRST) as usize] = value;
             }
+            72 => self.contact_delay = value,
             52 => self.rotary_mic_pattern = value,
             53 => self.rotary_horn_radius = value,
             54 => self.rotary_drum_radius = value,
@@ -379,6 +386,7 @@ impl Settings {
         }
         let _ = engine.set_contact_spread(self.contact_spread as f32);
         let _ = engine.set_contact_bounce(self.contact_bounce as f32);
+        let _ = engine.set_contact_delay(self.contact_delay as f32);
         let _ = engine.set_leakage(self.leakage as f32);
         let _ = engine.set_drive_wobble(self.drive_wobble as f32);
         let _ = engine.set_leakage_boost(self.leakage_boost as f32);

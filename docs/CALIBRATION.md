@@ -432,11 +432,16 @@ is the thing that is too narrow.
 
 Hammond describes a press slow enough to hear "only the end of the decay or no
 sound", which at that decay needs hundreds of milliseconds between the first
-contact and the harmonic bus. So this measurement is an independent handle on
-the contact spread: record a console at several touches, read the percussion
-peak against the briskest, and the spread that explains the curve is the
-spread. It costs a recording rather than access to the keyboard action study
-that sits behind a paywall.
+contact and the harmonic bus - and the same manual's contact page publishes a
+delay control with a ceiling of 725.6 ms, which is where those hundreds of
+milliseconds come from. The `percussion-delay-` rows wind that delay in and
+report -3.5, -9.4 and -15.3 dB at a quarter, a half and all of it. The last is
+the sentence about a slow press, measured.
+
+So this is an independent handle on the contact spread: record a console at
+several touches, read the percussion peak against the briskest, and the delay
+that explains the curve is the delay. It costs a recording rather than access
+to the keyboard action study that sits behind a paywall.
 
 ## Vibrato line protocol
 

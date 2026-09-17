@@ -2221,13 +2221,14 @@ fn percussion_touch_probe() -> Result<Vec<Measurement>, String> {
         ("light", 0.25),
         ("gentle", 0.05),
     ];
-    let peak = |velocity: f32| -> Result<f64, String> {
+    let peak = |velocity: f32, delay: f32| -> Result<f64, String> {
         let mut engine = clean_engine()?;
         engine.set_percussion_enabled(true);
         engine.set_percussion_volume(PercussionVolume::Normal);
         engine.set_percussion_decay(PercussionDecay::Slow);
         engine.set_percussion_harmonic(PercussionHarmonic::Third);
         assert!(engine.set_contact_spread(1.0));
+        assert!(engine.set_contact_delay(delay));
         assert!(engine.note_on_part(OrganPart::Upper, C_NOTE, velocity));
         let mut peak = 0.0_f64;
         for _ in 0..SAMPLE_RATE / 2 {
@@ -2235,16 +2236,32 @@ fn percussion_touch_probe() -> Result<Vec<Measurement>, String> {
         }
         Ok(peak)
     };
-    let brisk = peak(VELOCITIES[0].1)?;
+    let brisk = peak(VELOCITIES[0].1, 0.0)?;
     let mut measurements = Vec::new();
     for (name, velocity) in VELOCITIES {
-        let level = peak(velocity)?;
+        let level = peak(velocity, 0.0)?;
         measurements.push(Measurement {
             probe: match name {
                 "brisk" => "percussion-touch-brisk",
                 "firm" => "percussion-touch-firm",
                 "light" => "percussion-touch-light",
                 _ => "percussion-touch-gentle",
+            },
+            metric: "peak-against-brisk",
+            value: decibels(level / brisk.max(1.0e-15)),
+            unit: "dB",
+        });
+    }
+
+    // And with the documented delay wound in, which is the range the console's
+    // own control covers and the range the sentence about a slow press needs.
+    for (name, amount) in [("quarter", 0.25_f32), ("half", 0.5), ("full", 1.0)] {
+        let level = peak(VELOCITIES[0].1, amount)?;
+        measurements.push(Measurement {
+            probe: match name {
+                "quarter" => "percussion-delay-quarter",
+                "half" => "percussion-delay-half",
+                _ => "percussion-delay-full",
             },
             metric: "peak-against-brisk",
             value: decibels(level / brisk.max(1.0e-15)),
@@ -2621,6 +2638,50 @@ mod tests {
         );
         assert!(value("rate-spread") < 8.0);
         assert!(value("corner-gain") < 0.0);
+    }
+
+    /// Hammond's contact page carries a delay with a published ceiling of
+    /// 725.6 ms, and its percussion page describes a key "pressed very slowly"
+    /// leaving "only the end of the decay or no sound". Those two are the same
+    /// sentence from opposite ends, and the model has to be able to get from
+    /// one to the other: at the published ceiling the percussion has to be
+    /// most of the way gone, and at no delay nothing may have moved at all.
+    #[test]
+    fn the_documented_delay_reaches_the_documented_percussion() {
+        let measurements = with_analysis_stack(|| percussion_touch_probe().unwrap());
+        let value = |probe: &str| {
+            measurements
+                .iter()
+                .find(|measurement| measurement.probe == probe)
+                .expect("probe")
+                .value
+        };
+        assert_eq!(value("percussion-touch-brisk"), 0.0);
+        // A press alone barely moves it, because the spread a press gives is
+        // eight milliseconds against a decay of about a second.
+        for probe in [
+            "percussion-touch-firm",
+            "percussion-touch-light",
+            "percussion-touch-gentle",
+        ] {
+            assert!(
+                value(probe).abs() < 0.5,
+                "{probe} moved {} dB on its own",
+                value(probe)
+            );
+        }
+        // The delay does, and in order.
+        let quarter = value("percussion-delay-quarter");
+        let half = value("percussion-delay-half");
+        let full = value("percussion-delay-full");
+        assert!(
+            quarter < -1.0 && half < quarter && full < half,
+            "the delay did not take the percussion away in order: {quarter} {half} {full}"
+        );
+        assert!(
+            full < -10.0,
+            "at the published ceiling the percussion was still {full} dB down"
+        );
     }
 
     #[test]

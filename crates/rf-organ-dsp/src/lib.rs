@@ -256,6 +256,11 @@ impl OrganEngine {
         self.electronics.set_stage_trim(stage, trim)
     }
 
+    /// How much of Hammond's documented contact delay to add to every press.
+    pub fn set_contact_delay(&mut self, amount: f32) -> bool {
+        self.upper.set_contact_delay(amount) && self.lower.set_contact_delay(amount)
+    }
+
     pub fn set_leakage_boost(&mut self, rate: f32) -> bool {
         self.upper.set_leakage_boost(rate) && self.lower.set_leakage_boost(rate)
     }

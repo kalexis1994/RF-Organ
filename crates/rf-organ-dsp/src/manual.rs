@@ -7,6 +7,23 @@ pub const DRAWBAR_COUNT: usize = 9;
 /// the rate control. Provisional: Hammond publishes that the rate exists and
 /// is adjustable, not what it is.
 const LEAKAGE_PER_KEY: f32 = 0.35;
+
+/// How far apart a key's contacts may be asked to arrive, beyond the spread a
+/// press of its own gives them.
+///
+/// Hammond's own contact page carries this as a control with a published
+/// range: a virtual contact may be delayed by up to 725.6 ms after the
+/// physical one is made. That is three orders of magnitude past what a briskly
+/// played key spreads, and it is the range the console needs in order to do
+/// what the same manual describes elsewhere - a key "pressed very slowly"
+/// losing its percussion, which at a decay of about a second takes hundreds of
+/// milliseconds between the first contact and the bus the tone is heard
+/// through.
+///
+/// It is a separate control here because it is a separate control there. The
+/// spread above is what a press does; this is what the instrument is set to
+/// do on top of it, and at zero it does nothing at all.
+pub const CONTACT_DELAY_CEILING_S: f32 = 0.7256;
 /// Where that rate control starts, which is also provisional.
 pub const LEAKAGE_BOOST_DEFAULT: f32 = 0.5;
 pub const MANUAL_FIRST_NOTE: u8 = 36;
@@ -138,6 +155,7 @@ pub struct Manual {
     event_counter: u32,
     /// Keys down right now, which is what the leakage grows with.
     held: u8,
+    contact_delay: f32,
     /// Set for the one sample in which some key's first contact touched its
     /// busbar. The percussion supply is discharged by a contact, not by a
     /// decision, so this is what it waits for.
@@ -154,6 +172,7 @@ impl Manual {
             sample_rate,
             contact_spread: 0.55,
             contact_bounce: 0.45,
+            contact_delay: 0.0,
             event_counter: 0,
             held: 0,
             took_first_contact: false,
@@ -232,7 +251,12 @@ impl Manual {
     fn schedule_key(&mut self, key: usize, target: bool, velocity: f32) {
         self.event_counter = self.event_counter.wrapping_add(1);
         self.keys[key].settling = true;
-        let spread_seconds = self.contact_spread * (0.0004 + 0.008 * (1.0 - velocity));
+        // What the press itself spreads, and what the instrument is set to add
+        // on top. Hammond's delay is per contact and not scaled by how the key
+        // was played; this keeps that, and spends it across the same order the
+        // contacts already close in.
+        let spread_seconds = self.contact_spread * (0.0004 + 0.008 * (1.0 - velocity))
+            + self.contact_delay * CONTACT_DELAY_CEILING_S;
         let spread_samples = (spread_seconds * self.sample_rate) as u32;
         let bounce_samples =
             (self.contact_bounce * (0.0015 + 0.004 * velocity) * self.sample_rate) as u32;
@@ -303,6 +327,16 @@ impl Manual {
     /// while the note each key asked for only grows with that key. What is
     /// documented is that it grows and that the rate is adjustable; how
     /// steeply is not, so the step per key is provisional.
+    /// How much of the documented contact delay to add to every press, from
+    /// none at zero to the published 725.6 ms at one.
+    pub fn set_contact_delay(&mut self, amount: f32) -> bool {
+        if !unit(amount) {
+            return false;
+        }
+        self.contact_delay = amount;
+        true
+    }
+
     pub fn set_leakage_boost(&mut self, rate: f32) -> bool {
         if !unit(rate) {
             return false;
