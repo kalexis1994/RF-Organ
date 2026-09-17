@@ -57,6 +57,13 @@ impl Contact {
         self.noise = seed.max(1);
     }
 
+    /// A contact with nothing left to do: no delay to count down, no bounce
+    /// left, and its gate already where the key put it. Ticking it again
+    /// cannot change anything, which is what lets the scan skip whole keys.
+    const fn settled(&self) -> bool {
+        self.delay == 0 && self.bounce_left == 0 && self.gate == if self.target { 1.0 } else { 0.0 }
+    }
+
     fn tick(&mut self) -> bool {
         if self.delay > 0 {
             self.delay -= 1;
@@ -89,14 +96,24 @@ impl Contact {
 #[derive(Clone, Copy)]
 struct Key {
     active: bool,
+    /// Whether any of this key's contacts still has work to do. A console has
+    /// 549 manual contacts and almost all of them are idle at any moment.
+    settling: bool,
     contacts: [Contact; DRAWBAR_COUNT],
 }
 
 impl Key {
     const EMPTY: Self = Self {
         active: false,
+        settling: false,
         contacts: [Contact::EMPTY; DRAWBAR_COUNT],
     };
+
+    /// Whether this key can contribute anything to the output: it is either
+    /// held, or still on its way to or from being held.
+    const fn sounding(&self) -> bool {
+        self.active || self.settling
+    }
 }
 
 pub struct Manual {
@@ -190,6 +207,7 @@ impl Manual {
 
     fn schedule_key(&mut self, key: usize, target: bool, velocity: f32) {
         self.event_counter = self.event_counter.wrapping_add(1);
+        self.keys[key].settling = true;
         let spread_seconds = self.contact_spread * (0.0004 + 0.008 * (1.0 - velocity));
         let spread_samples = (spread_seconds * self.sample_rate) as u32;
         let bounce_samples =
@@ -217,13 +235,19 @@ impl Manual {
 
     pub fn tick_contacts(&mut self) {
         for key in &mut self.keys {
+            if !key.settling {
+                continue;
+            }
+            let mut settling = false;
             for (bus, contact) in key.contacts.iter_mut().enumerate() {
                 let before = contact.gate;
                 if contact.tick() {
                     let level = DRAWBAR_LEVELS[self.drawbars[bus] as usize];
                     self.wheel_gains[contact.wheel as usize] += (contact.gate - before) * level;
                 }
+                settling |= !contact.settled();
             }
+            key.settling = settling;
         }
     }
 
@@ -244,7 +268,7 @@ impl Manual {
         }
         if suppress_ninth_drawbar {
             let level = DRAWBAR_LEVELS[self.drawbars[8] as usize];
-            for key in &self.keys {
+            for key in self.keys.iter().filter(|key| key.sounding()) {
                 let contact = key.contacts[8];
                 let index = contact.wheel as usize;
                 let leak = compartment_pair(index).map_or(0.0, |pair| wheels[pair]);
@@ -257,7 +281,7 @@ impl Manual {
     pub fn harmonic_sample(&self, wheels: &[f32; TONEWHEEL_COUNT], bus: usize) -> f32 {
         debug_assert!(bus < DRAWBAR_COUNT);
         let mut output = 0.0;
-        for key in &self.keys {
+        for key in self.keys.iter().filter(|key| key.sounding()) {
             let contact = key.contacts[bus];
             output += contact.gate * wheels[contact.wheel as usize];
         }
@@ -272,6 +296,7 @@ impl Manual {
         self.wheel_gains.fill(0.0);
         for key in &mut self.keys {
             key.active = false;
+            key.settling = false;
             for contact in &mut key.contacts {
                 contact.gate = 0.0;
                 contact.target = false;
@@ -329,6 +354,47 @@ mod tests {
         assert_eq!(drawbar_wheel(0, 0), Some(12));
         assert_eq!(drawbar_wheel(0, 2), Some(12));
         assert_eq!(drawbar_wheel(60, 8), Some(84));
+    }
+
+    /// The scan only visits keys that have something to do. Everything else
+    /// on a 61-key manual is 549 contacts that cannot change.
+    #[test]
+    fn a_key_stops_being_scanned_once_its_contacts_settle() {
+        let mut manual = Manual::new(48_000.0);
+        assert!(manual.keys.iter().all(|key| !key.settling));
+
+        assert!(manual.note_on(60, 1.0));
+        let key = usize::from(60 - MANUAL_FIRST_NOTE);
+        assert!(manual.keys[key].settling);
+        for _ in 0..4_800 {
+            manual.tick_contacts();
+        }
+        assert!(!manual.keys[key].settling);
+        assert!(manual.keys[key].sounding());
+        assert!(
+            manual.keys[key]
+                .contacts
+                .iter()
+                .all(|contact| contact.gate == 1.0)
+        );
+
+        assert!(manual.note_off(60, 1.0));
+        assert!(manual.keys[key].settling);
+        for _ in 0..4_800 {
+            manual.tick_contacts();
+        }
+        assert!(
+            manual
+                .keys
+                .iter()
+                .all(|key| !key.settling && !key.sounding())
+        );
+        assert!(
+            manual.keys[key]
+                .contacts
+                .iter()
+                .all(|contact| contact.gate == 0.0)
+        );
     }
 
     #[test]

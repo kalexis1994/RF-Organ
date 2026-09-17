@@ -103,7 +103,19 @@ Keying reaches the generator through nine contacts per key, which close over a
 few milliseconds with the highest first, and the laboratory times them one
 drawbar at a time so the same protocol can be run on a console.
 
-## Version 0.17.0 limitations
+## Cost
+
+A console has 1298 key contacts and almost none of them are doing anything at
+any given moment, so the engine scans only the keys whose contacts have not
+settled. A settled contact has no delay left to count down, no bounce left and
+a gate already at its key's position, so skipping it cannot change the output;
+the laboratory confirms that by rendering the whole calibration suite byte for
+byte identically across the change.
+
+What remains when nothing is keyed is the generator itself, which is
+inherent: the 91 wheels turn whether or not anyone is playing.
+
+## Version 0.18.0 limitations
 
 - The classic B-3 pedal contact and resistor-panel topology is present. The
   L20 pedal-filter coefficient and console matching-network constants remain
@@ -129,8 +141,8 @@ drawbar at a time so the same protocol can be run on a console.
   `docs/CALIBRATION.md`.
 - Leslie cabinet reflections and angle-dependent filters are present, but
   their coefficients are not yet fitted to multi-angle cabinet measurements.
-- The engine is measured as sample-rate invariant from 32 to 192 kHz, but a
-  fully engaged console leaves little headroom at 192 kHz: roughly 1.7x real
-  time on the development machine, against 2.1x before the vibrato line landed.
-  The ladder is the largest single cost and an exact banded solve would be
+- The engine is measured as sample-rate invariant from 32 to 192 kHz. A fully
+  engaged console runs about 19x real time at 48 kHz and 4.3x at 192 kHz on the
+  development machine. The largest remaining costs are the generator, which is
+  inherent, and the vibrato ladder, for which an exact banded solve would be
   cheaper than the banded transition it uses today.

@@ -352,18 +352,59 @@ fn pedal_key_off(rate: u32) -> Result<f64, String> {
         .ok_or_else(|| format!("pedal release did not converge at {rate} Hz"))
 }
 
-/// Cost of one second of audio from a fully engaged console.
+/// Registrations the benchmark walks through, each adding one subsystem to
+/// the one before it, so that the difference between two rows is what that
+/// subsystem costs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Load {
+    /// The generator turning with nothing keyed.
+    Idle,
+    /// Thirteen keys held across both manuals and the pedals.
+    Keys,
+    /// The percussion channel on top of them.
+    Percussion,
+    /// Both manuals switched into the vibrato line.
+    Vibrato,
+    /// And the rotary cabinet: everything at once.
+    Rotary,
+}
+
+impl Load {
+    pub const ALL: [Self; 5] = [
+        Self::Idle,
+        Self::Keys,
+        Self::Percussion,
+        Self::Vibrato,
+        Self::Rotary,
+    ];
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Idle => "idle",
+            Self::Keys => "keys",
+            Self::Percussion => "percussion",
+            Self::Vibrato => "vibrato",
+            Self::Rotary => "rotary",
+        }
+    }
+}
+
+/// Cost of one second of audio at one sample rate and one load.
 #[derive(Clone, Copy, Debug)]
 pub struct Performance {
     pub sample_rate: u32,
+    pub load: Load,
     pub seconds_rendered: f64,
     pub elapsed_seconds: f64,
     pub realtime_factor: f64,
+    /// Nanoseconds per sample this load adds over the one before it.
+    pub added_ns_per_sample: f64,
 }
 
-/// Renders a worst-case registration at every supported rate and reports how
-/// many times faster than real time the engine runs. The numbers describe this
-/// machine and this build; they are a regression signal, not a specification.
+/// Renders each load at every supported rate and reports how many times
+/// faster than real time the engine runs, and what each subsystem adds. The
+/// numbers describe this machine and this build; they are a regression signal
+/// and a guide for where optimisation is worth spending, not a specification.
 pub fn benchmark() -> Result<Vec<Performance>, String> {
     std::thread::Builder::new()
         .name("rf-organ-benchmark".into())
@@ -375,40 +416,47 @@ pub fn benchmark() -> Result<Vec<Performance>, String> {
 }
 
 fn benchmark_inner() -> Result<Vec<Performance>, String> {
-    const SECONDS: usize = 5;
-    let mut measurements = Vec::with_capacity(RATES.len());
+    const SECONDS: usize = 3;
+    let mut measurements = Vec::with_capacity(RATES.len() * Load::ALL.len());
     for rate in RATES {
-        let mut engine = full_console(rate)?;
-        // One warm-up block keeps the first timed sample out of the engine's
-        // cold caches.
-        for _ in 0..1_024 {
-            engine.next_sample();
+        let mut previous_ns = 0.0;
+        for load in Load::ALL {
+            let mut engine = console(rate, load)?;
+            // One warm-up block keeps the first timed sample out of the
+            // engine's cold caches.
+            for _ in 0..1_024 {
+                engine.next_sample();
+            }
+            let frames = rate as usize * SECONDS;
+            let start = std::time::Instant::now();
+            let mut sink = 0.0_f32;
+            for _ in 0..frames {
+                let [left, right] = engine.next_sample();
+                sink += left + right;
+            }
+            let elapsed = start.elapsed().as_secs_f64();
+            assert!(sink.is_finite());
+            if elapsed <= 0.0 {
+                return Err(format!("benchmark clock did not advance at {rate} Hz"));
+            }
+            let ns_per_sample = elapsed * 1.0e9 / frames as f64;
+            measurements.push(Performance {
+                sample_rate: rate,
+                load,
+                seconds_rendered: SECONDS as f64,
+                elapsed_seconds: elapsed,
+                realtime_factor: SECONDS as f64 / elapsed,
+                added_ns_per_sample: ns_per_sample - previous_ns,
+            });
+            previous_ns = ns_per_sample;
         }
-        let frames = rate as usize * SECONDS;
-        let start = std::time::Instant::now();
-        let mut sink = 0.0_f32;
-        for _ in 0..frames {
-            let [left, right] = engine.next_sample();
-            sink += left + right;
-        }
-        let elapsed = start.elapsed().as_secs_f64();
-        assert!(sink.is_finite());
-        if elapsed <= 0.0 {
-            return Err(format!("benchmark clock did not advance at {rate} Hz"));
-        }
-        measurements.push(Performance {
-            sample_rate: rate,
-            seconds_rendered: SECONDS as f64,
-            elapsed_seconds: elapsed,
-            realtime_factor: SECONDS as f64 / elapsed,
-        });
     }
     Ok(measurements)
 }
 
-/// Every subsystem active at once: both manuals and pedals held, full
-/// drawbars, percussion, scanner and a rotating cabinet.
-fn full_console(rate: u32) -> Result<OrganEngine, String> {
+/// The console at one of the benchmark's loads. Every load above `Idle`
+/// includes the ones before it, so the rows subtract cleanly.
+fn console(rate: u32, load: Load) -> Result<OrganEngine, String> {
     let mut engine = OrganEngine::new(rate as f32).map_err(|error| error.0.to_owned())?;
     for (index, position) in [8, 8, 8, 8, 6, 8, 4, 8, 6].into_iter().enumerate() {
         assert!(engine.set_manual_drawbar(OrganPart::Upper, index, position));
@@ -419,31 +467,50 @@ fn full_console(rate: u32) -> Result<OrganEngine, String> {
     }
     assert!(engine.set_transformer(0.62, 0.38));
     assert!(engine.set_console(0.48, 0.18, -0.08));
-    engine.set_percussion_enabled(true);
-    engine.set_scanner_mode(ScannerMode::Chorus3);
-    engine.set_scanner_manuals(true, true);
-    engine.set_leslie_mode(LeslieMode::Tremolo);
+    engine.set_scanner_mode(ScannerMode::Off);
+    engine.set_scanner_manuals(false, false);
+    engine.set_leslie_mode(LeslieMode::Off);
+    if load == Load::Idle {
+        return Ok(engine);
+    }
     for note in [48, 52, 55, 60, 64, 67] {
         assert!(engine.note_on_part(OrganPart::Upper, note, 0.9));
         assert!(engine.note_on_part(OrganPart::Lower, note, 0.9));
     }
     assert!(engine.note_on_part(OrganPart::Pedal, 24, 1.0));
+    if load == Load::Keys {
+        return Ok(engine);
+    }
+    engine.set_percussion_enabled(true);
+    if load == Load::Percussion {
+        return Ok(engine);
+    }
+    engine.set_scanner_mode(ScannerMode::Chorus3);
+    engine.set_scanner_manuals(true, true);
+    if load == Load::Vibrato {
+        return Ok(engine);
+    }
+    engine.set_leslie_mode(LeslieMode::Tremolo);
     Ok(engine)
 }
 
 pub fn performance_report(measurements: &[Performance]) -> String {
     let mut csv = String::from(
-        "sample_rate_hz,seconds_rendered,elapsed_seconds,realtime_factor
+        "sample_rate_hz,load,seconds_rendered,elapsed_seconds,realtime_factor,ns_per_sample,added_ns_per_sample
 ",
     );
     for measurement in measurements {
+        let ns_per_sample = measurement.elapsed_seconds * 1.0e9
+            / (f64::from(measurement.sample_rate) * measurement.seconds_rendered);
         writeln!(
             &mut csv,
-            "{},{:.3},{:.6},{:.3}",
+            "{},{},{:.3},{:.6},{:.3},{ns_per_sample:.3},{:.3}",
             measurement.sample_rate,
+            measurement.load.label(),
             measurement.seconds_rendered,
             measurement.elapsed_seconds,
-            measurement.realtime_factor
+            measurement.realtime_factor,
+            measurement.added_ns_per_sample
         )
         .expect("string write cannot fail");
     }

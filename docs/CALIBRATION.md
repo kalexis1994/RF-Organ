@@ -298,13 +298,27 @@ the largest deviations are 10 ms on the percussion T60, which is one analysis
 window, and 0.05 dBc on the scanner sideband, which the LC ladder reproduces at
 every rate.
 
-`performance.csv` renders five seconds of a worst-case registration — both
-manuals and pedals held, full drawbars, percussion, C3 scanner and Tremolo
-rotation — and reports the real-time factor. On the development machine that is
-about 7.0x real time at 48 kHz and 1.7x at 192 kHz, against 8.6x and 2.1x
-before the vibrato ladder replaced the delay-line stand-in. Those numbers
-describe one machine and one build; they are a regression signal and the
-starting point for optimisation work, not a specification.
+`performance.csv` walks five loads at each rate, each adding one subsystem to
+the one before it — an idle generator, then thirteen keys held across both
+manuals and the pedals, then percussion, then both manuals switched into the
+vibrato line, then the rotary cabinet — and reports the real-time factor, the
+cost per sample and what each subsystem adds. Subtracting one row from the
+previous one is what makes it a guide for where optimisation is worth
+spending.
+
+The first breakdown paid for itself immediately. The idle generator cost
+2058 ns per sample, three quarters of a fully engaged console, and it cost the
+same at every sample rate — the mark of work that does not depend on the audio.
+It was the contact scan: 549 manual contacts, 549 more on the lower manual and
+200 on the pedals, all ticked every sample whether or not anything was
+happening to them. Keys now drop out of the scan once their contacts settle,
+which is exact because a settled contact's gate already sits where its key put
+it. Idle fell to 612 ns per sample and the fully engaged console went from
+7.4x to 19.1x real time at 48 kHz, and from 1.8x to 4.3x at 192 kHz, with the
+whole calibration suite rendering byte for byte identically.
+
+Those numbers describe one machine and one build; they are a regression signal,
+not a specification.
 
 The full survey is also available as
 `cargo test --release -p rf-organ-lab -- --ignored`. Ordinary test runs keep the

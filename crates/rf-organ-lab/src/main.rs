@@ -91,6 +91,7 @@ fn sweep_suite(destination: &Path) -> Result<(), Box<dyn Error>> {
     )?;
     let slowest = performance
         .iter()
+        .filter(|measurement| measurement.load == invariance::Load::Rotary)
         .map(|measurement| measurement.realtime_factor)
         .fold(f64::INFINITY, f64::min);
     let rate_dependent = invariants

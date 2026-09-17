@@ -56,6 +56,12 @@ impl Contact {
         self.noise = seed.max(1);
     }
 
+    /// See the manual's contact: nothing left to count down, nothing left to
+    /// bounce, gate already where the key put it.
+    const fn settled(&self) -> bool {
+        self.delay == 0 && self.bounce_left == 0 && self.gate == if self.target { 1.0 } else { 0.0 }
+    }
+
     fn tick(&mut self) {
         if self.delay > 0 {
             self.delay -= 1;
@@ -93,14 +99,21 @@ impl Contact {
 #[derive(Clone, Copy)]
 struct PedalKey {
     active: bool,
+    /// Whether any of this pedal's contacts still has work to do.
+    settling: bool,
     contacts: [Contact; PEDAL_CONTACT_COUNT],
 }
 
 impl PedalKey {
     const EMPTY: Self = Self {
         active: false,
+        settling: false,
         contacts: [Contact::EMPTY; PEDAL_CONTACT_COUNT],
     };
+
+    const fn sounding(&self) -> bool {
+        self.active || self.settling
+    }
 }
 
 /// Twenty-five-note console pedal clavier. Each key closes eight harmonic
@@ -200,6 +213,7 @@ impl Pedalboard {
 
     fn schedule_key(&mut self, key: usize, target: bool, velocity: f32) {
         self.event_counter = self.event_counter.wrapping_add(1);
+        self.keys[key].settling = true;
         let spread_seconds = self.contact_spread * (0.0004 + 0.008 * (1.0 - velocity));
         let spread_samples = (spread_seconds * self.sample_rate) as u32;
         let bounce_samples =
@@ -226,15 +240,21 @@ impl Pedalboard {
 
     pub fn tick_contacts(&mut self) {
         for key in &mut self.keys {
+            if !key.settling {
+                continue;
+            }
+            let mut settling = false;
             for contact in &mut key.contacts {
                 contact.tick();
+                settling |= !contact.settled();
             }
+            key.settling = settling;
         }
     }
 
     pub fn sample(&mut self, wheels: &[f32; TONEWHEEL_COUNT]) -> f32 {
         let mut buses = [0.0; PEDAL_BUS_COUNT];
-        for key in &self.keys {
+        for key in self.keys.iter().filter(|key| key.sounding()) {
             for (contact_index, contact) in key.contacts.iter().enumerate() {
                 buses[contact_index / 2] += contact.gate * wheels[contact.wheel as usize];
             }
@@ -256,6 +276,7 @@ impl Pedalboard {
         self.low_bus_state = 0.0;
         for key in &mut self.keys {
             key.active = false;
+            key.settling = false;
             for contact in &mut key.contacts {
                 contact.reset();
             }
@@ -291,6 +312,31 @@ fn hash(mut value: u32) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Same as the manuals: a settled pedal drops out of the scan and stops
+    /// contributing, which is exact because its gates are then zero.
+    #[test]
+    fn a_pedal_stops_being_scanned_once_its_contacts_settle() {
+        let mut pedals = Pedalboard::new(48_000.0);
+        assert!(pedals.keys.iter().all(|key| !key.settling));
+        assert!(pedals.note_on(24, 1.0));
+        assert!(pedals.keys[0].settling);
+        for _ in 0..4_800 {
+            pedals.tick_contacts();
+        }
+        assert!(!pedals.keys[0].settling && pedals.keys[0].sounding());
+        assert!(pedals.note_off(24, 1.0));
+        for _ in 0..4_800 {
+            pedals.tick_contacts();
+        }
+        assert!(pedals.keys.iter().all(|key| !key.sounding()));
+        assert!(
+            pedals.keys[0]
+                .contacts
+                .iter()
+                .all(|contact| contact.gate == 0.0)
+        );
+    }
 
     #[test]
     fn pedal_range_and_drawbars_are_bounded() {
