@@ -416,6 +416,32 @@ A dynamic capsule reads 2.0 dB below a condenser at 10 kHz and 0.8 dB above it
 at 4 kHz. Both numbers are provisional and describe no particular microphone.
 To measure this properly you would need to know which two Hammond modelled.
 
+## Vibrato line protocol
+
+`scanner-line-cutoff.csv` reads the line's gain at four frequencies at each of
+the five supported rates. Three are inside the band the organ uses and the
+fourth is the corner the components put at 7117.6 Hz, which is derived and not
+fitted: a constant-k section of 500 mH and 4 nF turns over at one over pi root
+LC.
+
+The corner's gain drifts 4.78 dB from the slowest rate to the fastest, and the
+drift has a direction - the faster the clock, the closer to the circuit. That
+is the bilinear transform bending frequency, and there is a standard remedy
+which the DAFx-2016 vibrato paper applies: warp the step so that one chosen
+frequency maps exactly. It was tried here and it works. Warped at the corner,
+the spread there falls from 4.78 dB to 0.001, and the worst spread anywhere in
+the four bands falls from 6.06 dB to 4.43.
+
+It was reverted. A warped step is a different step, so the ladder's delay
+scales with T'/T - twenty per cent at 32 kHz - and this ladder is a delay
+line. The vibrato's sideband level, which is the depth a player hears, moved
+8.7 dB across the rates with the warping in and stays inside 1 dB without it.
+The paper warps to match magnitude responses and is right to; this model uses
+the ladder for its delay, so it keeps the delay and lets the corner drift.
+
+Both numbers are held by tests, so changing the discretisation has to come
+past a measurement rather than past an opinion.
+
 ## Console stage protocol
 
 `console-injection-*.wav` are three bench signals: a 1 kHz tone at a quarter

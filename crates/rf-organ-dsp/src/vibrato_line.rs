@@ -31,6 +31,13 @@ const CAPACITANCE_F: [f64; SECTIONS] = [
     4.0e-9, 4.0e-9, 4.0e-9, 4.0e-9, 4.0e-9, 4.0e-9, 4.0e-9, 4.0e-9, 4.0e-9, 4.0e-9, 4.0e-9, 4.0e-9,
     4.0e-9, 4.0e-9, 4.0e-9, 4.0e-9, 4.0e-9, 1.0e-9,
 ];
+/// Where the ladder gives up, from the components alone: a constant-k
+/// low-pass section built from a series inductance and a shunt capacitance
+/// turns over at one over pi root LC, which for 500 mH and 4 nF is just over
+/// seven kilohertz. This is not fitted; it is what the two values above make,
+/// and the laboratory measures the gain there at every supported rate.
+pub const CUTOFF_HZ: f64 = 7117.6259;
+
 const TERMINATION_OHM: f64 = 15_000.0;
 /// Rc: in circuit for chorus, shorted for vibrato.
 const SOURCE_OHM: f64 = 22_000.0;
@@ -130,7 +137,7 @@ impl Ladder {
         let states = if driven { STATES - 1 } else { STATES };
         let (derivative, source) = assemble(driven);
         let (explicit, lower, inverse_pivot, upper, input) =
-            factor(&derivative, &source, states, 1.0 / sample_rate);
+            factor(&derivative, &source, states, step_seconds_for(sample_rate));
         Self {
             explicit,
             lower,
@@ -250,6 +257,33 @@ fn assemble(driven: bool) -> ([[f64; STATES]; STATES], [f64; STATES]) {
         }
     }
     (derivative, source)
+}
+
+/// The step the trapezoidal rule is given, which is the one the clock ticks
+/// at, and an account of why it is not warped.
+///
+/// Integrating a continuous circuit by the trapezoidal rule is the bilinear
+/// transform, and the bilinear transform bends frequency: what the components
+/// put at a corner arrives a little lower, and by more the slower the clock.
+/// The remedy is standard, and the DAFx-2016 vibrato paper uses it - replace
+/// the step T by `T' = 2 tan(W T / 2) / W`, which maps one chosen frequency
+/// exactly - so it was tried here, warped at the ladder's own corner.
+///
+/// It does what it promises. The corner stops moving with the clock: across
+/// the five supported rates its gain went from a spread of 4.78 dB to one of
+/// 0.001 dB, and the worst spread anywhere in the band fell from 6.06 dB to
+/// 4.43 dB.
+///
+/// It was reverted anyway, because of what it costs. A warped step is a
+/// different step, so the ladder's delay is scaled by T'/T - twenty per cent
+/// at 32 kHz - and this ladder's whole purpose is its delay. The vibrato's
+/// sideband level, which is the depth a player hears, moved 8.7 dB across
+/// those same rates with the warping in and stays inside 1 dB without it. The
+/// paper warps to match magnitude responses and is right to; RF-Organ uses
+/// the ladder as a delay, so it keeps the delay and lets the corner's
+/// magnitude drift. `docs/CALIBRATION.md` has the measurement.
+fn step_seconds_for(sample_rate: f64) -> f64 {
+    1.0 / sample_rate
 }
 
 /// Splits the trapezoidal step into the explicit half and the factors of the
@@ -575,7 +609,10 @@ mod tests {
                 let ladder = Ladder::build(rate, driven);
                 let (derivative, source) = assemble(driven);
                 let (transition, input) =
-                    trapezoidal(&derivative, &source, ladder.states, 1.0 / rate);
+                    // The same step the engine took, warped and all: the
+                    // reference is there to check the solve, not the
+                    // discretisation.
+                    trapezoidal(&derivative, &source, ladder.states, step_seconds_for(rate));
 
                 let mut solved = [0.0_f32; STATES];
                 let mut dense = [0.0_f32; STATES];

@@ -38,7 +38,7 @@ pub use scanner::{ScannerMode, ScannerVibrato};
 pub use taper::TAPER;
 pub use tonewheel::{TONEWHEEL_COUNT, gear_frequency, gear_teeth};
 pub use transformer::{MatchingTransformer, TransformerDiagnostics, TransformerUnit};
-pub use vibrato_line::ROTOR_HZ as SCANNER_ROTOR_HZ;
+pub use vibrato_line::{CUTOFF_HZ as SCANNER_LINE_CUTOFF_HZ, ROTOR_HZ as SCANNER_ROTOR_HZ};
 
 use manual::Manual;
 use pedal::Pedalboard;

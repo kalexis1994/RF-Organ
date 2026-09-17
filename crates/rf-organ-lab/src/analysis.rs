@@ -22,6 +22,7 @@ pub struct Artifacts {
     pub keying_contacts: String,
     pub scanner_sidebands: String,
     pub scanner_line_response: String,
+    pub scanner_line_cutoff: String,
     pub rotary_rotor_response: String,
     pub rotary_doppler: String,
     pub rotary_stop_angle: String,
@@ -80,6 +81,8 @@ fn analyze_inner() -> Result<Artifacts, String> {
     measurements.extend(keying);
     let (scanner, scanner_sidebands, scanner_line_response) = scanner_probe();
     measurements.extend(scanner);
+    let (cutoff, scanner_line_cutoff) = scanner_cutoff_probe();
+    measurements.extend(cutoff);
     let (rotary, rotary_rotor_response) = rotary_probe();
     measurements.extend(rotary);
     let (doppler, rotary_doppler) = rotary_doppler_probe();
@@ -97,6 +100,7 @@ fn analyze_inner() -> Result<Artifacts, String> {
         keying_contacts,
         scanner_sidebands,
         scanner_line_response,
+        scanner_line_cutoff,
         rotary_rotor_response,
         rotary_doppler,
         rotary_stop_angle,
@@ -1262,6 +1266,87 @@ fn scanner_gain(mode: ScannerMode, frequency: f64) -> f64 {
     for frame in 0..settle + window {
         let input = (TAU * frequency * frame as f64 / SAMPLE_RATE as f64).sin() as f32 * 0.5;
         let sample = f64::from(scanner.process(input));
+        if frame >= settle {
+            power += sample * sample;
+        }
+    }
+    (2.0 * power / window as f64).sqrt() / AMPLITUDE
+}
+
+/// Whether the clock moves the vibrato line's response.
+///
+/// The components put the ladder's corner at just over seven kilohertz and
+/// nothing about a sample rate should move it. Integrating a circuit by the
+/// trapezoidal rule bends frequency, though, and by more the slower the clock.
+///
+/// The reading is a gain at fixed frequencies rather than a corner frequency.
+/// An eighteen-section ladder ripples, so the curve crosses any particular
+/// level more than once and asking where it crosses is asking the wrong
+/// question; asking what the gain is at a stated frequency is not.
+fn scanner_cutoff_probe() -> (Vec<Measurement>, String) {
+    const RATES: [u32; 5] = [32_000, 44_100, 48_000, 96_000, 192_000];
+    // The last one is the corner the components put there.
+    let bands = [
+        1_000.0,
+        3_000.0,
+        5_000.0,
+        rf_organ_dsp::SCANNER_LINE_CUTOFF_HZ,
+    ];
+    let mut csv = String::from(
+        "sample_rate_hz,frequency_hz,gain_db
+",
+    );
+    let mut measurements = Vec::new();
+    let mut spread = 0.0_f64;
+    let mut corner = Vec::new();
+    for frequency in bands {
+        let (mut lowest, mut highest) = (f64::MAX, f64::MIN);
+        for rate in RATES {
+            let gain = decibels(line_gain(rate, frequency));
+            lowest = lowest.min(gain);
+            highest = highest.max(gain);
+            writeln!(&mut csv, "{rate},{frequency:.1},{gain:.6}")
+                .expect("string write cannot fail");
+            if frequency == bands[bands.len() - 1] {
+                corner.push(gain);
+            }
+        }
+        spread = spread.max(highest - lowest);
+    }
+    let corner_mean = corner.iter().sum::<f64>() / corner.len() as f64;
+    measurements.push(Measurement {
+        probe: "scanner-line",
+        metric: "rate-spread",
+        value: spread,
+        unit: "dB",
+    });
+    measurements.push(Measurement {
+        probe: "scanner-line",
+        metric: "corner-gain",
+        value: corner_mean,
+        unit: "dB",
+    });
+    (measurements, csv)
+}
+
+/// Gain of the line at one frequency, at a given rate.
+///
+/// The scanner is turning while this is measured, so the reading is taken over
+/// a whole number of its revolutions and as power rather than at one bin: over
+/// a full scan the answer is the line's, and over part of one it is whatever
+/// the rotor happened to be doing.
+fn line_gain(rate: u32, frequency: f64) -> f64 {
+    const AMPLITUDE: f64 = 0.5;
+    const REVOLUTIONS: f64 = 5.0;
+    let settle = rate as usize / 4;
+    let window =
+        (REVOLUTIONS * f64::from(rate) / f64::from(rf_organ_dsp::SCANNER_ROTOR_HZ)) as usize;
+    let mut scanner = ScannerVibrato::new(rate as f32);
+    scanner.set_mode(ScannerMode::Vibrato1);
+    let mut power = 0.0;
+    for frame in 0..settle + window {
+        let input = (TAU * frequency * frame as f64 / f64::from(rate)).sin() * AMPLITUDE;
+        let sample = f64::from(scanner.process(input as f32));
         if frame >= settle {
             power += sample * sample;
         }
@@ -2443,6 +2528,51 @@ mod tests {
     /// same proportion, because they are geared to one shaft. Two notes an
     /// octave and a half apart are measured together and have to agree; a
     /// generator whose wheels drifted on their own would not.
+    /// The ladder's corner drifts with the clock, and this pins how much.
+    ///
+    /// That drift is the price of an unwarped step, and the price was chosen
+    /// deliberately: warping the discretisation at the corner removes it
+    /// entirely - 4.78 dB of spread becomes 0.001 - but scales the ladder's
+    /// delay with the clock, and the vibrato depth that delay produces then
+    /// moves 8.7 dB across the same rates. A delay line is kept as a delay.
+    /// `vibrato_line.rs` carries the argument; this holds the number, so that
+    /// a change to the discretisation has to come past a measurement.
+    #[test]
+    fn the_ladder_corner_drifts_by_the_amount_the_step_costs() {
+        let (measurements, csv) = with_analysis_stack(scanner_cutoff_probe);
+        let value = |metric: &str| {
+            measurements
+                .iter()
+                .find(|measurement| measurement.metric == metric)
+                .expect("measurement")
+                .value
+        };
+        let mut corner: Vec<f64> = Vec::new();
+        for line in csv.lines().skip(1) {
+            let fields = line.split(',').collect::<Vec<_>>();
+            let frequency: f64 = fields[1].parse().expect("frequency");
+            if (frequency - rf_organ_dsp::SCANNER_LINE_CUTOFF_HZ).abs() < 1.0 {
+                corner.push(fields[2].parse().expect("gain"));
+            }
+        }
+        assert_eq!(corner.len(), 5);
+        let lowest = corner.iter().copied().fold(f64::MAX, f64::min);
+        let highest = corner.iter().copied().fold(f64::MIN, f64::max);
+        let drift = highest - lowest;
+        assert!(
+            (3.0..6.0).contains(&drift),
+            "the corner drifted {drift} dB across the rates: {corner:?}"
+        );
+        // The faster the clock the closer the corner gets to the circuit, so
+        // the drift has a direction and not only a size.
+        assert!(
+            corner[corner.len() - 1] > corner[0],
+            "the drift lost its direction: {corner:?}"
+        );
+        assert!(value("rate-spread") < 8.0);
+        assert!(value("corner-gain") < 0.0);
+    }
+
     #[test]
     fn the_whole_generator_strays_together() {
         let (measurements, csv) = with_analysis_stack(|| drive_wobble_probe().unwrap());

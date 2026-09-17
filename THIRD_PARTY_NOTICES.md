@@ -71,6 +71,18 @@ licence applies to them. Their subject is the drawbar layout every tonewheel
 console shares - two brown, four white and three black - which Hammond's
 manual refers to when it calls the 2 2/3' the first black drawbar.
 
+## Vibrato line discretisation
+
+The DAFx-2016 vibrato paper discretises the ladder's reactances with the
+frequency-warped bilinear transform, giving `T' = 2 tan(W T / 2) / W` so that
+one continuous-time frequency is mapped exactly, in order to place the
+ladder's sharp cutoff. RF-Organ implements the same ladder and does not use
+that step, which is a departure worth recording rather than a detail: the
+paper is matching magnitude responses and this model is using the ladder for
+its delay, and a warped step scales that delay with the sample rate. Both
+behaviours were measured before the choice was made; the numbers are in
+`docs/CALIBRATION.md`.
+
 ## Generator taper
 
 Version 0.35.0 does not add a taper. It adds the table the taper goes in, and

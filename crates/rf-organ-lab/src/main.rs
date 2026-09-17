@@ -294,6 +294,10 @@ fn render_suite(destination: &Path, trims: captures::Trims) -> Result<(), Box<dy
         analysis.scanner_line_response,
     )?;
     fs::write(
+        destination.join("scanner-line-cutoff.csv"),
+        analysis.scanner_line_cutoff,
+    )?;
+    fs::write(
         destination.join("rotary-rotor-response.csv"),
         analysis.rotary_rotor_response,
     )?;

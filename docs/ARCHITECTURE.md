@@ -166,7 +166,7 @@ microphones, so moving them back zooms out instead of pushing them off the
 edge. The parameter table the surface validates against is the engine's, not a
 copy of it; a range that moves in the DSP moves there too.
 
-## Version 0.37.0 limitations
+## Version 0.38.0 limitations
 
 - The classic B-3 pedal contact and resistor-panel topology is present. The
   L20 pedal-filter coefficient and console matching-network constants remain
@@ -267,7 +267,11 @@ copy of it; a range that moves in the DSP moves there too.
   is a departure from a constant rate that the laboratory reports rather than
   hides.
 - The vibrato line uses the documented component values with an unwarped
-  bilinear transform, so its cutoff is placed by the components rather than
+  bilinear transform. Its corner therefore drifts 4.78 dB across the supported
+  rates, which is measured and held by a test. Warping the step removes that
+  drift and scales the ladder's delay with the clock instead, which moves the
+  vibrato depth 8.7 dB; a delay line is kept as a delay. See
+  `docs/CALIBRATION.md`. The cutoff is placed by the components rather than
   fitted; the scanner runs at 6.9 Hz and its plate overlap is modelled as a
   linear crossfade. The AO-28 vibrato amplifier that drives and recovers the
   line is not modelled: a make-up gain derived from the circuit stands in for
