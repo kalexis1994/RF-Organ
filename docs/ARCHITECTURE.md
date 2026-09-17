@@ -68,7 +68,7 @@ the injection captures; the comparator fits T3 first and only then resolves T2
 and T1, and reports the manual paths as underdetermined when no injection
 triplet exists.
 
-## Version 0.14.0 limitations
+## Version 0.15.0 limitations
 
 - The classic B-3 pedal contact and resistor-panel topology is present. The
   L20 pedal-filter coefficient and console matching-network constants remain
@@ -84,3 +84,6 @@ triplet exists.
   `docs/CALIBRATION.md`.
 - Leslie cabinet reflections and angle-dependent filters are present, but
   their coefficients are not yet fitted to multi-angle cabinet measurements.
+- The engine is measured as sample-rate invariant from 32 to 192 kHz, but a
+  fully engaged console leaves little headroom at 192 kHz: roughly 2x real time
+  on the development machine. No optimisation pass has been made yet.

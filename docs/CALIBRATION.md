@@ -234,6 +234,37 @@ self-check without an external manifest. Comparing a directory with itself must
 yield zero deltas and envelope correlation 1.0 for all thirty-seven WAV files,
 and every fit candidate must come back at a zero trim.
 
+## Sample rate and cost
+
+Every other probe in this document runs at 48 kHz. The sweep checks that the
+engine means the same thing at the rest of the supported range:
+
+```text
+cargo run --release -p rf-organ-lab -- sweep artifacts/sweep
+```
+
+`sample-rate-invariance.csv` measures one quantity per subsystem — generator
+tuning, chord level, percussion T60, scanner sideband, horn rate and 63%
+transition, expression and tone gain, transformer third-order product and pedal
+key-off time — at 32, 44.1, 48, 96 and 192 kHz, and reports the worst deviation
+from the 48 kHz column against a per-quantity tolerance. A quantity that drifts
+with the rate is a coefficient written in samples where it belongs in seconds or
+hertz, so the command exits non-zero and names it. At 0.15.0 all eleven hold:
+the largest deviation is 0.17 dBc on the scanner sideband and 10 ms on the
+percussion T60, which is one analysis window.
+
+`performance.csv` renders five seconds of a worst-case registration — both
+manuals and pedals held, full drawbars, percussion, C3 scanner and Tremolo
+rotation — and reports the real-time factor. On the development machine that is
+about 8.6x real time at 48 kHz and 2.1x at 192 kHz. Those numbers describe one
+machine and one build; they are a regression signal and the starting point for
+optimisation work, not a specification.
+
+The full survey is also available as
+`cargo test --release -p rf-organ-lab -- --ignored`. Ordinary test runs keep the
+cheap half of it, which covers the console stages without rendering the
+generator.
+
 The generated `artifacts/` directory is intentionally ignored by Git. Curated
 measurement data should only enter the repository with clear redistribution
 rights and provenance in `THIRD_PARTY_NOTICES.md`.

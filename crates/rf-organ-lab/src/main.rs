@@ -3,6 +3,8 @@
 mod analysis;
 mod captures;
 mod compare;
+mod invariance;
+mod signal;
 mod wav;
 
 use captures::{PHRASE_SECONDS as SECONDS, SAMPLE_RATE, TRANSFORMER_CAPTURES};
@@ -61,12 +63,56 @@ fn run() -> Result<(), Box<dyn Error>> {
                 &PathBuf::from(destination),
             )
         }
+        Some("sweep") => {
+            let destination = arguments.next().ok_or("sweep requires OUTPUT_DIRECTORY")?;
+            if arguments.next().is_some() {
+                return Err(usage().into());
+            }
+            sweep_suite(&PathBuf::from(destination))
+        }
         _ => Err(usage().into()),
     }
 }
 
+/// Measures one quantity per subsystem at every supported sample rate and
+/// benchmarks the engine at each of them. Exits with an error when a quantity
+/// that should be defined in seconds or hertz moves with the sample rate.
+fn sweep_suite(destination: &Path) -> Result<(), Box<dyn Error>> {
+    fs::create_dir_all(destination)?;
+    let invariants = invariance::survey()?;
+    fs::write(
+        destination.join("sample-rate-invariance.csv"),
+        invariance::report(&invariants),
+    )?;
+    let performance = invariance::benchmark()?;
+    fs::write(
+        destination.join("performance.csv"),
+        invariance::performance_report(&performance),
+    )?;
+    let slowest = performance
+        .iter()
+        .map(|measurement| measurement.realtime_factor)
+        .fold(f64::INFINITY, f64::min);
+    let rate_dependent = invariants
+        .iter()
+        .filter(|invariant| !invariant.holds())
+        .map(|invariant| format!("{}/{}", invariant.probe, invariant.metric))
+        .collect::<Vec<_>>();
+    println!(
+        "RF_ORGAN_LAB_SWEPT path={} invariants={} rate_dependent={} slowest_realtime_factor={slowest:.1}",
+        destination.display(),
+        invariants.len(),
+        rate_dependent.len()
+    );
+    if rate_dependent.is_empty() {
+        Ok(())
+    } else {
+        Err(format!("sample-rate dependent quantities: {}", rate_dependent.join(", ")).into())
+    }
+}
+
 const fn usage() -> &'static str {
-    "usage:\n  rf-organ-lab render OUTPUT_DIRECTORY [--transformer-drive-trims T1,T2,T3]\n  rf-organ-lab compare MODEL_DIRECTORY REFERENCE_DIRECTORY OUTPUT_DIRECTORY"
+    "usage:\n  rf-organ-lab render OUTPUT_DIRECTORY [--transformer-drive-trims T1,T2,T3]\n  rf-organ-lab compare MODEL_DIRECTORY REFERENCE_DIRECTORY OUTPUT_DIRECTORY\n  rf-organ-lab sweep OUTPUT_DIRECTORY"
 }
 
 /// Parses the optional per-transformer drive trims. They exist so that a

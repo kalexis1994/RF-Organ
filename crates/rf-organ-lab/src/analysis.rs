@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 use crate::captures::{C_NOTE, CHARACTER, F_NOTE, Level, note_frequency};
+use crate::signal::{decay_time, decibels, peak, rms, zero_crossing_frequency};
 use rf_organ_dsp::{
     ConsoleElectronics, DRAWBAR_COUNT, Leslie, LeslieMode, MANUAL_FIRST_NOTE, MatchingTransformer,
     OrganEngine, OrganPart, PercussionDecay, PercussionHarmonic, PercussionVolume, ScannerMode,
@@ -821,59 +822,8 @@ fn measurement_csv(measurements: &[Measurement]) -> String {
     csv
 }
 
-fn zero_crossing_frequency(samples: &[f64], sample_rate: f64) -> Option<f64> {
-    let mut crossings = Vec::new();
-    for (index, pair) in samples.windows(2).enumerate() {
-        if pair[0] <= 0.0 && pair[1] > 0.0 {
-            let fraction = -pair[0] / (pair[1] - pair[0]);
-            crossings.push(index as f64 + fraction);
-        }
-    }
-    let first = *crossings.first()?;
-    let last = *crossings.last()?;
-    (crossings.len() > 1).then(|| (crossings.len() - 1) as f64 * sample_rate / (last - first))
-}
-
-fn decay_time(curve: &[(f64, f64)], ratio: f64) -> Option<f64> {
-    let (peak_index, (_, peak)) = curve
-        .iter()
-        .enumerate()
-        .max_by(|(_, left), (_, right)| left.1.total_cmp(&right.1))?;
-    let threshold = peak * ratio;
-    curve[peak_index..]
-        .iter()
-        .find(|(_, level)| *level <= threshold)
-        .map(|(time, _)| time - curve[peak_index].0)
-}
-
 fn spectral_amplitude(samples: &[f64], frequency: f64) -> f64 {
-    let count = samples.len();
-    let mut real = 0.0;
-    let mut imaginary = 0.0;
-    let mut weight_sum = 0.0;
-    for (index, sample) in samples.iter().copied().enumerate() {
-        let weight = 0.5 - 0.5 * (TAU * index as f64 / (count - 1) as f64).cos();
-        let phase = TAU * frequency * index as f64 / SAMPLE_RATE as f64;
-        real += sample * weight * phase.cos();
-        imaginary -= sample * weight * phase.sin();
-        weight_sum += weight;
-    }
-    2.0 * real.hypot(imaginary) / weight_sum
-}
-
-fn decibels(value: f64) -> f64 {
-    20.0 * value.max(1.0e-15).log10()
-}
-
-fn rms(samples: &[f64]) -> f64 {
-    (samples.iter().map(|sample| sample * sample).sum::<f64>() / samples.len() as f64).sqrt()
-}
-
-fn peak(samples: &[f64]) -> f64 {
-    samples
-        .iter()
-        .map(|sample| sample.abs())
-        .fold(0.0, f64::max)
+    crate::signal::spectral_amplitude(samples, frequency, SAMPLE_RATE as f64)
 }
 
 fn threshold_time(result: &mut Option<f64>, value: f32, threshold: f32, time: f64) {
