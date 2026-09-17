@@ -64,6 +64,13 @@ impl RfOrganProcessor {
                 } else {
                     LeslieMode::Tremolo
                 }),
+                // Rotor stop, the third position a cabinet's switch has.
+                // Releasing it returns the rotors to the selected speed.
+                4 => engine.set_leslie_mode(if value < 64 {
+                    LeslieMode::Brake
+                } else {
+                    self.settings.leslie_mode
+                }),
                 11 => {
                     let _ = engine.set_expression(f32::from(value) / 127.0);
                 }
@@ -114,6 +121,11 @@ impl RfOrganProcessor {
                         LeslieMode::Chorale
                     } else {
                         LeslieMode::Tremolo
+                    }),
+                    4 => engine.set_leslie_mode(if value < 0.5 {
+                        LeslieMode::Brake
+                    } else {
+                        self.settings.leslie_mode
                     }),
                     11 => {
                         let _ = engine.set_expression(value);
@@ -433,6 +445,36 @@ mod tests {
         let mut output = [1.0_f32; 128];
         processor.process(&[], &mut output, &[], &[], 65, 0, 2);
         assert!(output.iter().all(|sample| *sample == 0.0));
+    }
+
+    /// A cabinet's switch has three positions, and the third one is reachable
+    /// from MIDI: stop the rotors, then hand them back to whatever speed the
+    /// program selected.
+    #[test]
+    fn continuous_controller_four_stops_and_releases_the_rotors() {
+        let mut processor = RfOrganProcessor::default();
+        assert!(processor.load_preset("chorale-888"));
+        assert!(processor.prepare(48_000.0, 64, 0, 2));
+        assert_eq!(processor.settings.leslie_mode, LeslieMode::Chorale);
+
+        let mut output = [0.0_f32; 128];
+        let brake = [MidiEvent {
+            frame: 0,
+            data: [0xb0, 4, 0],
+            length: 3,
+        }];
+        processor.process(&[], &mut output, &brake, &[], 64, 0, 2);
+        let engine = processor.engine.as_ref().expect("prepared engine");
+        assert_eq!(engine.leslie_mode(), LeslieMode::Brake);
+
+        let release = [MidiEvent {
+            frame: 0,
+            data: [0xb0, 4, 127],
+            length: 3,
+        }];
+        processor.process(&[], &mut output, &release, &[], 64, 0, 2);
+        let engine = processor.engine.as_ref().expect("prepared engine");
+        assert_eq!(engine.leslie_mode(), LeslieMode::Chorale);
     }
 
     #[test]

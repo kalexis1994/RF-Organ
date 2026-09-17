@@ -37,8 +37,8 @@ The suite contains:
 - the nine key contacts timed one drawbar at a time, at three velocities;
 - 1 kHz scanner carrier and the first three sideband pairs for V1–V3 and
   C1–C3, plus the level a steady tone returns at across the audio band;
-- horn and drum acceleration/braking curves sampled every 10 ms, including
-  measured 63% and 90% transition times;
+- horn and drum rise, fall and brake curves sampled every 10 ms, with the
+  measured transition time and the speed range each one crossed;
 - pedal harmonic levels for the eight physical contacts, plus the complete
   key-off response through the pedal filter and console electronics;
 - a manifest recording version, sample rate and normalization policy.
@@ -75,8 +75,13 @@ tables retain the underlying curves:
   five bands and over a whole number of rotor revolutions, for each of the six
   positions. It shows the ladder's own lowpass corner near 7 kHz and the
   residual level difference between the vibrato and chorus positions.
-- `leslie-rotor-response.csv` records actual and target rotor speeds during
-  Tremolo acceleration and Brake deceleration.
+- `leslie-rotor-response.csv` records actual and target rotor speeds, in both
+  hertz and rpm, through all three transitions: slow to fast, fast to slow and
+  fast to a stop. Each one starts from a settled rotor, so the measured time is
+  comparable with the figure a cabinet is specified by. At the middle of the
+  acceleration control the horn crosses its 360 rpm range in 1.04 s and the
+  drum its 300 rpm range in 2.64 s, the extra 40 ms being the delay before a
+  switched mode reaches the motor.
 - `pedal-spectrum.csv` records the eight contact frequencies and levels for
   isolated 16' and 8' registrations;
 - `pedal-release.csv` records the first 100 ms after releasing the 16' low C.

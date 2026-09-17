@@ -339,6 +339,10 @@ impl OrganEngine {
         self.leslie.set_mode(mode);
     }
 
+    pub const fn leslie_mode(&self) -> LeslieMode {
+        self.leslie.mode()
+    }
+
     pub fn set_leslie_mix(&mut self, value: f32) -> bool {
         self.leslie.set_mix(value)
     }

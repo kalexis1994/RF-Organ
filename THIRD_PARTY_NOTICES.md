@@ -49,6 +49,23 @@ The insertion-loss make-up that keeps the chorus position usable is a
 provisional stand-in for the AO-28 vibrato amplifier, derived from the
 resistor network rather than fitted.
 
+## Leslie cabinet documentation
+
+Version 0.21.0 takes the mechanical description Hammond publishes for a
+digital Leslie: the horn turns counter-clockwise and the drum clockwise; slow
+speeds run from 20 to 120 rpm and fast speeds from 200 to 500 rpm; a rise, a
+fall and a brake time are separate per rotor, floored at 0.8 s for the horn and
+1.0 s for the drum and ceilinged at 12.5 s; a mode switch can be delayed by up
+to a second before the rotor responds; and a time means the time to cross the
+whole speed range, so a shorter move takes proportionally less and the rate is
+what stays constant.
+
+RF-Organ runs its rotors at 400 and 40 rpm for the horn and 340 and 40 for the
+drum, the figures usually quoted for a 122 and the ones Hammond's own worked
+examples use. The six transition times are provisional, inside the documented
+floors, and the laboratory measures what they produce. The stop angle and the
+microphone geometry Hammond specifies in centimetres are not modelled yet.
+
 ## Generator compartments and wheel motion
 
 Version 0.20.0 takes three documented things about the generator.

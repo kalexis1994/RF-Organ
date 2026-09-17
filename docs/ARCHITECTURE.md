@@ -145,7 +145,17 @@ compartment, grouped by tooth count, so a wheel hears up to three companions
 rather than one partner. The table is built at compile time because the keyed
 path reads it every sample.
 
-## Version 0.20.0 limitations
+## Rotary cabinet
+
+The horn turns counter-clockwise and the drum clockwise, at 400 and 340 rpm
+fast and 40 rpm slow. Each rotor has its own rise, fall and brake time, and a
+time means what Hammond says it means: the seconds needed to cross the whole
+speed range. The rate is therefore what stays constant, so braking from the
+slow speed takes a tenth of the time braking from fast does, and the drum takes
+several times longer than the horn either way. A mode switch waits briefly
+before the rotor responds, as a relay and a clutch do.
+
+## Version 0.21.0 limitations
 
 - The classic B-3 pedal contact and resistor-panel topology is present. The
   L20 pedal-filter coefficient and console matching-network constants remain
@@ -172,6 +182,12 @@ path reads it every sample.
   for that rate. The laboratory reports leakage against note count, which is
   where that gap will be closed.
 - Wow and flutter are not modelled. Eccentricity is, at a provisional depth.
+- The cabinet's microphone geometry is a set of abstract controls rather than
+  the distance, width and centre offset in centimetres that Hammond specifies,
+  and the rotors stop wherever they land rather than at a chosen angle. The
+  six transition times are provisional, though now inside the documented
+  range; before 0.21.0 the horn ramped in 0.35 s, which is under the 0.8 s
+  floor a cabinet can manage.
 - The vibrato line uses the documented component values with an unwarped
   bilinear transform, so its cutoff is placed by the components rather than
   fitted; the scanner runs at 6.9 Hz and its plate overlap is modelled as a

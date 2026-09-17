@@ -3,6 +3,36 @@ use core::f32::consts::TAU;
 
 const DELAY_CAPACITY: usize = 8192;
 
+/// Rotor speeds, as the cabinet's own specification gives them. Hammond's
+/// documented ranges for a digital Leslie are 20 to 120 rpm slow and 200 to
+/// 500 rpm fast, and its worked example of a transition is 40 to 400 rpm.
+const HORN_SLOW_RPM: f32 = 40.0;
+const HORN_FAST_RPM: f32 = 400.0;
+const DRUM_SLOW_RPM: f32 = 40.0;
+const DRUM_FAST_RPM: f32 = 340.0;
+/// Transition times in seconds at the middle of the acceleration control. A
+/// rotor and its belt cannot move faster than Hammond's documented floor of
+/// 0.8 s for the horn and 1.0 s for the drum, and the heavy drum takes several
+/// times longer than the horn. The values themselves are provisional; the
+/// laboratory measures what they produce.
+const HORN_RISE_SECONDS: f32 = 1.0;
+const HORN_FALL_SECONDS: f32 = 1.2;
+const HORN_BRAKE_SECONDS: f32 = 1.0;
+const DRUM_RISE_SECONDS: f32 = 2.6;
+const DRUM_FALL_SECONDS: f32 = 3.6;
+const DRUM_BRAKE_SECONDS: f32 = 2.4;
+/// Documented floors and ceiling for those times.
+const HORN_TIME_FLOOR: f32 = 0.8;
+const DRUM_TIME_FLOOR: f32 = 1.0;
+const TIME_CEILING: f32 = 12.5;
+/// A mode switch reaches the motor through a relay and a clutch, so the rotor
+/// does not begin to change speed at once. Hammond exposes this as 0 to 1 s.
+const MODE_DELAY_SECONDS: f32 = 0.04;
+
+const fn rpm_to_hz(rpm: f32) -> f32 {
+    rpm / 60.0
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[repr(u8)]
 pub enum LeslieMode {
@@ -19,6 +49,14 @@ pub struct LeslieDiagnostics {
     pub horn_target_hz: f32,
     pub drum_speed_hz: f32,
     pub drum_target_hz: f32,
+    /// Revolutions per minute, the unit a cabinet is specified in.
+    pub horn_speed_rpm: f32,
+    pub drum_speed_rpm: f32,
+    /// Seconds the rotor will take to cross its full speed range at the rate
+    /// it is currently ramping, which is the transition time as Hammond
+    /// defines it.
+    pub horn_transition_seconds: f32,
+    pub drum_transition_seconds: f32,
 }
 
 impl LeslieMode {
@@ -72,25 +110,87 @@ struct Rotor {
     cosine: f32,
     speed_hz: f32,
     target_hz: f32,
-    acceleration_seconds: f32,
+    /// Hertz per second while ramping. Hammond defines a transition time as
+    /// the time to cross the whole speed range, so a shorter move takes
+    /// proportionally less time and the rate is what stays constant.
+    rate_hz_per_second: f32,
+    /// Samples still to wait before the speed starts changing.
+    delay_frames: u32,
+    slow_hz: f32,
+    fast_hz: f32,
+    rise_seconds: f32,
+    fall_seconds: f32,
+    brake_seconds: f32,
     direction: f32,
 }
 
 impl Rotor {
-    const fn new(direction: f32) -> Self {
+    const fn new(
+        direction: f32,
+        slow_rpm: f32,
+        fast_rpm: f32,
+        rise: f32,
+        fall: f32,
+        brake: f32,
+    ) -> Self {
         Self {
             sine: 0.0,
             cosine: 1.0,
             speed_hz: 0.0,
             target_hz: 0.0,
-            acceleration_seconds: 1.0,
+            rate_hz_per_second: 0.0,
+            delay_frames: 0,
+            slow_hz: rpm_to_hz(slow_rpm),
+            fast_hz: rpm_to_hz(fast_rpm),
+            rise_seconds: rise,
+            fall_seconds: fall,
+            brake_seconds: brake,
             direction,
         }
     }
 
+    /// Points the rotor at a new speed and works out how fast it may get
+    /// there: up takes the rise time, down to the slow speed the fall time,
+    /// and down to a stop the brake time.
+    fn aim(&mut self, target_hz: f32, sample_rate: f32) {
+        let seconds = if target_hz > self.speed_hz {
+            self.rise_seconds
+        } else if target_hz <= 0.0 {
+            self.brake_seconds
+        } else {
+            self.fall_seconds
+        };
+        let span = if target_hz <= 0.0 {
+            self.fast_hz
+        } else {
+            self.fast_hz - self.slow_hz
+        };
+        self.target_hz = target_hz;
+        self.rate_hz_per_second = span / seconds.max(0.05);
+        self.delay_frames = (MODE_DELAY_SECONDS * sample_rate) as u32;
+    }
+
+    /// Seconds this rotor would need to cross its whole range at the rate it
+    /// is ramping at now.
+    const fn transition_seconds(&self) -> f32 {
+        if self.rate_hz_per_second <= 0.0 {
+            0.0
+        } else {
+            (self.fast_hz - self.slow_hz) / self.rate_hz_per_second
+        }
+    }
+
     fn advance(&mut self, sample_rate: f32) {
-        let smoothing = 1.0 / (self.acceleration_seconds * sample_rate).max(1.0);
-        self.speed_hz += smoothing * (self.target_hz - self.speed_hz);
+        if self.delay_frames > 0 {
+            self.delay_frames -= 1;
+        } else {
+            let step = self.rate_hz_per_second / sample_rate;
+            if self.speed_hz < self.target_hz {
+                self.speed_hz = (self.speed_hz + step).min(self.target_hz);
+            } else {
+                self.speed_hz = (self.speed_hz - step).max(self.target_hz);
+            }
+        }
         let angle = self.direction * TAU * self.speed_hz / sample_rate;
         let (rotation_sine, rotation_cosine) = small_rotation(angle);
         let sine = self.sine * rotation_cosine + self.cosine * rotation_sine;
@@ -130,8 +230,25 @@ impl Leslie {
             mix: 0.82,
             crossover: x / (1.0 + x),
             low_state: 0.0,
-            horn: Rotor::new(1.0),
-            drum: Rotor::new(-1.0),
+            // A cabinet turns its horn counter-clockwise and its drum
+            // clockwise, which is why they sweep past the microphones in
+            // opposite directions.
+            horn: Rotor::new(
+                1.0,
+                HORN_SLOW_RPM,
+                HORN_FAST_RPM,
+                HORN_RISE_SECONDS,
+                HORN_FALL_SECONDS,
+                HORN_BRAKE_SECONDS,
+            ),
+            drum: Rotor::new(
+                -1.0,
+                DRUM_SLOW_RPM,
+                DRUM_FAST_RPM,
+                DRUM_RISE_SECONDS,
+                DRUM_FALL_SECONDS,
+                DRUM_BRAKE_SECONDS,
+            ),
             horn_delay: DelayLine::new(),
             drum_delay: DelayLine::new(),
             cabinet_left: DelayLine::new(),
@@ -146,14 +263,21 @@ impl Leslie {
     }
 
     pub fn set_mode(&mut self, mode: LeslieMode) {
+        if mode == self.mode {
+            return;
+        }
         self.mode = mode;
         let (horn, drum) = match mode {
             LeslieMode::Off | LeslieMode::Brake => (0.0, 0.0),
-            LeslieMode::Chorale => (0.8, 0.7),
-            LeslieMode::Tremolo => (6.8, 5.6),
+            LeslieMode::Chorale => (self.horn.slow_hz, self.drum.slow_hz),
+            LeslieMode::Tremolo => (self.horn.fast_hz, self.drum.fast_hz),
         };
-        self.horn.target_hz = horn;
-        self.drum.target_hz = drum;
+        self.horn.aim(horn, self.sample_rate);
+        self.drum.aim(drum, self.sample_rate);
+    }
+
+    pub const fn mode(&self) -> LeslieMode {
+        self.mode
     }
 
     pub fn set_mix(&mut self, value: f32) -> bool {
@@ -164,13 +288,29 @@ impl Leslie {
         true
     }
 
+    /// Scales the six transition times together, from brisk at zero to
+    /// sluggish at one, never past the floors and ceiling Hammond documents.
     pub fn set_acceleration(&mut self, value: f32) -> bool {
         if !unit(value) {
             return false;
         }
-        let scale = 0.35 + 1.8 * value;
-        self.horn.acceleration_seconds = 0.35 * scale;
-        self.drum.acceleration_seconds = 0.9 * scale;
+        // The middle of the control is where the documented times sit.
+        let scale = 0.55 + 1.8 * value * value;
+        let horn = |seconds: f32| (seconds * scale).clamp(HORN_TIME_FLOOR, TIME_CEILING);
+        let drum = |seconds: f32| (seconds * scale).clamp(DRUM_TIME_FLOOR, TIME_CEILING);
+        self.horn.rise_seconds = horn(HORN_RISE_SECONDS);
+        self.horn.fall_seconds = horn(HORN_FALL_SECONDS);
+        self.horn.brake_seconds = horn(HORN_BRAKE_SECONDS);
+        self.drum.rise_seconds = drum(DRUM_RISE_SECONDS);
+        self.drum.fall_seconds = drum(DRUM_FALL_SECONDS);
+        self.drum.brake_seconds = drum(DRUM_BRAKE_SECONDS);
+        // Keep whatever move is under way consistent with the new times.
+        let (horn_target, drum_target) = (self.horn.target_hz, self.drum.target_hz);
+        let (horn_delay, drum_delay) = (self.horn.delay_frames, self.drum.delay_frames);
+        self.horn.aim(horn_target, self.sample_rate);
+        self.drum.aim(drum_target, self.sample_rate);
+        self.horn.delay_frames = horn_delay;
+        self.drum.delay_frames = drum_delay;
         true
     }
 
@@ -284,6 +424,10 @@ impl Leslie {
             horn_target_hz: self.horn.target_hz,
             drum_speed_hz: self.drum.speed_hz,
             drum_target_hz: self.drum.target_hz,
+            horn_speed_rpm: self.horn.speed_hz * 60.0,
+            drum_speed_rpm: self.drum.speed_hz * 60.0,
+            horn_transition_seconds: self.horn.transition_seconds(),
+            drum_transition_seconds: self.drum.transition_seconds(),
         }
     }
 
@@ -359,14 +503,96 @@ mod tests {
         let mut leslie = Leslie::new(48_000.0);
         leslie.set_mode(LeslieMode::Tremolo);
         let initial = leslie.diagnostics();
-        assert_eq!(initial.horn_target_hz, 6.8);
-        assert_eq!(initial.drum_target_hz, 5.6);
+        // 400 rpm on the horn and 340 on the drum, as a cabinet is specified.
+        assert!((initial.horn_target_hz * 60.0 - 400.0).abs() < 0.01);
+        assert!((initial.drum_target_hz * 60.0 - 340.0).abs() < 0.01);
         assert_eq!(initial.horn_speed_hz, 0.0);
         for _ in 0..48_000 {
             leslie.process(0.0);
         }
         let moving = leslie.diagnostics();
-        assert!(moving.horn_speed_hz > moving.drum_speed_hz);
-        assert!(moving.horn_speed_hz < moving.horn_target_hz);
+        assert!(moving.horn_speed_rpm > moving.drum_speed_rpm);
+        assert!(moving.horn_speed_hz <= moving.horn_target_hz);
+        assert!(moving.horn_transition_seconds >= 0.8);
+        assert!(moving.drum_transition_seconds >= 1.0);
+    }
+
+    /// Seconds a rotor needs to reach a speed, sampled at the frame it
+    /// arrives.
+    fn settle_seconds(leslie: &mut Leslie, horn: bool) -> f32 {
+        for frame in 0..48_000 * 20 {
+            leslie.process(0.0);
+            let state = leslie.diagnostics();
+            let (speed, target) = if horn {
+                (state.horn_speed_hz, state.horn_target_hz)
+            } else {
+                (state.drum_speed_hz, state.drum_target_hz)
+            };
+            if (speed - target).abs() < 1.0e-6 {
+                return frame as f32 / 48_000.0;
+            }
+        }
+        f32::MAX
+    }
+
+    /// Hammond defines a transition time as the time to cross the whole speed
+    /// range, so the rate is what stays fixed: braking from a standstill at
+    /// the slow speed takes a fraction of the time that braking from fast
+    /// does, in proportion to the speed given up.
+    #[test]
+    fn transitions_run_at_a_constant_rate() {
+        let mut leslie = Leslie::new(48_000.0);
+        assert!(leslie.set_acceleration(0.5));
+        // From the slow speed, so the rotor crosses exactly the span the
+        // transition time is defined over.
+        leslie.set_mode(LeslieMode::Chorale);
+        settle_seconds(&mut leslie, true);
+        leslie.set_mode(LeslieMode::Tremolo);
+        let rise = settle_seconds(&mut leslie, true);
+        assert!(
+            (rise - HORN_RISE_SECONDS - MODE_DELAY_SECONDS).abs() < 0.1,
+            "horn rise took {rise} s"
+        );
+
+        leslie.set_mode(LeslieMode::Chorale);
+        let fall = settle_seconds(&mut leslie, true);
+        assert!(
+            (fall - HORN_FALL_SECONDS - MODE_DELAY_SECONDS).abs() < 0.1,
+            "horn fall took {fall} s"
+        );
+
+        // From the slow speed a stop gives up a tenth of the range, so it
+        // takes about a tenth of the brake time.
+        leslie.set_mode(LeslieMode::Brake);
+        let brake = settle_seconds(&mut leslie, true);
+        let expected = HORN_BRAKE_SECONDS * HORN_SLOW_RPM / HORN_FAST_RPM + MODE_DELAY_SECONDS;
+        assert!(
+            (brake - expected).abs() < 0.1,
+            "braking from slow took {brake} s against {expected}"
+        );
+    }
+
+    /// The drum is heavier than the horn and Hammond floors both, so no
+    /// setting of the control can make either move faster than a cabinet can.
+    #[test]
+    fn transition_times_stay_inside_the_documented_range() {
+        let mut leslie = Leslie::new(48_000.0);
+        for step in 0..=10 {
+            assert!(leslie.set_acceleration(step as f32 / 10.0));
+            leslie.set_mode(LeslieMode::Chorale);
+            leslie.set_mode(LeslieMode::Tremolo);
+            let state = leslie.diagnostics();
+            assert!(
+                (HORN_TIME_FLOOR..=TIME_CEILING).contains(&state.horn_transition_seconds),
+                "horn at {}",
+                state.horn_transition_seconds
+            );
+            assert!(
+                (DRUM_TIME_FLOOR..=TIME_CEILING).contains(&state.drum_transition_seconds),
+                "drum at {}",
+                state.drum_transition_seconds
+            );
+            assert!(state.drum_transition_seconds > state.horn_transition_seconds);
+        }
     }
 }

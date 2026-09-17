@@ -1255,132 +1255,134 @@ fn render_scanner(mode: ScannerMode, carrier: f64) -> Vec<f64> {
     output
 }
 
+/// The three transitions a cabinet makes, measured the way Hammond defines
+/// them: the time to cross the whole speed range. Every phase starts from a
+/// settled rotor, so the rise covers slow to fast, the fall covers fast to
+/// slow, and the brake covers fast to a standstill.
 fn leslie_probe() -> (Vec<Measurement>, String) {
-    const ACCELERATE_SECONDS: usize = 8;
-    const BRAKE_SECONDS: usize = 8;
+    const PHASE_SECONDS: usize = 20;
     let mut leslie = Leslie::new(SAMPLE_RATE as f32);
     assert!(leslie.set_acceleration(0.5));
-    leslie.set_mode(LeslieMode::Tremolo);
-    let mut csv =
-        String::from("phase,time_seconds,horn_hz,drum_hz,horn_target_hz,drum_target_hz\n");
-    let mut horn_t63 = None;
-    let mut drum_t63 = None;
-    let mut horn_t90 = None;
-    let mut drum_t90 = None;
-    for frame in 0..=SAMPLE_RATE * ACCELERATE_SECONDS {
-        if frame > 0 {
-            leslie.process(0.0);
-        }
-        let state = leslie.diagnostics();
-        let time = frame as f64 / SAMPLE_RATE as f64;
-        threshold_time(
-            &mut horn_t63,
-            state.horn_speed_hz,
-            state.horn_target_hz * 0.632_120_55,
-            time,
-        );
-        threshold_time(
-            &mut drum_t63,
-            state.drum_speed_hz,
-            state.drum_target_hz * 0.632_120_55,
-            time,
-        );
-        threshold_time(
-            &mut horn_t90,
-            state.horn_speed_hz,
-            state.horn_target_hz * 0.9,
-            time,
-        );
-        threshold_time(
-            &mut drum_t90,
-            state.drum_speed_hz,
-            state.drum_target_hz * 0.9,
-            time,
-        );
-        if frame.is_multiple_of(WINDOW) {
-            write_rotor_row(&mut csv, "accelerate", time, state);
-        }
+    let mut csv = String::from(
+        "phase,time_seconds,horn_hz,drum_hz,horn_rpm,drum_rpm,horn_target_hz,drum_target_hz\n",
+    );
+    let mut measurements = Vec::new();
+
+    // Settle at the slow speed first; a cabinet switched on from rest is not
+    // what any of these times describe.
+    leslie.set_mode(LeslieMode::Chorale);
+    for _ in 0..SAMPLE_RATE * PHASE_SECONDS {
+        leslie.process(0.0);
     }
-    let brake_start = leslie.diagnostics();
-    leslie.set_mode(LeslieMode::Brake);
-    let mut horn_brake_t63 = None;
-    let mut drum_brake_t63 = None;
-    for frame in 0..=SAMPLE_RATE * BRAKE_SECONDS {
-        if frame > 0 {
-            leslie.process(0.0);
+    let settle = leslie.diagnostics();
+    measurements.extend([
+        Measurement {
+            probe: "leslie-horn",
+            metric: "chorale-speed",
+            value: f64::from(settle.horn_speed_rpm),
+            unit: "rpm",
+        },
+        Measurement {
+            probe: "leslie-drum",
+            metric: "chorale-speed",
+            value: f64::from(settle.drum_speed_rpm),
+            unit: "rpm",
+        },
+    ]);
+
+    for (phase, mode) in [
+        ("rise", LeslieMode::Tremolo),
+        ("fall", LeslieMode::Chorale),
+        ("brake", LeslieMode::Brake),
+    ] {
+        let before = leslie.diagnostics();
+        if phase == "brake" {
+            // Braking is specified from the fast speed.
+            leslie.set_mode(LeslieMode::Tremolo);
+            for _ in 0..SAMPLE_RATE * PHASE_SECONDS {
+                leslie.process(0.0);
+            }
         }
-        let state = leslie.diagnostics();
-        let time = frame as f64 / SAMPLE_RATE as f64;
-        falling_threshold_time(
-            &mut horn_brake_t63,
-            state.horn_speed_hz,
-            brake_start.horn_speed_hz * 0.367_879_45,
-            time,
-        );
-        falling_threshold_time(
-            &mut drum_brake_t63,
-            state.drum_speed_hz,
-            brake_start.drum_speed_hz * 0.367_879_45,
-            time,
-        );
-        if frame.is_multiple_of(WINDOW) {
-            write_rotor_row(&mut csv, "brake", time, state);
+        let start = leslie.diagnostics();
+        leslie.set_mode(mode);
+        let mut horn_arrived = None;
+        let mut drum_arrived = None;
+        for frame in 0..=SAMPLE_RATE * PHASE_SECONDS {
+            if frame > 0 {
+                leslie.process(0.0);
+            }
+            let state = leslie.diagnostics();
+            let time = frame as f64 / SAMPLE_RATE as f64;
+            if horn_arrived.is_none() && (state.horn_speed_hz - state.horn_target_hz).abs() < 1.0e-6
+            {
+                horn_arrived = Some(time);
+            }
+            if drum_arrived.is_none() && (state.drum_speed_hz - state.drum_target_hz).abs() < 1.0e-6
+            {
+                drum_arrived = Some(time);
+            }
+            if frame.is_multiple_of(WINDOW) && time <= 12.0 {
+                write_rotor_row(&mut csv, phase, time, state);
+            }
         }
+        let arrived = leslie.diagnostics();
+        let span = |from: f32, to: f32| f64::from((to - from).abs() * 60.0);
+        for (probe, measured, from, to) in [
+            (
+                "leslie-horn",
+                horn_arrived,
+                start.horn_speed_hz,
+                arrived.horn_speed_hz,
+            ),
+            (
+                "leslie-drum",
+                drum_arrived,
+                start.drum_speed_hz,
+                arrived.drum_speed_hz,
+            ),
+        ] {
+            measurements.extend([
+                Measurement {
+                    probe,
+                    metric: match phase {
+                        "rise" => "rise-time",
+                        "fall" => "fall-time",
+                        _ => "brake-time",
+                    },
+                    value: measured.unwrap_or(f64::NAN),
+                    unit: "s",
+                },
+                Measurement {
+                    probe,
+                    metric: match phase {
+                        "rise" => "rise-span",
+                        "fall" => "fall-span",
+                        _ => "brake-span",
+                    },
+                    value: span(from, to),
+                    unit: "rpm",
+                },
+            ]);
+        }
+        let _ = before;
     }
-    let value = |value: Option<f64>| value.unwrap_or(f64::NAN);
-    (
-        vec![
-            Measurement {
-                probe: "leslie-horn",
-                metric: "tremolo-target",
-                value: f64::from(brake_start.horn_target_hz),
-                unit: "Hz",
-            },
-            Measurement {
-                probe: "leslie-drum",
-                metric: "tremolo-target",
-                value: f64::from(brake_start.drum_target_hz),
-                unit: "Hz",
-            },
-            Measurement {
-                probe: "leslie-horn",
-                metric: "acceleration-t63",
-                value: value(horn_t63),
-                unit: "s",
-            },
-            Measurement {
-                probe: "leslie-drum",
-                metric: "acceleration-t63",
-                value: value(drum_t63),
-                unit: "s",
-            },
-            Measurement {
-                probe: "leslie-horn",
-                metric: "acceleration-t90",
-                value: value(horn_t90),
-                unit: "s",
-            },
-            Measurement {
-                probe: "leslie-drum",
-                metric: "acceleration-t90",
-                value: value(drum_t90),
-                unit: "s",
-            },
-            Measurement {
-                probe: "leslie-horn",
-                metric: "brake-t63",
-                value: value(horn_brake_t63),
-                unit: "s",
-            },
-            Measurement {
-                probe: "leslie-drum",
-                metric: "brake-t63",
-                value: value(drum_brake_t63),
-                unit: "s",
-            },
-        ],
-        csv,
-    )
+
+    let final_state = leslie.diagnostics();
+    measurements.extend([
+        Measurement {
+            probe: "leslie-horn",
+            metric: "stopped-speed",
+            value: f64::from(final_state.horn_speed_rpm),
+            unit: "rpm",
+        },
+        Measurement {
+            probe: "leslie-drum",
+            metric: "stopped-speed",
+            value: f64::from(final_state.drum_speed_rpm),
+            unit: "rpm",
+        },
+    ]);
+    (measurements, csv)
 }
 
 fn clean_engine() -> Result<OrganEngine, String> {
@@ -1423,18 +1425,6 @@ fn spectral_amplitude(samples: &[f64], frequency: f64) -> f64 {
     crate::signal::spectral_amplitude(samples, frequency, SAMPLE_RATE as f64)
 }
 
-fn threshold_time(result: &mut Option<f64>, value: f32, threshold: f32, time: f64) {
-    if result.is_none() && value >= threshold {
-        *result = Some(time);
-    }
-}
-
-fn falling_threshold_time(result: &mut Option<f64>, value: f32, threshold: f32, time: f64) {
-    if result.is_none() && value <= threshold {
-        *result = Some(time);
-    }
-}
-
 fn write_rotor_row(
     csv: &mut String,
     phase: &str,
@@ -1443,8 +1433,13 @@ fn write_rotor_row(
 ) {
     writeln!(
         csv,
-        "{phase},{time:.6},{:.9},{:.9},{:.9},{:.9}",
-        state.horn_speed_hz, state.drum_speed_hz, state.horn_target_hz, state.drum_target_hz
+        "{phase},{time:.6},{:.9},{:.9},{:.6},{:.6},{:.9},{:.9}",
+        state.horn_speed_hz,
+        state.drum_speed_hz,
+        state.horn_speed_rpm,
+        state.drum_speed_rpm,
+        state.horn_target_hz,
+        state.drum_target_hz
     )
     .expect("string write cannot fail");
 }

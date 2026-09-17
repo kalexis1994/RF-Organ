@@ -97,18 +97,18 @@ version = "0.1.21"
 
 [[package]]
 name = "rf-organ-dsp"
-version = "0.20.0"
+version = "0.21.0"
 
 [[package]]
 name = "rf-organ-lab"
-version = "0.20.0"
+version = "0.21.0"
 dependencies = [
  "rf-organ-dsp",
 ]
 
 [[package]]
 name = "rf-organ-plugin"
-version = "0.20.0"
+version = "0.21.0"
 dependencies = [
  "rackforge-plugin-sdk",
  "rf-organ-dsp",
@@ -116,7 +116,7 @@ dependencies = [
 
 [[package]]
 name = "rf-organ-ui"
-version = "0.20.0"
+version = "0.21.0"
 dependencies = [
  "js-sys",
  "serde_json",
