@@ -49,6 +49,15 @@ The insertion-loss make-up that keeps the chorus position usable is a
 provisional stand-in for the AO-28 vibrato amplifier, derived from the
 resistor network rather than fitted.
 
+## Branding artwork
+
+The icon, banner and splash in `package/branding/` are drawn by
+`tools/make-artwork.py` from geometry and from the play surface's own palette.
+They contain no lettering and no third-party image, so no font or artwork
+licence applies to them. Their subject is the drawbar layout every tonewheel
+console shares - two brown, four white and three black - which Hammond's
+manual refers to when it calls the 2 2/3' the first black drawbar.
+
 ## Leslie cabinet documentation
 
 Version 0.21.0 takes the mechanical description Hammond publishes for a

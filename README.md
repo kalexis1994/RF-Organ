@@ -5,7 +5,7 @@
 RF-Organ is a physically informed tonewheel-organ instrument for RackForge.
 It is written in Rust and licensed under GPL-2.0-or-later.
 
-The current `0.21.0` baseline establishes the real-time architecture:
+The current `0.22.0` baseline establishes the real-time architecture:
 
 - one continuously rotating bank of 91 shared tonewheels;
 - 60 Hz gear-ratio tuning instead of ideal equal temperament;
@@ -35,7 +35,9 @@ The current `0.21.0` baseline establishes the real-time architecture:
   directivity, microphone geometry and early cabinet reflections;
 - a RackForge play surface implemented in Rust/WASM, with console-style
   drawbars, direct access to every automatable parameter, host-driven
-  parameter synchronization and day/stage lighting.
+  parameter synchronization and day/stage lighting;
+- eight registrations, from a straight 888 to a full shout, and a manifest at
+  schema 3 with its own artwork.
 
 The sound constants are intentionally provisional. This baseline is a
 testable scaffold for measurement and calibration, not a finished clone.
@@ -50,6 +52,25 @@ testable scaffold for measurement and calibration, not a finished clone.
   above 64.
 - CC 11: expression pedal.
 - CC 120/123: all notes off for the addressed channel/part.
+
+## Installing a build
+
+`tools/release.sh` rebuilds everything the package contains, runs the same
+gates CI does, and packs an installable archive:
+
+```text
+bash tools/release.sh
+```
+
+It writes `dist/RF-Organ-<version>.rfplugin` and packs it a second time to
+prove the archive is reproducible: an unchanged tree gives the same bytes and
+the same digest. Install it on another machine with:
+
+```text
+rackforge-store install-local RF-Organ-<version>.rfplugin <STORE_ROOT>
+```
+
+`--quick` skips the test suite and the sample-rate sweep when iterating.
 
 ## Development
 
@@ -75,6 +96,11 @@ and smoke, the sample-rate sweep, and `tools/check-package.sh`, which proves the
 committed `component.wasm` still reports the same parameter schema, state size
 and rendered output as a build from the current sources. Bump `RACKFORGE_REF`
 and the lockfile together.
+
+The manifest is at schema 3, which asks for a short name and a branding
+section. `tools/make-artwork.py` draws the icon, banner and splash from the
+same palette as the play surface, at the exact sizes the host requires; it
+needs Pillow and writes into `package/branding/`.
 
 The custom surface is declared through the package's `web_ui` manifest table.
 Its HTML and CSS are static, `bootstrap.js` only initializes the module, and

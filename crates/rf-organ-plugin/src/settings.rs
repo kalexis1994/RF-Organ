@@ -275,19 +275,19 @@ impl Settings {
     }
 }
 
-pub fn presets() -> [(&'static str, &'static str, &'static str, Settings); 4] {
+pub fn presets() -> [(&'static str, &'static str, &'static str, Settings); 8] {
     let straight = Settings::default();
     [
         (
             "straight-888",
             "Straight 888",
-            "Upper manual, 888 registration, stationary direct output.",
+            "Upper manual, 888 registration and stationary direct output.",
             straight,
         ),
         (
             "chorale-888",
             "Chorale 888",
-            "888 registration through the integrated slow rotary cabinet.",
+            "888 registration with C3 scanner chorus through the integrated slow rotary cabinet.",
             Settings {
                 leslie_mode: LeslieMode::Chorale,
                 scanner_mode: ScannerMode::Chorus3,
@@ -300,7 +300,7 @@ pub fn presets() -> [(&'static str, &'static str, &'static str, Settings); 4] {
         (
             "tremolo-jazz",
             "Tremolo Jazz",
-            "Percussive jazz registration with fast integrated rotary motion.",
+            "Third-harmonic single-trigger percussion with fast integrated rotary motion.",
             Settings {
                 drawbars: [8, 8, 8, 0, 0, 0, 0, 8, 0],
                 leslie_mode: LeslieMode::Tremolo,
@@ -318,9 +318,68 @@ pub fn presets() -> [(&'static str, &'static str, &'static str, Settings); 4] {
             },
         ),
         (
+            "jazz-comp",
+            "Jazz Comp",
+            "Hollow comping registration with third-harmonic percussion and slow rotary motion.",
+            Settings {
+                drawbars: [8, 0, 8, 0, 0, 0, 0, 0, 0],
+                leslie_mode: LeslieMode::Chorale,
+                percussion_enabled: true,
+                percussion_harmonic: PercussionHarmonic::Third,
+                percussion_volume: PercussionVolume::Normal,
+                percussion_decay: PercussionDecay::Fast,
+                leslie_mic_distance: 0.4,
+                leslie_stereo_width: 0.72,
+                ..straight
+            },
+        ),
+        (
+            "ballad-chorus",
+            "Ballad Chorus",
+            "Fundamental registration through the C3 vibrato line, cabinet stationary.",
+            Settings {
+                drawbars: [8, 8, 8, 0, 0, 0, 0, 0, 0],
+                scanner_mode: ScannerMode::Chorus3,
+                upper_scanner: true,
+                leslie_mode: LeslieMode::Off,
+                output_level: 0.66,
+                ..straight
+            },
+        ),
+        (
+            "pedal-bass",
+            "Pedal Bass",
+            "Pedal clavier forward with a quiet lower manual, for left-hand and feet.",
+            Settings {
+                drawbars: [0, 0, 0, 0, 0, 0, 0, 0, 0],
+                lower_drawbars: [8, 4, 6, 0, 0, 0, 0, 0, 0],
+                pedal_drawbars: [8, 6],
+                leslie_mode: LeslieMode::Off,
+                leakage: 0.14,
+                ..straight
+            },
+        ),
+        (
+            "full-shout",
+            "Full Shout",
+            "Every drawbar out on both manuals with fast rotary motion and console drive.",
+            Settings {
+                drawbars: [8, 8, 8, 8, 8, 8, 8, 8, 8],
+                lower_drawbars: [8, 8, 8, 0, 0, 0, 0, 0, 0],
+                pedal_drawbars: [8, 8],
+                leslie_mode: LeslieMode::Tremolo,
+                transformer_drive: 0.66,
+                console_drive: 0.52,
+                leslie_mic_distance: 0.22,
+                leslie_stereo_width: 0.88,
+                leslie_reflections: 0.26,
+                ..straight
+            },
+        ),
+        (
             "gospel-full",
             "Gospel Full",
-            "Fuller drawbar registration, transformer drive and slow rotary motion.",
+            "Full drawbars, C3 scanner chorus, transformer drive and slow rotary motion.",
             Settings {
                 drawbars: [8, 8, 8, 8, 6, 8, 4, 8, 6],
                 leslie_mode: LeslieMode::Chorale,
@@ -363,6 +422,31 @@ fn bool_value(value: bool) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The engine's presets and the catalogue the host reads are two lists of
+    /// the same thing, so they have to say the same thing.
+    #[test]
+    fn the_catalogue_lists_every_preset_the_engine_has() {
+        let catalogue = include_str!("../../../package/metadata/presets.json");
+        for (id, name, description, _) in presets() {
+            assert!(
+                catalogue.contains(&format!("\"id\": \"{id}\"")),
+                "{id} is missing from the catalogue"
+            );
+            assert!(
+                catalogue.contains(name),
+                "{name} is missing from the catalogue"
+            );
+            assert!(
+                catalogue.contains(description),
+                "{id} has a different description in the catalogue"
+            );
+        }
+        assert_eq!(
+            catalogue.matches("\"bank\": \"registrations\"").count(),
+            presets().len()
+        );
+    }
 
     #[test]
     fn presets_are_valid_and_round_trip_parameters() {

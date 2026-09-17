@@ -1,16 +1,24 @@
-# Schema 1 keeps this first runnable research build independent of final
-# branding assets. Move to schema 3 when the production artwork lands.
-schema_version = 1
+# Schema 3: the host reads `short_name` for narrow controller surfaces and the
+# branding section for the artwork it shows. `tools/make-artwork.py` draws
+# those three PNGs from the same palette as the play surface.
+schema_version = 3
 id = "org.rackforge.organ"
 name = "RF-Organ"
 short_name = "RF-ORGAN"
 vendor = "RackForge"
-version = "0.21.0"
+version = "0.22.0"
 description = "Physical-model tonewheel organ with an integrated rotary speaker module"
 kind = "instrument"
 state_version = 6
 capabilities = ["audio_output", "midi_input", "presets", "state"]
 ui_layouts = ["little@1"]
+
+[branding]
+icon = "branding/icon.png"
+banner = "branding/banner.png"
+splash = "branding/splash.png"
+background_color = "#17120D"
+accent_color = "#C9A058"
 
 [midi]
 channel_model = "multi_part"

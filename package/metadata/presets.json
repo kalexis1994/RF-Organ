@@ -15,7 +15,10 @@
       "editable": false,
       "category": "Organ",
       "order": 0,
-      "tags": ["tonewheel", "direct"],
+      "tags": [
+        "tonewheel",
+        "direct"
+      ],
       "description": "Upper manual, 888 registration and stationary direct output."
     },
     {
@@ -25,7 +28,11 @@
       "editable": false,
       "category": "Organ",
       "order": 1,
-      "tags": ["tonewheel", "rotary", "chorale"],
+      "tags": [
+        "tonewheel",
+        "rotary",
+        "chorale"
+      ],
       "description": "888 registration with C3 scanner chorus through the integrated slow rotary cabinet."
     },
     {
@@ -35,7 +42,11 @@
       "editable": false,
       "category": "Organ",
       "order": 2,
-      "tags": ["tonewheel", "rotary", "tremolo"],
+      "tags": [
+        "tonewheel",
+        "rotary",
+        "tremolo"
+      ],
       "description": "Third-harmonic single-trigger percussion with fast integrated rotary motion."
     },
     {
@@ -45,8 +56,69 @@
       "editable": false,
       "category": "Organ",
       "order": 3,
-      "tags": ["tonewheel", "rotary", "full"],
+      "tags": [
+        "tonewheel",
+        "rotary",
+        "full"
+      ],
       "description": "Full drawbars, C3 scanner chorus, transformer drive and slow rotary motion."
+    },
+    {
+      "id": "jazz-comp",
+      "name": "Jazz Comp",
+      "bank": "registrations",
+      "editable": false,
+      "category": "Organ",
+      "order": 4,
+      "tags": [
+        "tonewheel",
+        "percussion",
+        "rotary"
+      ],
+      "description": "Hollow comping registration with third-harmonic percussion and slow rotary motion."
+    },
+    {
+      "id": "ballad-chorus",
+      "name": "Ballad Chorus",
+      "bank": "registrations",
+      "editable": false,
+      "category": "Organ",
+      "order": 5,
+      "tags": [
+        "tonewheel",
+        "chorus",
+        "direct"
+      ],
+      "description": "Fundamental registration through the C3 vibrato line, cabinet stationary."
+    },
+    {
+      "id": "pedal-bass",
+      "name": "Pedal Bass",
+      "bank": "registrations",
+      "editable": false,
+      "category": "Organ",
+      "order": 6,
+      "tags": [
+        "tonewheel",
+        "pedal",
+        "direct"
+      ],
+      "description": "Pedal clavier forward with a quiet lower manual, for left-hand and feet."
+    },
+    {
+      "id": "full-shout",
+      "name": "Full Shout",
+      "bank": "registrations",
+      "editable": false,
+      "category": "Organ",
+      "order": 7,
+      "tags": [
+        "tonewheel",
+        "rotary",
+        "tremolo",
+        "full"
+      ],
+      "description": "Every drawbar out on both manuals with fast rotary motion and console drive."
     }
   ]
 }
