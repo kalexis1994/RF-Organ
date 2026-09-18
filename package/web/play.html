@@ -14,6 +14,7 @@
         <p id="status" role="status">Connecting to RackForge…</p>
       </header>
 
+      <!-- What a player reaches for without looking stays out of the tabs. -->
       <section class="performance panel">
         <label>Output<input id="output" data-parameter="0" type="range" min="0" max="1.5" step="0.01" disabled /></label>
         <label>Expression<input id="expression" data-parameter="1" type="range" min="0" max="1" step="0.001" disabled /></label>
@@ -22,53 +23,154 @@
         <label>Inertia<input id="rotor-inertia" data-parameter="18" type="range" min="0" max="1" step="0.001" disabled /></label>
       </section>
 
-      <section class="manuals">
-        <article class="panel manual upper">
-          <div class="section-title"><div><p class="eyebrow">CHANNEL 1</p><h2>Upper Manual</h2></div><label class="switch">Vibrato<input id="upper-vibrato" data-parameter="35" type="checkbox" disabled /></label></div>
-          <div class="drawbars">
-            <label><span>16'</span><input id="u16" data-parameter="2" type="range" min="0" max="8" step="1" disabled /></label>
-            <label><span>5⅓'</span><input id="u513" data-parameter="3" type="range" min="0" max="8" step="1" disabled /></label>
-            <label><span>8'</span><input id="u8" data-parameter="4" type="range" min="0" max="8" step="1" disabled /></label>
-            <label><span>4'</span><input id="u4" data-parameter="5" type="range" min="0" max="8" step="1" disabled /></label>
-            <label><span>2⅔'</span><input id="u223" data-parameter="6" type="range" min="0" max="8" step="1" disabled /></label>
-            <label><span>2'</span><input id="u2" data-parameter="7" type="range" min="0" max="8" step="1" disabled /></label>
-            <label><span>1⅗'</span><input id="u135" data-parameter="8" type="range" min="0" max="8" step="1" disabled /></label>
-            <label><span>1⅓'</span><input id="u113" data-parameter="9" type="range" min="0" max="8" step="1" disabled /></label>
-            <label><span>1'</span><input id="u1" data-parameter="10" type="range" min="0" max="8" step="1" disabled /></label>
-          </div>
-        </article>
+      <!--
+        The tabs are radio inputs and their panels are siblings, so the page
+        switches with a stylesheet rule and nothing else: no script runs, and
+        every control stays in the document whichever tab is showing. The
+        surface binds by element id, so a control that left the document would
+        take the panel down with it.
+      -->
+      <input class="tab-input" type="radio" name="surface-tab" id="tab-manuals" checked />
+      <input class="tab-input" type="radio" name="surface-tab" id="tab-rotary" />
+      <input class="tab-input" type="radio" name="surface-tab" id="tab-generator" />
+      <input class="tab-input" type="radio" name="surface-tab" id="tab-electronics" />
 
-        <article class="panel manual lower">
-          <div class="section-title"><div><p class="eyebrow">CHANNEL 2</p><h2>Lower Manual</h2></div><label class="switch">Vibrato<input id="lower-vibrato" data-parameter="36" type="checkbox" disabled /></label></div>
-          <div class="drawbars">
-            <label><span>16'</span><input id="l16" data-parameter="24" type="range" min="0" max="8" step="1" disabled /></label>
-            <label><span>5⅓'</span><input id="l513" data-parameter="25" type="range" min="0" max="8" step="1" disabled /></label>
-            <label><span>8'</span><input id="l8" data-parameter="26" type="range" min="0" max="8" step="1" disabled /></label>
-            <label><span>4'</span><input id="l4" data-parameter="27" type="range" min="0" max="8" step="1" disabled /></label>
-            <label><span>2⅔'</span><input id="l223" data-parameter="28" type="range" min="0" max="8" step="1" disabled /></label>
-            <label><span>2'</span><input id="l2" data-parameter="29" type="range" min="0" max="8" step="1" disabled /></label>
-            <label><span>1⅗'</span><input id="l135" data-parameter="30" type="range" min="0" max="8" step="1" disabled /></label>
-            <label><span>1⅓'</span><input id="l113" data-parameter="31" type="range" min="0" max="8" step="1" disabled /></label>
-            <label><span>1'</span><input id="l1" data-parameter="32" type="range" min="0" max="8" step="1" disabled /></label>
-          </div>
-        </article>
+      <nav class="tabs" aria-label="Console sections">
+        <label for="tab-manuals">Manuals</label>
+        <label for="tab-rotary">Rotary</label>
+        <label for="tab-generator">Generator</label>
+        <label for="tab-electronics">Electronics</label>
+      </nav>
+
+      <section class="tab-panel" id="panel-manuals">
+        <div class="manuals">
+          <article class="panel manual upper">
+            <div class="section-title">
+              <div><p class="eyebrow">CHANNEL 1 · SWELL</p><h2>Upper Manual</h2></div>
+              <label class="switch">Vibrato<input id="upper-vibrato" data-parameter="35" type="checkbox" disabled /></label>
+            </div>
+            <label class="preset-key">Preset Key
+              <select id="registration" data-parameter="93" disabled>
+                <option value="0">Cancel</option>
+                <option value="3">C♯ · Stopped Flute</option>
+                <option value="4">D · Dulciana</option>
+                <option value="5">D♯ · French Horn</option>
+                <option value="6">E · Salicional</option>
+                <option value="7">F · Flutes 8' &amp; 4'</option>
+                <option value="8">F♯ · Oboe Horn</option>
+                <option value="9">G · Swell Diapason</option>
+                <option value="10">G♯ · Trumpet</option>
+                <option value="11">A · Full Swell</option>
+                <option value="1">A♯ · Adjust</option>
+                <option value="2">B · Adjust</option>
+              </select>
+            </label>
+            <div class="drawbar-groups">
+              <div class="drawbar-group">
+              <p class="group-label">A♯ Adjust · left group</p>
+              <div class="drawbars">
+                <label class="brown"><span>16'</span><input id="drawbar-a-16" data-parameter="75" type="range" min="0" max="8" step="1" disabled /></label>
+                <label class="brown"><span>5⅓'</span><input id="drawbar-a-5-1-3" data-parameter="76" type="range" min="0" max="8" step="1" disabled /></label>
+                <label class="white"><span>8'</span><input id="drawbar-a-8" data-parameter="77" type="range" min="0" max="8" step="1" disabled /></label>
+                <label class="white"><span>4'</span><input id="drawbar-a-4" data-parameter="78" type="range" min="0" max="8" step="1" disabled /></label>
+                <label class="black"><span>2⅔'</span><input id="drawbar-a-2-2-3" data-parameter="79" type="range" min="0" max="8" step="1" disabled /></label>
+                <label class="white"><span>2'</span><input id="drawbar-a-2" data-parameter="80" type="range" min="0" max="8" step="1" disabled /></label>
+                <label class="black"><span>1⅗'</span><input id="drawbar-a-1-3-5" data-parameter="81" type="range" min="0" max="8" step="1" disabled /></label>
+                <label class="black"><span>1⅓'</span><input id="drawbar-a-1-1-3" data-parameter="82" type="range" min="0" max="8" step="1" disabled /></label>
+                <label class="white"><span>1'</span><input id="drawbar-a-1" data-parameter="83" type="range" min="0" max="8" step="1" disabled /></label>
+              </div>
+              </div>
+              <div class="drawbar-group">
+              <p class="group-label">B Adjust · right group</p>
+              <div class="drawbars">
+                <label class="brown"><span>16'</span><input id="u16" data-parameter="2" type="range" min="0" max="8" step="1" disabled /></label>
+                <label class="brown"><span>5⅓'</span><input id="u513" data-parameter="3" type="range" min="0" max="8" step="1" disabled /></label>
+                <label class="white"><span>8'</span><input id="u8" data-parameter="4" type="range" min="0" max="8" step="1" disabled /></label>
+                <label class="white"><span>4'</span><input id="u4" data-parameter="5" type="range" min="0" max="8" step="1" disabled /></label>
+                <label class="black"><span>2⅔'</span><input id="u223" data-parameter="6" type="range" min="0" max="8" step="1" disabled /></label>
+                <label class="white"><span>2'</span><input id="u2" data-parameter="7" type="range" min="0" max="8" step="1" disabled /></label>
+                <label class="black"><span>1⅗'</span><input id="u135" data-parameter="8" type="range" min="0" max="8" step="1" disabled /></label>
+                <label class="black"><span>1⅓'</span><input id="u113" data-parameter="9" type="range" min="0" max="8" step="1" disabled /></label>
+                <label class="white"><span>1'</span><input id="u1" data-parameter="10" type="range" min="0" max="8" step="1" disabled /></label>
+              </div>
+              </div>
+            </div>
+          </article>
+
+          <article class="panel manual lower">
+            <div class="section-title">
+              <div><p class="eyebrow">CHANNEL 2 · GREAT</p><h2>Lower Manual</h2></div>
+              <label class="switch">Vibrato<input id="lower-vibrato" data-parameter="36" type="checkbox" disabled /></label>
+            </div>
+            <label class="preset-key">Preset Key
+              <select id="lower-registration" data-parameter="94" disabled>
+                <option value="0">Cancel</option>
+                <option value="3">C♯ · Cello</option>
+                <option value="4">D · Flute &amp; String</option>
+                <option value="5">D♯ · Clarinet</option>
+                <option value="6">E · Diapason, Gamba &amp; Flute</option>
+                <option value="7">F · Great no Reeds</option>
+                <option value="8">F♯ · Open Diapason</option>
+                <option value="9">G · Full Great</option>
+                <option value="10">G♯ · Tibia Clausa</option>
+                <option value="11">A · Full Great 16'</option>
+                <option value="1">A♯ · Adjust</option>
+                <option value="2">B · Adjust</option>
+              </select>
+            </label>
+            <div class="drawbar-groups">
+              <div class="drawbar-group">
+              <p class="group-label">A♯ Adjust · left group</p>
+              <div class="drawbars">
+                <label class="brown"><span>16'</span><input id="lower-drawbar-a-16" data-parameter="84" type="range" min="0" max="8" step="1" disabled /></label>
+                <label class="brown"><span>5⅓'</span><input id="lower-drawbar-a-5-1-3" data-parameter="85" type="range" min="0" max="8" step="1" disabled /></label>
+                <label class="white"><span>8'</span><input id="lower-drawbar-a-8" data-parameter="86" type="range" min="0" max="8" step="1" disabled /></label>
+                <label class="white"><span>4'</span><input id="lower-drawbar-a-4" data-parameter="87" type="range" min="0" max="8" step="1" disabled /></label>
+                <label class="black"><span>2⅔'</span><input id="lower-drawbar-a-2-2-3" data-parameter="88" type="range" min="0" max="8" step="1" disabled /></label>
+                <label class="white"><span>2'</span><input id="lower-drawbar-a-2" data-parameter="89" type="range" min="0" max="8" step="1" disabled /></label>
+                <label class="black"><span>1⅗'</span><input id="lower-drawbar-a-1-3-5" data-parameter="90" type="range" min="0" max="8" step="1" disabled /></label>
+                <label class="black"><span>1⅓'</span><input id="lower-drawbar-a-1-1-3" data-parameter="91" type="range" min="0" max="8" step="1" disabled /></label>
+                <label class="white"><span>1'</span><input id="lower-drawbar-a-1" data-parameter="92" type="range" min="0" max="8" step="1" disabled /></label>
+              </div>
+              </div>
+              <div class="drawbar-group">
+              <p class="group-label">B Adjust · right group</p>
+              <div class="drawbars">
+                <label class="brown"><span>16'</span><input id="l16" data-parameter="24" type="range" min="0" max="8" step="1" disabled /></label>
+                <label class="brown"><span>5⅓'</span><input id="l513" data-parameter="25" type="range" min="0" max="8" step="1" disabled /></label>
+                <label class="white"><span>8'</span><input id="l8" data-parameter="26" type="range" min="0" max="8" step="1" disabled /></label>
+                <label class="white"><span>4'</span><input id="l4" data-parameter="27" type="range" min="0" max="8" step="1" disabled /></label>
+                <label class="black"><span>2⅔'</span><input id="l223" data-parameter="28" type="range" min="0" max="8" step="1" disabled /></label>
+                <label class="white"><span>2'</span><input id="l2" data-parameter="29" type="range" min="0" max="8" step="1" disabled /></label>
+                <label class="black"><span>1⅗'</span><input id="l135" data-parameter="30" type="range" min="0" max="8" step="1" disabled /></label>
+                <label class="black"><span>1⅓'</span><input id="l113" data-parameter="31" type="range" min="0" max="8" step="1" disabled /></label>
+                <label class="white"><span>1'</span><input id="l1" data-parameter="32" type="range" min="0" max="8" step="1" disabled /></label>
+              </div>
+              </div>
+            </div>
+          </article>
+        </div>
+
+        <div class="bottom-grid">
+          <article class="panel pedals">
+            <div><p class="eyebrow">CHANNEL 3 · 25 NOTES</p><h2>Pedal Clavier</h2></div>
+            <div class="drawbars pedal-drawbars">
+              <label class="brown"><span>16'</span><input id="p16" data-parameter="33" type="range" min="0" max="8" step="1" disabled /></label>
+              <label class="white"><span>8'</span><input id="p8" data-parameter="34" type="range" min="0" max="8" step="1" disabled /></label>
+            </div>
+          </article>
+          <article class="panel switchboard">
+            <div><p class="eyebrow">UPPER MANUAL · B KEY ONLY</p><h2>Percussion</h2></div>
+            <label class="switch">On<input id="percussion" data-parameter="20" type="checkbox" disabled /></label>
+            <label>Harmonic<select id="percussion-harmonic" data-parameter="21" disabled><option value="0">Second</option><option value="1">Third</option></select></label>
+            <label>Volume<select id="percussion-volume" data-parameter="22" disabled><option value="0">Soft</option><option value="1">Normal</option></select></label>
+            <label>Decay<select id="percussion-decay" data-parameter="23" disabled><option value="0">Slow</option><option value="1">Fast</option></select></label>
+            <label>Scanner<select id="scanner-mode" data-parameter="19" disabled><option value="0">Off</option><option value="1">V1</option><option value="2">V2</option><option value="3">V3</option><option value="4">C1</option><option value="5">C2</option><option value="6">C3</option></select></label>
+          </article>
+        </div>
       </section>
 
-      <section class="switchboard panel">
-        <div><p class="eyebrow">UPPER MANUAL</p><h2>Percussion</h2></div>
-        <label class="switch">On<input id="percussion" data-parameter="20" type="checkbox" disabled /></label>
-        <label>Harmonic<select id="percussion-harmonic" data-parameter="21" disabled><option value="0">Second</option><option value="1">Third</option></select></label>
-        <label>Volume<select id="percussion-volume" data-parameter="22" disabled><option value="0">Soft</option><option value="1">Normal</option></select></label>
-        <label>Decay<select id="percussion-decay" data-parameter="23" disabled><option value="0">Slow</option><option value="1">Fast</option></select></label>
-        <label>Scanner<select id="scanner-mode" data-parameter="19" disabled><option value="0">Off</option><option value="1">V1</option><option value="2">V2</option><option value="3">V3</option><option value="4">C1</option><option value="5">C2</option><option value="6">C3</option></select></label>
-      </section>
-
-      <section class="bottom-grid">
-        <article class="panel pedals">
-          <div><p class="eyebrow">CHANNEL 3 · 25 NOTES</p><h2>Pedal Clavier</h2></div>
-          <label>16'<input id="p16" data-parameter="33" type="range" min="0" max="8" step="1" disabled /></label>
-          <label>8'<input id="p8" data-parameter="34" type="range" min="0" max="8" step="1" disabled /></label>
-        </article>
+      <section class="tab-panel" id="panel-rotary">
         <article class="panel cabinet">
           <div class="cabinet-main">
             <div><p class="eyebrow">INTEGRATED</p><h2>Rotary Cabinet</h2></div>
@@ -78,6 +180,7 @@
               <label>Reflections<input id="reflections" data-parameter="43" type="range" min="0" max="1" step="0.001" disabled /></label>
               <label>Horn Level<input id="horn-level" data-parameter="44" type="range" min="-80" max="0" step="0.5" disabled /></label>
               <label>Drum Level<input id="drum-level" data-parameter="60" type="range" min="-80" max="0" step="0.5" disabled /></label>
+              <label>Sub Bass<input id="sub-level" data-parameter="58" type="range" min="-80" max="0" step="0.5" disabled /></label>
             </div>
           </div>
           <figure class="rotary-figure">
@@ -110,85 +213,73 @@
             <figcaption id="mic-readout">35 cm</figcaption>
           </figure>
         </article>
+        <article class="panel">
+          <div><p class="eyebrow">PLACEMENT AND SUPPLY</p><h2>Cabinet Model</h2></div>
+          <p class="note">Placement is in the units a tape measure uses. A stop angle of 360 degrees is the documented "Rnd" setting, which stops that rotor somewhere new each time. The rotors are belted to alternating-current motors, so the supply they run from sets every speed they reach: the same cabinet on 50 Hz turns at five sixths of what it is rated for.</p>
+          <div class="control-grid">
+            <label>Horn Spacing<input id="horn-mic-spacing" data-parameter="42" type="range" min="0" max="0.4" step="0.005" disabled /></label>
+            <label>Drum Spacing<input id="drum-mic-spacing" data-parameter="62" type="range" min="0" max="0.4" step="0.005" disabled /></label>
+            <label>Horn Offset<input id="horn-mic-offset" data-parameter="51" type="range" min="-0.5" max="0.5" step="0.005" disabled /></label>
+            <label>Drum Offset<input id="drum-mic-offset" data-parameter="63" type="range" min="-0.5" max="0.5" step="0.005" disabled /></label>
+            <label class="switch">Horn Mics at Sides<input id="horn-mic-sides" data-parameter="64" type="checkbox" disabled /></label>
+            <label class="switch">Drum Mics at Sides<input id="drum-mic-sides" data-parameter="65" type="checkbox" disabled /></label>
+            <label>Mic Pattern<input id="mic-pattern" data-parameter="52" type="range" min="0" max="1" step="0.01" disabled /></label>
+            <label>Mic Type<select id="mic-type" data-parameter="59" disabled><option value="0">Dynamic</option><option value="1">Condenser</option></select></label>
+            <label>Horn Stop Angle<input id="horn-stop-angle" data-parameter="55" type="range" min="0" max="360" step="1" disabled /></label>
+            <label>Drum Stop Angle<input id="drum-stop-angle" data-parameter="56" type="range" min="0" max="360" step="1" disabled /></label>
+            <label>Horn Radius<input id="horn-radius" data-parameter="53" type="range" min="0.05" max="0.4" step="0.001" disabled /></label>
+            <label>Drum Radius<input id="drum-radius" data-parameter="54" type="range" min="0.05" max="0.3" step="0.001" disabled /></label>
+            <label>Mains Supply<select id="mains-frequency" data-parameter="57" disabled><option value="0">50 Hz</option><option value="1">60 Hz</option></select></label>
+          </div>
+        </article>
       </section>
 
-      <details class="panel advanced">
-        <summary>Console calibration</summary>
-        <div class="advanced-grid">
-          <label>Contact Spread<input id="contact-spread" data-parameter="11" type="range" min="0" max="1" step="0.001" disabled /></label>
-          <label>Contact Bounce<input id="contact-bounce" data-parameter="12" type="range" min="0" max="1" step="0.001" disabled /></label>
-          <label>Generator Leakage<input id="leakage" data-parameter="13" type="range" min="0" max="1" step="0.001" disabled /></label>
-          <label>Drive Wobble<input id="drive-wobble" data-parameter="66" type="range" min="0" max="1" step="0.001" disabled /></label>
-          <label>Contact Delay<input id="contact-delay" data-parameter="72" type="range" min="0" max="1" step="0.001" disabled /></label>
-          <label>Key Click<input id="key-click" data-parameter="74" type="range" min="0" max="1" step="0.001" disabled /></label>
-          <label>Upper Preset Key<input id="registration" data-parameter="93" type="range" min="0" max="11" step="1" disabled /></label>
-          <label>Lower Preset Key<input id="lower-registration" data-parameter="94" type="range" min="0" max="11" step="1" disabled /></label>
-          <label>16' A<input id="drawbar-a-16" data-parameter="75" type="range" min="0" max="8" step="1" disabled /></label>
-          <label>5 1/3' A<input id="drawbar-a-5-1-3" data-parameter="76" type="range" min="0" max="8" step="1" disabled /></label>
-          <label>8' A<input id="drawbar-a-8" data-parameter="77" type="range" min="0" max="8" step="1" disabled /></label>
-          <label>4' A<input id="drawbar-a-4" data-parameter="78" type="range" min="0" max="8" step="1" disabled /></label>
-          <label>2 2/3' A<input id="drawbar-a-2-2-3" data-parameter="79" type="range" min="0" max="8" step="1" disabled /></label>
-          <label>2' A<input id="drawbar-a-2" data-parameter="80" type="range" min="0" max="8" step="1" disabled /></label>
-          <label>1 3/5' A<input id="drawbar-a-1-3-5" data-parameter="81" type="range" min="0" max="8" step="1" disabled /></label>
-          <label>1 1/3' A<input id="drawbar-a-1-1-3" data-parameter="82" type="range" min="0" max="8" step="1" disabled /></label>
-          <label>1' A<input id="drawbar-a-1" data-parameter="83" type="range" min="0" max="8" step="1" disabled /></label>
-          <label>16' A<input id="lower-drawbar-a-16" data-parameter="84" type="range" min="0" max="8" step="1" disabled /></label>
-          <label>5 1/3' A<input id="lower-drawbar-a-5-1-3" data-parameter="85" type="range" min="0" max="8" step="1" disabled /></label>
-          <label>8' A<input id="lower-drawbar-a-8" data-parameter="86" type="range" min="0" max="8" step="1" disabled /></label>
-          <label>4' A<input id="lower-drawbar-a-4" data-parameter="87" type="range" min="0" max="8" step="1" disabled /></label>
-          <label>2 2/3' A<input id="lower-drawbar-a-2-2-3" data-parameter="88" type="range" min="0" max="8" step="1" disabled /></label>
-          <label>2' A<input id="lower-drawbar-a-2" data-parameter="89" type="range" min="0" max="8" step="1" disabled /></label>
-          <label>1 3/5' A<input id="lower-drawbar-a-1-3-5" data-parameter="90" type="range" min="0" max="8" step="1" disabled /></label>
-          <label>1 1/3' A<input id="lower-drawbar-a-1-1-3" data-parameter="91" type="range" min="0" max="8" step="1" disabled /></label>
-          <label>1' A<input id="lower-drawbar-a-1" data-parameter="92" type="range" min="0" max="8" step="1" disabled /></label>
-          <label>Leakage Boost<input id="leakage-boost" data-parameter="67" type="range" min="0" max="1" step="0.001" disabled /></label>
-          <label>Transformer Drive<input id="transformer-drive" data-parameter="14" type="range" min="0" max="1" step="0.001" disabled /></label>
-          <label>Transformer Memory<input id="transformer-memory" data-parameter="15" type="range" min="0" max="1" step="0.001" disabled /></label>
-          <label>Preamp Drive<input id="console-drive" data-parameter="37" type="range" min="0" max="1" step="0.001" disabled /></label>
-          <label>Bass Trim<input id="console-bass" data-parameter="38" type="range" min="-1" max="1" step="0.001" disabled /></label>
-          <label>AO-28 Tone<input id="console-treble" data-parameter="39" type="range" min="-1" max="1" step="0.001" disabled /></label>
-          <label>Swell Character<input id="swell-character" data-parameter="40" type="range" min="0" max="1" step="0.001" disabled /></label>
-        </div>
-      </details>
+      <section class="tab-panel" id="panel-generator">
+        <article class="panel">
+          <div><p class="eyebrow">CONTACTS AND WHEELS</p><h2>Generator</h2></div>
+          <p class="note">The click and the attack are one control: it sets how abruptly a contact arrives, so turning it down slows the attack rather than muting a separate noise. Contact delay is Hammond's own, with a published ceiling of 725.6 ms.</p>
+          <div class="control-grid">
+            <label>Contact Spread<input id="contact-spread" data-parameter="11" type="range" min="0" max="1" step="0.001" disabled /></label>
+            <label>Contact Bounce<input id="contact-bounce" data-parameter="12" type="range" min="0" max="1" step="0.001" disabled /></label>
+            <label>Contact Delay<input id="contact-delay" data-parameter="72" type="range" min="0" max="1" step="0.001" disabled /></label>
+            <label>Key Click<input id="key-click" data-parameter="74" type="range" min="0" max="1" step="0.001" disabled /></label>
+            <label>Generator Leakage<input id="leakage" data-parameter="13" type="range" min="0" max="1" step="0.001" disabled /></label>
+            <label>Leakage Boost<input id="leakage-boost" data-parameter="67" type="range" min="0" max="1" step="0.001" disabled /></label>
+            <label>Drive Wobble<input id="drive-wobble" data-parameter="66" type="range" min="0" max="1" step="0.001" disabled /></label>
+          </div>
+        </article>
+      </section>
 
-      <details class="panel advanced">
-        <summary>Microphone placement and rotor stops</summary>
-        <p class="note">Placement is in the units a tape measure uses. A stop angle of 360 degrees is the documented "Rnd" setting, which stops that rotor somewhere new each time. The rotors are belted to alternating-current motors, so the supply they run from sets every speed they reach: the same cabinet on 50 Hz turns at five sixths of what it is rated for. Sub Bass is the woofer's own unmodulated output, which never enters a rotor and is heard mostly by the drum's pair of microphones.</p>
-        <div class="advanced-grid">
-          <label>Horn Spacing<input id="horn-mic-spacing" data-parameter="42" type="range" min="0" max="0.4" step="0.005" disabled /></label>
-          <label>Drum Spacing<input id="drum-mic-spacing" data-parameter="62" type="range" min="0" max="0.4" step="0.005" disabled /></label>
-          <label>Horn Offset<input id="horn-mic-offset" data-parameter="51" type="range" min="-0.5" max="0.5" step="0.005" disabled /></label>
-          <label>Drum Offset<input id="drum-mic-offset" data-parameter="63" type="range" min="-0.5" max="0.5" step="0.005" disabled /></label>
-          <label class="switch">Horn Mics at Sides<input id="horn-mic-sides" data-parameter="64" type="checkbox" disabled /></label>
-          <label class="switch">Drum Mics at Sides<input id="drum-mic-sides" data-parameter="65" type="checkbox" disabled /></label>
-          <label>Mic Pattern<input id="mic-pattern" data-parameter="52" type="range" min="0" max="1" step="0.01" disabled /></label>
-          <label>Horn Stop Angle<input id="horn-stop-angle" data-parameter="55" type="range" min="0" max="360" step="1" disabled /></label>
-          <label>Drum Stop Angle<input id="drum-stop-angle" data-parameter="56" type="range" min="0" max="360" step="1" disabled /></label>
-          <label>Horn Radius<input id="horn-radius" data-parameter="53" type="range" min="0.05" max="0.4" step="0.001" disabled /></label>
-          <label>Drum Radius<input id="drum-radius" data-parameter="54" type="range" min="0.05" max="0.3" step="0.001" disabled /></label>
-          <label>Mains Supply<select id="mains-frequency" data-parameter="57" disabled><option value="0">50 Hz</option><option value="1">60 Hz</option></select></label>
-          <label>Sub Bass<input id="sub-level" data-parameter="58" type="range" min="-80" max="0" step="0.5" disabled /></label>
-          <label>Mic Type<select id="mic-type" data-parameter="59" disabled><option value="0">Dynamic</option><option value="1">Condenser</option></select></label>
-        </div>
-      </details>
-
-      <details class="panel advanced">
-        <summary>Transformer calibration</summary>
-        <p class="note">Bipolar trims offset one transformer from the shared character: T1 carries the lower manual and pedals, T2 the upper manual, T3 the output stage.</p>
-        <div class="advanced-grid">
-          <label>Core Asymmetry<input id="transformer-asymmetry" data-parameter="73" type="range" min="0" max="1" step="0.001" disabled /></label>
-          <label>T1 Drive Trim<input id="t1-drive-trim" data-parameter="45" type="range" min="-1" max="1" step="0.001" disabled /></label>
-          <label>T1 Memory Trim<input id="t1-memory-trim" data-parameter="46" type="range" min="-1" max="1" step="0.001" disabled /></label>
-          <label>T2 Drive Trim<input id="t2-drive-trim" data-parameter="47" type="range" min="-1" max="1" step="0.001" disabled /></label>
-          <label>T2 Memory Trim<input id="t2-memory-trim" data-parameter="48" type="range" min="-1" max="1" step="0.001" disabled /></label>
-          <label>T3 Drive Trim<input id="t3-drive-trim" data-parameter="49" type="range" min="-1" max="1" step="0.001" disabled /></label>
-          <label>T3 Memory Trim<input id="t3-memory-trim" data-parameter="50" type="range" min="-1" max="1" step="0.001" disabled /></label>
-          <label>Stage Character<input id="console-stage-character" data-parameter="68" type="range" min="0" max="3" step="0.001" disabled /></label>
-          <label>V4A Trim<input id="v4a-trim" data-parameter="69" type="range" min="-1" max="1" step="0.001" disabled /></label>
-          <label>V4B Trim<input id="v4b-trim" data-parameter="70" type="range" min="-1" max="1" step="0.001" disabled /></label>
-          <label>V3B Trim<input id="v3b-trim" data-parameter="71" type="range" min="-1" max="1" step="0.001" disabled /></label>
-        </div>
-      </details>
+      <section class="tab-panel" id="panel-electronics">
+        <article class="panel">
+          <div><p class="eyebrow">AO-28</p><h2>Preamplifier</h2></div>
+          <div class="control-grid">
+            <label>Preamp Drive<input id="console-drive" data-parameter="37" type="range" min="0" max="1" step="0.001" disabled /></label>
+            <label>Bass Trim<input id="console-bass" data-parameter="38" type="range" min="-1" max="1" step="0.001" disabled /></label>
+            <label>AO-28 Tone<input id="console-treble" data-parameter="39" type="range" min="-1" max="1" step="0.001" disabled /></label>
+            <label>Swell Character<input id="swell-character" data-parameter="40" type="range" min="0" max="1" step="0.001" disabled /></label>
+            <label>Stage Character<input id="console-stage-character" data-parameter="68" type="range" min="0" max="3" step="0.001" disabled /></label>
+            <label>V4A Trim<input id="v4a-trim" data-parameter="69" type="range" min="-1" max="1" step="0.001" disabled /></label>
+            <label>V4B Trim<input id="v4b-trim" data-parameter="70" type="range" min="-1" max="1" step="0.001" disabled /></label>
+            <label>V3B Trim<input id="v3b-trim" data-parameter="71" type="range" min="-1" max="1" step="0.001" disabled /></label>
+          </div>
+        </article>
+        <article class="panel">
+          <div><p class="eyebrow">MATCHING AND OUTPUT</p><h2>Transformers</h2></div>
+          <p class="note">Bipolar trims offset one transformer from the shared character: T1 carries the lower manual and pedals, T2 the upper manual, T3 the output stage.</p>
+          <div class="control-grid">
+            <label>Transformer Drive<input id="transformer-drive" data-parameter="14" type="range" min="0" max="1" step="0.001" disabled /></label>
+            <label>Transformer Memory<input id="transformer-memory" data-parameter="15" type="range" min="0" max="1" step="0.001" disabled /></label>
+            <label>Core Asymmetry<input id="transformer-asymmetry" data-parameter="73" type="range" min="0" max="1" step="0.001" disabled /></label>
+            <label>T1 Drive Trim<input id="t1-drive-trim" data-parameter="45" type="range" min="-1" max="1" step="0.001" disabled /></label>
+            <label>T1 Memory Trim<input id="t1-memory-trim" data-parameter="46" type="range" min="-1" max="1" step="0.001" disabled /></label>
+            <label>T2 Drive Trim<input id="t2-drive-trim" data-parameter="47" type="range" min="-1" max="1" step="0.001" disabled /></label>
+            <label>T2 Memory Trim<input id="t2-memory-trim" data-parameter="48" type="range" min="-1" max="1" step="0.001" disabled /></label>
+            <label>T3 Drive Trim<input id="t3-drive-trim" data-parameter="49" type="range" min="-1" max="1" step="0.001" disabled /></label>
+            <label>T3 Memory Trim<input id="t3-memory-trim" data-parameter="50" type="range" min="-1" max="1" step="0.001" disabled /></label>
+          </div>
+        </article>
+      </section>
     </main>
     <script type="module" src="bootstrap.js"></script>
   </body>

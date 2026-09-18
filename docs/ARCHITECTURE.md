@@ -158,7 +158,26 @@ slow speed takes a tenth of the time braking from fast does, and the drum takes
 several times longer than the horn either way. A mode switch waits briefly
 before the rotor responds, as a relay and a clutch do.
 
-The play surface draws the cabinet from above. It does not animate on a
+The play surface is four tabs behind one strip that never leaves: output,
+expression and the rotary switch, which are what a player reaches for without
+looking. The tabs are radio inputs and their panels are siblings of them, so
+switching pages is a stylesheet rule and no script runs - and, more to the
+point, every control stays in the document whichever tab is showing. The
+surface binds each parameter to an element by name and cannot carry on without
+one, so a control that left the page would take the whole panel down; a test
+holds the packaged page against that list rather than leaving it to be found
+by opening the plugin.
+
+The manuals carry their two drawbar groups side by side under the key that
+chooses between them, as the console does. The drawbars are drawn as drawbars:
+a slotted tab in a groove, painted in the console's own three groups - brown
+for the two sub harmonics, white for the octave-related ones, black for the
+mutations - and pulled downwards for eight, which is the direction a player
+pulls them. The art is inline SVG in the stylesheet, so the shapes can be read
+and changed where they are used, and the control underneath stays a plain
+range input that a keyboard and a screen reader already know how to drive.
+
+The play surface also draws the cabinet from above. It does not animate on a
 timer: it runs a second copy of the engine's own rotor model, clocked by the
 browser rather than by the audio device, so the speeds, the ramps and the stop
 angles it shows are the ones the audio is using. Its frame follows the
@@ -166,7 +185,7 @@ microphones, so moving them back zooms out instead of pushing them off the
 edge. The parameter table the surface validates against is the engine's, not a
 copy of it; a range that moves in the DSP moves there too.
 
-## Version 0.44.0 limitations
+## Version 0.45.0 limitations
 
 - The classic B-3 pedal contact and resistor-panel topology is present. The
   L20 pedal-filter coefficient and console matching-network constants remain

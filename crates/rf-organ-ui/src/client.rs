@@ -18,6 +18,127 @@ pub const DEFAULTS: [f64; PARAMETERS] = [
     0.0, 2.0, 2.0,
 ];
 
+/// The element each parameter is bound to, in parameter order.
+///
+/// The surface reaches for these by name and cannot carry on without one, so
+/// a control that leaves the page takes the panel with it. A test below holds
+/// the packaged page against this list rather than leaving that to be found
+/// by opening the plugin.
+pub const CONTROL_IDS: [&str; PARAMETERS] = [
+    "output",
+    "expression",
+    "u16",
+    "u513",
+    "u8",
+    "u4",
+    "u223",
+    "u2",
+    "u135",
+    "u113",
+    "u1",
+    "contact-spread",
+    "contact-bounce",
+    "leakage",
+    "transformer-drive",
+    "transformer-memory",
+    "rotary-mode",
+    "rotary-mix",
+    "rotor-inertia",
+    "scanner-mode",
+    "percussion",
+    "percussion-harmonic",
+    "percussion-volume",
+    "percussion-decay",
+    "l16",
+    "l513",
+    "l8",
+    "l4",
+    "l223",
+    "l2",
+    "l135",
+    "l113",
+    "l1",
+    "p16",
+    "p8",
+    "upper-vibrato",
+    "lower-vibrato",
+    "console-drive",
+    "console-bass",
+    "console-treble",
+    "swell-character",
+    "horn-mic-distance",
+    "horn-mic-spacing",
+    "reflections",
+    "horn-level",
+    "t1-drive-trim",
+    "t1-memory-trim",
+    "t2-drive-trim",
+    "t2-memory-trim",
+    "t3-drive-trim",
+    "t3-memory-trim",
+    "horn-mic-offset",
+    "mic-pattern",
+    "horn-radius",
+    "drum-radius",
+    "horn-stop-angle",
+    "drum-stop-angle",
+    "mains-frequency",
+    "sub-level",
+    "mic-type",
+    "drum-level",
+    "drum-mic-distance",
+    "drum-mic-spacing",
+    "drum-mic-offset",
+    "horn-mic-sides",
+    "drum-mic-sides",
+    "drive-wobble",
+    "leakage-boost",
+    "console-stage-character",
+    "v4a-trim",
+    "v4b-trim",
+    "v3b-trim",
+    "contact-delay",
+    "transformer-asymmetry",
+    "key-click",
+    "drawbar-a-16",
+    "drawbar-a-5-1-3",
+    "drawbar-a-8",
+    "drawbar-a-4",
+    "drawbar-a-2-2-3",
+    "drawbar-a-2",
+    "drawbar-a-1-3-5",
+    "drawbar-a-1-1-3",
+    "drawbar-a-1",
+    "lower-drawbar-a-16",
+    "lower-drawbar-a-5-1-3",
+    "lower-drawbar-a-8",
+    "lower-drawbar-a-4",
+    "lower-drawbar-a-2-2-3",
+    "lower-drawbar-a-2",
+    "lower-drawbar-a-1-3-5",
+    "lower-drawbar-a-1-1-3",
+    "lower-drawbar-a-1",
+    "registration",
+    "lower-registration",
+];
+
+/// Elements the cabinet view writes to, which are not parameters and are
+/// reached by name just the same.
+pub const VIEW_IDS: [&str; 12] = [
+    "programs",
+    "status",
+    "rotary-view",
+    "mic-readout",
+    "horn-rotor",
+    "drum-rotor",
+    "horn-sweep",
+    "drum-sweep",
+    "horn-mic-left",
+    "horn-mic-right",
+    "drum-mic-left",
+    "drum-mic-right",
+];
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Sound {
     pub id: String,
@@ -355,6 +476,31 @@ mod tests {
             Some("stage")
         );
         assert_eq!(host_lighting(&json!({"host": {"lighting": "auto"}})), None);
+    }
+
+    /// Every element the surface drives has to be in the page it ships with.
+    /// Rearranging the panels is easy to do and easy to do incompletely, and
+    /// the failure is not a missing knob but a surface that will not start.
+    #[test]
+    fn packaged_surface_contains_every_element_the_surface_drives() {
+        let html = include_str!("../../../package/web/play.html");
+        for id in CONTROL_IDS.into_iter().chain(VIEW_IDS) {
+            assert_eq!(
+                html.matches(&format!("id=\"{id}\"")).count(),
+                1,
+                "element {id}"
+            );
+        }
+    }
+
+    /// The axes are written to by name as well, and they are lines rather
+    /// than the circles above.
+    #[test]
+    fn packaged_surface_contains_the_microphone_axes() {
+        let html = include_str!("../../../package/web/play.html");
+        for id in ["horn-mic-axis", "drum-mic-axis"] {
+            assert_eq!(html.matches(&format!("id=\"{id}\"")).count(), 1, "{id}");
+        }
     }
 
     #[test]

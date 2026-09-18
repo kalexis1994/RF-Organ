@@ -41,7 +41,7 @@
 
 * { box-sizing: border-box; }
 body { margin: 0; min-width: 320px; background: radial-gradient(circle at 50% 0, var(--body-glow), var(--body-edge) 70%); }
-main { width: min(1440px, 100%); margin: auto; padding: 18px; display: grid; gap: 14px; }
+main { width: min(1440px, 100%); margin: auto; padding: 18px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
 header, .panel { border: 1px solid #72543a; box-shadow: 0 8px 24px #0008, inset 0 1px #ffffff12; }
 header { min-height: 104px; padding: 18px 22px; display: grid; grid-template-columns: 1fr minmax(190px, 300px) auto; align-items: center; gap: 24px; background: linear-gradient(120deg, var(--header-start), var(--header-end)); }
 h1, h2, p { margin: 0; }
@@ -52,17 +52,14 @@ h2 { font-family: Georgia, serif; font-weight: 400; }
 #status { color: var(--muted); font-size: .78rem; max-width: 170px; }
 .panel { background: linear-gradient(145deg, var(--panel-start), var(--panel-end)); border-radius: 4px; padding: 16px; }
 .performance { display: grid; grid-template-columns: repeat(6, 1fr); gap: 16px; align-items: end; }
-.manuals { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.manuals { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
 .section-title, .switchboard, .pedals, .cabinet { display: flex; gap: 18px; align-items: center; justify-content: space-between; }
-.drawbars { display: grid; grid-template-columns: repeat(9, 1fr); gap: 7px; margin-top: 16px; }
+.drawbars { display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); gap: 7px; margin-top: 16px; }
 .drawbars label { align-items: center; font-size: .72rem; }
-.drawbars input { height: 128px; writing-mode: vertical-lr; direction: rtl; }
-.drawbars label:nth-child(3n+1) input { accent-color: #e8e1d2; }
-.drawbars label:nth-child(3n+2) input { accent-color: #805438; }
-.drawbars label:nth-child(3n) input { accent-color: #171717; }
+.drawbars input { writing-mode: vertical-lr; }
 .switchboard { justify-content: flex-start; flex-wrap: wrap; }
 .switchboard > div { margin-right: auto; }
-.bottom-grid { display: grid; grid-template-columns: 1fr 2fr; gap: 14px; }
+.bottom-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 14px; align-items: start; }
 .pedals, .cabinet { align-items: end; }
 .pedals > div, .cabinet > div { align-self: center; margin-right: auto; }
 .cabinet label { min-width: 120px; }
@@ -80,7 +77,7 @@ input:disabled, select:disabled { opacity: .45; }
    than pushing them off the edge. */
 .cabinet { align-items: stretch; }
 .cabinet-main { flex: 1; display: flex; flex-direction: column; justify-content: space-between; gap: 18px; }
-.cabinet-controls { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; align-items: end; }
+.cabinet-controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 18px 22px; align-items: end; }
 .rotary-figure { margin: 0; flex: none; display: grid; justify-items: center; gap: 6px; }
 .rotary-view { width: 148px; height: 200px; display: block; background: #130f0b; border: 1px solid var(--line); border-radius: 10px; }
 .rotary-view .body { fill: #241c15; stroke: var(--wood); stroke-width: 1.5; }
@@ -96,15 +93,133 @@ input:disabled, select:disabled { opacity: .45; }
 [data-rotary="chorale"] .rotary-view { --rotor: #d3ad63; }
 [data-rotary="tremolo"] .rotary-view { --rotor: #df873d; }
 [data-rotary="brake"] .rotary-view { --rotor: #bb7448; }
-.advanced summary { cursor: pointer; color: var(--gold); font-weight: 800; }
-.advanced-grid { margin-top: 18px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
-.advanced .note { margin: 10px 0 0; font-size: .78rem; line-height: 1.5; opacity: .72; }
+/* The faders.
+
+   A drawbar is not a slider with a coloured accent: it is a slotted tab that
+   slides in a groove, and the console paints the nine in three groups - brown
+   for the two sub harmonics, white for the octave-related ones, black for the
+   mutations. The art is inline so that the shapes are here to read and edit
+   rather than in a binary next door, and the control underneath stays a plain
+   range input, which is what the surface binds to and what a keyboard and a
+   screen reader already know how to drive.
+
+   The general faders get a different body on purpose. They are console
+   controls rather than harmonics, so they carry a knurled cap with one line
+   across it and nothing that suggests a drawbar. */
+input[type="range"] {
+  appearance: none; -webkit-appearance: none; background: none; cursor: pointer;
+}
+input[type="range"]::-webkit-slider-runnable-track { background: none; }
+input[type="range"]::-moz-range-track { background: none; }
+
+/* The general fader: a groove with a bright seam along it. */
+.performance input[type="range"],
+.control-grid input[type="range"],
+.cabinet-controls input[type="range"],
+.pedal-drawbars { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 0; }
+.pedals > label input[type="range"] {
+  height: 34px;
+  background:
+    linear-gradient(180deg, transparent calc(50% - 4px), #000000a0 calc(50% - 4px),
+      #000000a0 calc(50% + 4px), transparent calc(50% + 4px)),
+    linear-gradient(180deg, transparent calc(50% - 1px), var(--line) calc(50% - 1px),
+      var(--line) calc(50% + 1px), transparent calc(50% + 1px));
+  border-radius: 4px;
+}
+.performance input[type="range"]::-webkit-slider-thumb,
+.control-grid input[type="range"]::-webkit-slider-thumb,
+.cabinet-controls input[type="range"]::-webkit-slider-thumb,
+.pedals > label input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 20px; height: 34px;
+  background: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2020%2034%22%3E%20%3Cdefs%3E%20%3ClinearGradient%20id%3D%22c%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%220%22%3E%20%3Cstop%20offset%3D%220%22%20stop-color%3D%22%233a332b%22%2F%3E%20%3Cstop%20offset%3D%22.2%22%20stop-color%3D%22%238d8073%22%2F%3E%20%3Cstop%20offset%3D%22.5%22%20stop-color%3D%22%23cbbca6%22%2F%3E%20%3Cstop%20offset%3D%22.8%22%20stop-color%3D%22%237e7264%22%2F%3E%20%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23332d26%22%2F%3E%20%3C%2FlinearGradient%3E%20%3C%2Fdefs%3E%20%3Crect%20x%3D%221.2%22%20y%3D%221%22%20width%3D%2217.6%22%20height%3D%2232%22%20rx%3D%223.2%22%20fill%3D%22url%28%23c%29%22%20stroke%3D%22%231a1511%22%20stroke-width%3D%221.2%22%2F%3E%20%3Cg%20fill%3D%22%23000000%22%20opacity%3D%22.3%22%3E%20%3Crect%20x%3D%223%22%20y%3D%226%22%20width%3D%2214%22%20height%3D%221.3%22%2F%3E%20%3Crect%20x%3D%223%22%20y%3D%2210%22%20width%3D%2214%22%20height%3D%221.3%22%2F%3E%20%3Crect%20x%3D%223%22%20y%3D%2223%22%20width%3D%2214%22%20height%3D%221.3%22%2F%3E%20%3Crect%20x%3D%223%22%20y%3D%2227%22%20width%3D%2214%22%20height%3D%221.3%22%2F%3E%20%3C%2Fg%3E%20%3Crect%20x%3D%222.4%22%20y%3D%2215.6%22%20width%3D%2215.2%22%20height%3D%222.8%22%20rx%3D%221.4%22%20fill%3D%22%23c9a058%22%2F%3E%20%3Crect%20x%3D%222.4%22%20y%3D%2215.6%22%20width%3D%2215.2%22%20height%3D%221.2%22%20rx%3D%220.6%22%20fill%3D%22%23ffffff%22%20opacity%3D%22.45%22%2F%3E%20%3C%2Fsvg%3E") center/contain no-repeat;
+  filter: drop-shadow(0 2px 3px #000000aa);
+}
+.performance input[type="range"]::-moz-range-thumb,
+.control-grid input[type="range"]::-moz-range-thumb,
+.cabinet-controls input[type="range"]::-moz-range-thumb,
+.pedals > label input[type="range"]::-moz-range-thumb {
+  width: 20px; height: 34px; border: none;
+  background: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2020%2034%22%3E%20%3Cdefs%3E%20%3ClinearGradient%20id%3D%22c%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%220%22%3E%20%3Cstop%20offset%3D%220%22%20stop-color%3D%22%233a332b%22%2F%3E%20%3Cstop%20offset%3D%22.2%22%20stop-color%3D%22%238d8073%22%2F%3E%20%3Cstop%20offset%3D%22.5%22%20stop-color%3D%22%23cbbca6%22%2F%3E%20%3Cstop%20offset%3D%22.8%22%20stop-color%3D%22%237e7264%22%2F%3E%20%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23332d26%22%2F%3E%20%3C%2FlinearGradient%3E%20%3C%2Fdefs%3E%20%3Crect%20x%3D%221.2%22%20y%3D%221%22%20width%3D%2217.6%22%20height%3D%2232%22%20rx%3D%223.2%22%20fill%3D%22url%28%23c%29%22%20stroke%3D%22%231a1511%22%20stroke-width%3D%221.2%22%2F%3E%20%3Cg%20fill%3D%22%23000000%22%20opacity%3D%22.3%22%3E%20%3Crect%20x%3D%223%22%20y%3D%226%22%20width%3D%2214%22%20height%3D%221.3%22%2F%3E%20%3Crect%20x%3D%223%22%20y%3D%2210%22%20width%3D%2214%22%20height%3D%221.3%22%2F%3E%20%3Crect%20x%3D%223%22%20y%3D%2223%22%20width%3D%2214%22%20height%3D%221.3%22%2F%3E%20%3Crect%20x%3D%223%22%20y%3D%2227%22%20width%3D%2214%22%20height%3D%221.3%22%2F%3E%20%3C%2Fg%3E%20%3Crect%20x%3D%222.4%22%20y%3D%2215.6%22%20width%3D%2215.2%22%20height%3D%222.8%22%20rx%3D%221.4%22%20fill%3D%22%23c9a058%22%2F%3E%20%3Crect%20x%3D%222.4%22%20y%3D%2215.6%22%20width%3D%2215.2%22%20height%3D%221.2%22%20rx%3D%220.6%22%20fill%3D%22%23ffffff%22%20opacity%3D%22.45%22%2F%3E%20%3C%2Fsvg%3E") center/contain no-repeat;
+}
+
+/* The drawbar: a tab in a slot, pulled towards the player. */
+.drawbars input[type="range"] {
+  width: 46px; height: 138px; justify-self: center;
+  background:
+    linear-gradient(90deg, transparent calc(50% - 9px), #000000b0 calc(50% - 9px),
+      #000000b0 calc(50% + 9px), transparent calc(50% + 9px)),
+    linear-gradient(90deg, transparent calc(50% - 7px), #241d16 calc(50% - 7px),
+      #241d16 calc(50% + 7px), transparent calc(50% + 7px));
+  border-radius: 5px;
+}
+.drawbars input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 44px; height: 22px;
+  background: var(--tab) center/contain no-repeat;
+  filter: drop-shadow(0 3px 4px #000000bb);
+}
+.drawbars input[type="range"]::-moz-range-thumb {
+  width: 44px; height: 22px; border: none;
+  background: var(--tab) center/contain no-repeat;
+}
+.drawbars label.brown input { --tab: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2044%2022%22%3E%20%3Cdefs%3E%20%3ClinearGradient%20id%3D%22f%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%220%22%20y2%3D%221%22%3E%20%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23b07a4e%22%2F%3E%20%3Cstop%20offset%3D%22.46%22%20stop-color%3D%22%238a5836%22%2F%3E%20%3Cstop%20offset%3D%221%22%20stop-color%3D%22%235d3921%22%2F%3E%20%3C%2FlinearGradient%3E%20%3C%2Fdefs%3E%20%3Crect%20x%3D%22.7%22%20y%3D%22.7%22%20width%3D%2242.6%22%20height%3D%2220.6%22%20rx%3D%223.4%22%20fill%3D%22url%28%23f%29%22%20stroke%3D%22%232c1a0e%22%20stroke-width%3D%221.1%22%2F%3E%20%3Crect%20x%3D%223.4%22%20y%3D%222.2%22%20width%3D%2237.2%22%20height%3D%223.4%22%20rx%3D%221.7%22%20fill%3D%22%23ffffff%22%20opacity%3D%22.3%22%2F%3E%20%3Crect%20x%3D%2211%22%20y%3D%229.2%22%20width%3D%2222%22%20height%3D%223.6%22%20rx%3D%221.8%22%20fill%3D%22%233a2313%22%2F%3E%20%3Crect%20x%3D%2211%22%20y%3D%229.2%22%20width%3D%2222%22%20height%3D%221.5%22%20rx%3D%220.75%22%20fill%3D%22%23000000%22%20opacity%3D%22.25%22%2F%3E%20%3Crect%20x%3D%223.4%22%20y%3D%2217.6%22%20width%3D%2237.2%22%20height%3D%222%22%20rx%3D%221%22%20fill%3D%22%23000000%22%20opacity%3D%22.22%22%2F%3E%20%3C%2Fsvg%3E"); }
+.drawbars label.white input { --tab: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2044%2022%22%3E%20%3Cdefs%3E%20%3ClinearGradient%20id%3D%22f%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%220%22%20y2%3D%221%22%3E%20%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23fbf7ec%22%2F%3E%20%3Cstop%20offset%3D%22.46%22%20stop-color%3D%22%23e6dfd0%22%2F%3E%20%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23bdb4a2%22%2F%3E%20%3C%2FlinearGradient%3E%20%3C%2Fdefs%3E%20%3Crect%20x%3D%22.7%22%20y%3D%22.7%22%20width%3D%2242.6%22%20height%3D%2220.6%22%20rx%3D%223.4%22%20fill%3D%22url%28%23f%29%22%20stroke%3D%22%23554c3f%22%20stroke-width%3D%221.1%22%2F%3E%20%3Crect%20x%3D%223.4%22%20y%3D%222.2%22%20width%3D%2237.2%22%20height%3D%223.4%22%20rx%3D%221.7%22%20fill%3D%22%23ffffff%22%20opacity%3D%22.3%22%2F%3E%20%3Crect%20x%3D%2211%22%20y%3D%229.2%22%20width%3D%2222%22%20height%3D%223.6%22%20rx%3D%221.8%22%20fill%3D%22%238d8475%22%2F%3E%20%3Crect%20x%3D%2211%22%20y%3D%229.2%22%20width%3D%2222%22%20height%3D%221.5%22%20rx%3D%220.75%22%20fill%3D%22%23000000%22%20opacity%3D%22.25%22%2F%3E%20%3Crect%20x%3D%223.4%22%20y%3D%2217.6%22%20width%3D%2237.2%22%20height%3D%222%22%20rx%3D%221%22%20fill%3D%22%23000000%22%20opacity%3D%22.22%22%2F%3E%20%3C%2Fsvg%3E"); }
+.drawbars label.black input { --tab: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2044%2022%22%3E%20%3Cdefs%3E%20%3ClinearGradient%20id%3D%22f%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%220%22%20y2%3D%221%22%3E%20%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23423d37%22%2F%3E%20%3Cstop%20offset%3D%22.46%22%20stop-color%3D%22%231f1c19%22%2F%3E%20%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23100e0c%22%2F%3E%20%3C%2FlinearGradient%3E%20%3C%2Fdefs%3E%20%3Crect%20x%3D%22.7%22%20y%3D%22.7%22%20width%3D%2242.6%22%20height%3D%2220.6%22%20rx%3D%223.4%22%20fill%3D%22url%28%23f%29%22%20stroke%3D%22%23000000%22%20stroke-width%3D%221.1%22%2F%3E%20%3Crect%20x%3D%223.4%22%20y%3D%222.2%22%20width%3D%2237.2%22%20height%3D%223.4%22%20rx%3D%221.7%22%20fill%3D%22%23ffffff%22%20opacity%3D%22.3%22%2F%3E%20%3Crect%20x%3D%2211%22%20y%3D%229.2%22%20width%3D%2222%22%20height%3D%223.6%22%20rx%3D%221.8%22%20fill%3D%22%23000000%22%2F%3E%20%3Crect%20x%3D%2211%22%20y%3D%229.2%22%20width%3D%2222%22%20height%3D%221.5%22%20rx%3D%220.75%22%20fill%3D%22%23000000%22%20opacity%3D%22.25%22%2F%3E%20%3Crect%20x%3D%223.4%22%20y%3D%2217.6%22%20width%3D%2237.2%22%20height%3D%222%22%20rx%3D%221%22%20fill%3D%22%23ffffff%22%20opacity%3D%22.22%22%2F%3E%20%3C%2Fsvg%3E"); }
+
+/* The tabs. Each panel is a sibling of the radio that shows it, so switching
+   is one stylesheet rule and no script: the controls of a hidden tab are
+   still in the document, which is what the surface binds to. */
+.tab-input { position: absolute; opacity: 0; pointer-events: none; }
+.tabs { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--line); }
+.tabs label {
+  display: block; cursor: pointer; padding: 11px 20px; border: 1px solid transparent;
+  border-bottom: none; border-radius: 4px 4px 0 0; margin-bottom: -1px;
+  color: var(--muted); font-size: .74rem; font-weight: 800; letter-spacing: .12em;
+  text-transform: uppercase;
+}
+.tabs label:hover { color: var(--text); }
+.tab-panel { display: none; grid-template-columns: 1fr; gap: 14px; }
+#tab-manuals:checked ~ #panel-manuals,
+#tab-rotary:checked ~ #panel-rotary,
+#tab-generator:checked ~ #panel-generator,
+#tab-electronics:checked ~ #panel-electronics { display: grid; }
+#tab-manuals:checked ~ .tabs label[for="tab-manuals"],
+#tab-rotary:checked ~ .tabs label[for="tab-rotary"],
+#tab-generator:checked ~ .tabs label[for="tab-generator"],
+#tab-electronics:checked ~ .tabs label[for="tab-electronics"] {
+  color: var(--gold);
+  border-color: var(--line);
+  background: linear-gradient(180deg, var(--panel-start), var(--panel-end));
+}
+.tab-input:focus-visible ~ .tabs label { outline: none; }
+#tab-manuals:focus-visible ~ .tabs label[for="tab-manuals"],
+#tab-rotary:focus-visible ~ .tabs label[for="tab-rotary"],
+#tab-generator:focus-visible ~ .tabs label[for="tab-generator"],
+#tab-electronics:focus-visible ~ .tabs label[for="tab-electronics"] {
+  outline: 2px solid var(--gold); outline-offset: 2px;
+}
+
+/* A manual carries two groups of nine side by side, as the console does,
+   under the key that chooses between them. */
+.preset-key { margin-top: 16px; }
+.drawbar-groups { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; }
+.group-label {
+  margin: 16px 0 -8px; color: var(--gold); font-size: .62rem; font-weight: 800;
+  letter-spacing: .16em; text-transform: uppercase; opacity: .85;
+}
+
+.control-grid { margin-top: 18px; display: grid; grid-template-columns: repeat(auto-fit, minmax(168px, 1fr)); gap: 18px 20px; }
+.note { margin: 10px 0 0; font-size: .78rem; line-height: 1.5; opacity: .72; }
+
+@media (max-width: 1200px) {
+  .drawbar-groups { grid-template-columns: minmax(0, 1fr); gap: 0; }
+}
 
 @media (max-width: 900px) {
   header { grid-template-columns: 1fr 1fr; }
   #status { grid-column: 1 / -1; }
   .performance { grid-template-columns: repeat(3, 1fr); }
   .manuals, .bottom-grid { grid-template-columns: 1fr; }
+  .tabs label { padding: 10px 13px; letter-spacing: .08em; }
   .cabinet { flex-wrap: wrap; }
 }
 
@@ -113,6 +228,10 @@ input:disabled, select:disabled { opacity: .45; }
   header { grid-template-columns: 1fr; }
   .performance { grid-template-columns: 1fr 1fr; }
   .drawbars { gap: 2px; }
-  .drawbars input { height: 105px; }
-  .advanced-grid { grid-template-columns: 1fr; }
+  .drawbars input[type="range"] { width: 34px; height: 112px; }
+  .drawbars input[type="range"]::-webkit-slider-thumb { width: 32px; height: 16px; }
+  .drawbars input[type="range"]::-moz-range-thumb { width: 32px; height: 16px; }
+  .control-grid { grid-template-columns: minmax(0, 1fr); }
+  .tabs { gap: 2px; }
+  .tabs label { padding: 9px 10px; font-size: .66rem; letter-spacing: .04em; }
 }
