@@ -119,6 +119,110 @@
         "full"
       ],
       "description": "Every drawbar out on both manuals with fast rotary motion and console drive."
+    },
+    {
+      "id": "tibia-8",
+      "name": "Tibia 8'",
+      "bank": "registrations",
+      "editable": false,
+      "category": "Organ",
+      "order": 8,
+      "tags": [
+        "flute",
+        "theatre"
+      ],
+      "description": "The theatre flute, 00 7030 000 in the 2-4-3 notation, on a stationary cabinet."
+    },
+    {
+      "id": "flute-chorus-16",
+      "name": "Chorus of Flutes 16'",
+      "bank": "registrations",
+      "editable": false,
+      "category": "Organ",
+      "order": 9,
+      "tags": [
+        "flute",
+        "chorus"
+      ],
+      "description": "A flute chorus drawn from the 16', 80 8605 002, with slow cabinet motion."
+    },
+    {
+      "id": "open-diapason",
+      "name": "Open Diapason 8'",
+      "bank": "registrations",
+      "editable": false,
+      "category": "Organ",
+      "order": 10,
+      "tags": [
+        "diapason",
+        "church"
+      ],
+      "description": "The church voice, 01 8866 430, with the cabinet stationary."
+    },
+    {
+      "id": "clarinet-8",
+      "name": "Clarinet 8'",
+      "bank": "registrations",
+      "editable": false,
+      "category": "Organ",
+      "order": 11,
+      "tags": [
+        "reed",
+        "hollow"
+      ],
+      "description": "The hollow odd-harmonic reed, 00 6070 540."
+    },
+    {
+      "id": "salicional-8",
+      "name": "Salicional 8'",
+      "bank": "registrations",
+      "editable": false,
+      "category": "Organ",
+      "order": 12,
+      "tags": [
+        "string",
+        "vibrato"
+      ],
+      "description": "A quiet string, 00 2453 321, through V3 vibrato."
+    },
+    {
+      "id": "vox-humana",
+      "name": "Vox Humana 8'",
+      "bank": "registrations",
+      "editable": false,
+      "category": "Organ",
+      "order": 13,
+      "tags": [
+        "reed",
+        "vibrato"
+      ],
+      "description": "00 4720 123, which is a voice only once the vibrato is in."
+    },
+    {
+      "id": "percussion-switch",
+      "name": "Percussion Switch",
+      "bank": "registrations",
+      "editable": false,
+      "category": "Organ",
+      "order": 14,
+      "tags": [
+        "percussion",
+        "jazz"
+      ],
+      "description": "The 1' drawbar left out so the percussion tablet swaps the registration."
+    },
+    {
+      "id": "two-registrations",
+      "name": "Two Registrations",
+      "bank": "registrations",
+      "editable": false,
+      "category": "Organ",
+      "order": 15,
+      "tags": [
+        "drawbars",
+        "adjust-keys"
+      ],
+      "description": "A flute on the A# adjust key and a full registration on B, to change with a key."
     }
   ]
 }

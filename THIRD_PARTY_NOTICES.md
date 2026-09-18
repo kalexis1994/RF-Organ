@@ -43,6 +43,32 @@ spacing - the second-order product sits about eleven decibels under the third
 at the baseline character - which is a specific claim a bench can contradict
 by measuring both products on a real transformer.
 
+## Shipped programs
+
+Version 0.46.0 doubles the programs the plugin ships with, and the eight it
+adds are tone colours whose registrations are Hammond's rather than this
+project's. The XK-7 manual publishes a table of drawbar registration patterns
+for the four families a pipe organ is built from - Flute, Diapason, Reed and
+String - and explains the notation it uses for them: "Drawbar registrations
+are expressed in number groups of 2, 4 and 3. This '2-4-3' number formula for
+Drawbar Registration has been a Hammond convention since the beginning."
+
+The eight quoted here are Tibia 8' (00 7030 000), Chorus of Flutes 16'
+(80 8605 002), Open Diapason 8' (01 8866 430), Clarinet 8' (00 6070 540),
+Salicional 8' (00 2453 321) and Vox Humana 8' (00 4720 123), each digit for
+digit from that table. Two are not registrations from it: "Percussion Switch"
+comes from the same manual's note that "some jazz organists have taken
+advantage of this idiosyncrasy by keeping the 1' Drawbar pulled out and
+turning Percussion 'ON' and 'OFF' while playing", and "Two Registrations"
+demonstrates the console's two adjust keys.
+
+What surrounds each registration - cabinet speed, drive, whether the scanner
+is in, what the lower manual and pedals carry - is this plugin's arrangement
+and not Hammond's. The same manual carries a second table, of modern
+registrations named Jazz, Bluesy, Groovy & Funky, Max Power and Squabble, but
+their figures are drawings that the scan reachable from `docs/RESEARCH.md`
+does not render as text. They are absent rather than guessed.
+
 ## Preset panel registrations
 
 Version 0.44.0 fills the nine preset keys of each manual. The B-3/C-3 service
@@ -162,6 +188,32 @@ adaptor, scattering equation or third-party implementation code is reproduced.
 The insertion-loss make-up that keeps the chorus position usable is a
 provisional stand-in for the AO-28 vibrato amplifier, derived from the
 resistor network rather than fitted.
+
+## Panel lettering
+
+Version 0.46.0 letters the play surface in two typefaces carried with the
+plugin rather than fetched at load. A webview inside a host need not have a
+network, and a surface whose lettering depends on whether it does is not a
+surface.
+
+- Oswald, `package/web/fonts/oswald.woff2`, latin subset, variable weight.
+  Copyright 2016 The Oswald Project Authors,
+  https://github.com/googlefonts/OswaldFont
+- Playfair Display, `package/web/fonts/playfair.woff2`, latin subset, variable
+  weight. Copyright 2017 The Playfair Display Project Authors,
+  https://github.com/clauseggers/Playfair-Display
+
+Both are licensed under the SIL Open Font License, Version 1.1, which is
+compatible with distributing them alongside GPL-2.0-or-later software and
+which requires its notice to travel with the fonts. It does:
+`package/web/fonts/OFL.txt` carries the licence and both copyright lines, and
+ships inside the package. The files are the latin subsets Google Fonts serves,
+which is what this surface writes; together they are about forty-five
+kilobytes.
+
+Neither face is Hammond's. The trademark note above applies to the lettering
+as much as to the name: these are period-appropriate types, not a copy of an
+instrument's branding.
 
 ## Branding artwork
 

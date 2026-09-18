@@ -659,6 +659,49 @@ mod tests {
         assert_eq!(engine.rotary_mode(), RotaryMode::Chorale);
     }
 
+    /// The manifest tells the host what state format the plugin writes, and
+    /// the plugin is what writes it. Nothing held those two together and they
+    /// drifted two versions apart before this test existed, which the host
+    /// would have had no way to notice.
+    #[test]
+    fn the_manifest_agrees_with_the_state_the_plugin_writes() {
+        let manifest = include_str!("../../../package/rackforge-plugin.toml");
+        let declared = manifest
+            .lines()
+            .find_map(|line| line.strip_prefix("state_version = "))
+            .expect("the manifest declares a state version")
+            .trim()
+            .parse::<u32>()
+            .expect("a number");
+        assert_eq!(declared, STATE_VERSION);
+        // The runtime descriptor carries the same number a second time, and
+        // the packer refuses a package where the two disagree - which is how
+        // this copy was found, at the end of a release rather than here.
+        let runtime = include_str!("../../../package/metadata/runtime.json");
+        let described = runtime
+            .lines()
+            .find_map(|line| line.trim().strip_prefix("\"state_version\": "))
+            .expect("the descriptor declares a state version")
+            .trim_end_matches(',')
+            .trim()
+            .parse::<u32>()
+            .expect("a number");
+        assert_eq!(described, STATE_VERSION);
+    }
+
+    /// And the version it declares is the one being built.
+    #[test]
+    fn the_manifest_agrees_with_the_version_being_built() {
+        let manifest = include_str!("../../../package/rackforge-plugin.toml");
+        let declared = manifest
+            .lines()
+            .find_map(|line| line.strip_prefix("version = "))
+            .expect("the manifest declares a version")
+            .trim()
+            .trim_matches('"');
+        assert_eq!(declared, env!("CARGO_PKG_VERSION"));
+    }
+
     #[test]
     fn midi_channels_route_to_lower_manual_and_pedals() {
         let mut processor = RfOrganProcessor::default();

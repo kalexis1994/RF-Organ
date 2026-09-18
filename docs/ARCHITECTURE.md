@@ -158,6 +158,21 @@ slow speed takes a tenth of the time braking from fast does, and the drum takes
 several times longer than the horn either way. A mode switch waits briefly
 before the rotor responds, as a relay and a clutch do.
 
+The surface is lettered in two typefaces carried with the plugin rather than
+fetched, because a webview inside a host need not have a network and a panel
+whose lettering depends on whether it does is not a panel. Both are under the
+SIL Open Font License and both licences ship beside them.
+
+The plugin comes with sixteen programs. Eight are console setups - a
+registration together with the percussion, vibrato, cabinet and drive that go
+with a way of playing. Eight are tone colours whose registrations are quoted
+digit for digit from the published table of drawbar registration patterns for
+the four families a pipe organ is built from; the stop names on them are the
+pipe organ's own and are older than any tonewheel instrument. What surrounds
+each registration is this project's arrangement, and the provenance of the
+figures is in THIRD_PARTY_NOTICES.md, which is where trademarks live: nothing
+the package carries to a host names one, and a test now holds that.
+
 The play surface is four tabs behind one strip that never leaves: output,
 expression and the rotary switch, which are what a player reaches for without
 looking. The tabs are radio inputs and their panels are siblings of them, so
@@ -185,7 +200,7 @@ microphones, so moving them back zooms out instead of pushing them off the
 edge. The parameter table the surface validates against is the engine's, not a
 copy of it; a range that moves in the DSP moves there too.
 
-## Version 0.45.0 limitations
+## Version 0.46.0 limitations
 
 - The classic B-3 pedal contact and resistor-panel topology is present. The
   L20 pedal-filter coefficient and console matching-network constants remain

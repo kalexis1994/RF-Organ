@@ -534,7 +534,21 @@ impl Settings {
     }
 }
 
-pub fn presets() -> [(&'static str, &'static str, &'static str, Settings); 8] {
+/// The programs the plugin ships with.
+///
+/// The first eight are console setups: a registration together with the
+/// percussion, vibrato, cabinet and drive that go with a way of playing. The
+/// eight after them are tone colours, and their registrations are not
+/// invented: they are quoted digit for digit from the published table of
+/// drawbar registration patterns for the four families a pipe organ is built
+/// from, in the 2-4-3 notation that table uses. The stop names are the pipe
+/// organ's own and are centuries older than any tonewheel instrument; the
+/// provenance of the figures is in THIRD_PARTY_NOTICES.md, which is where
+/// this project keeps trademarks. What surrounds each registration is this
+/// plugin's arrangement and not the table's: which cabinet speed, how much
+/// drive, whether the scanner is in, what the lower manual and the pedals
+/// carry.
+pub fn presets() -> [(&'static str, &'static str, &'static str, Settings); 16] {
     let straight = Settings::default();
     [
         (
@@ -659,6 +673,108 @@ pub fn presets() -> [(&'static str, &'static str, &'static str, Settings); 8] {
                 ..straight
             },
         ),
+        (
+            "tibia-8",
+            "Tibia 8'",
+            "The theatre flute, 00 7030 000 in the 2-4-3 notation, on a stationary cabinet.",
+            Settings {
+                drawbars_b: [0, 0, 7, 0, 3, 0, 0, 0, 0],
+                rotary_mode: RotaryMode::Off,
+                output_level: 0.78,
+                ..straight
+            },
+        ),
+        (
+            "flute-chorus-16",
+            "Chorus of Flutes 16'",
+            "A flute chorus drawn from the 16', 80 8605 002, with slow cabinet motion.",
+            Settings {
+                drawbars_b: [8, 0, 8, 6, 0, 5, 0, 0, 2],
+                lower_drawbars_b: [8, 0, 6, 4, 0, 0, 0, 0, 0],
+                pedal_drawbars: [8, 4],
+                rotary_mode: RotaryMode::Chorale,
+                rotary_horn_mic_distance: 0.8,
+                ..straight
+            },
+        ),
+        (
+            "open-diapason",
+            "Open Diapason 8'",
+            "The church voice, 01 8866 430, with the cabinet stationary.",
+            Settings {
+                drawbars_b: [0, 1, 8, 8, 6, 6, 4, 3, 0],
+                lower_drawbars_b: [0, 0, 8, 8, 7, 4, 2, 1, 0],
+                pedal_drawbars: [8, 6],
+                rotary_mode: RotaryMode::Off,
+                console_drive: 0.22,
+                ..straight
+            },
+        ),
+        (
+            "clarinet-8",
+            "Clarinet 8'",
+            "The hollow odd-harmonic reed, 00 6070 540.",
+            Settings {
+                drawbars_b: [0, 0, 6, 0, 7, 0, 5, 4, 0],
+                rotary_mode: RotaryMode::Off,
+                scanner_mode: ScannerMode::Vibrato2,
+                upper_scanner: true,
+                ..straight
+            },
+        ),
+        (
+            "salicional-8",
+            "Salicional 8'",
+            "A quiet string, 00 2453 321, through V3 vibrato.",
+            Settings {
+                drawbars_b: [0, 0, 2, 4, 5, 3, 3, 2, 1],
+                rotary_mode: RotaryMode::Off,
+                scanner_mode: ScannerMode::Vibrato3,
+                upper_scanner: true,
+                output_level: 0.82,
+                ..straight
+            },
+        ),
+        (
+            "vox-humana",
+            "Vox Humana 8'",
+            "00 4720 123, which is a voice only once the vibrato is in.",
+            Settings {
+                drawbars_b: [0, 0, 4, 7, 2, 0, 1, 2, 3],
+                rotary_mode: RotaryMode::Chorale,
+                scanner_mode: ScannerMode::Vibrato3,
+                upper_scanner: true,
+                output_level: 0.8,
+                ..straight
+            },
+        ),
+        (
+            "percussion-switch",
+            "Percussion Switch",
+            "The 1' drawbar left out so the percussion tablet swaps the registration.",
+            Settings {
+                drawbars_b: [8, 8, 8, 0, 0, 0, 0, 0, 8],
+                rotary_mode: RotaryMode::Chorale,
+                percussion_enabled: true,
+                percussion_harmonic: PercussionHarmonic::Third,
+                percussion_volume: PercussionVolume::Normal,
+                percussion_decay: PercussionDecay::Fast,
+                ..straight
+            },
+        ),
+        (
+            "two-registrations",
+            "Two Registrations",
+            "A flute on the A# adjust key and a full registration on B, to change with a key.",
+            Settings {
+                drawbars_a: [0, 0, 8, 0, 0, 0, 0, 0, 0],
+                drawbars_b: [8, 8, 8, 8, 0, 0, 0, 0, 0],
+                lower_drawbars_a: [0, 0, 6, 0, 0, 0, 0, 0, 0],
+                lower_drawbars_b: [8, 6, 8, 0, 0, 0, 0, 0, 0],
+                rotary_mode: RotaryMode::Chorale,
+                ..straight
+            },
+        ),
     ]
 }
 
@@ -728,6 +844,90 @@ mod tests {
             catalogue.matches("\"bank\": \"registrations\"").count(),
             presets().len()
         );
+    }
+
+    /// A program that makes no sound is the one failure a catalogue of them
+    /// can have and still pass every other check: the parameters are in
+    /// range, the names are in the manifest, and pressing a key gives
+    /// nothing. Each one is played on all three parts, because some are meant
+    /// to be quiet on a manual and carried by the pedals.
+    /// THIRD_PARTY_NOTICES.md promises that the marks it names are not used
+    /// as the name of this product, of any of its modules, of any of its
+    /// controls or of any of its presets. That promise lived only in a
+    /// document, and the first catalogue written after it was added put one
+    /// of those marks into six shipped preset descriptions - so it is a test
+    /// now, over everything the package carries to a host.
+    ///
+    /// Saying which published instrument a model came from is what the
+    /// notices are for, and they are not packaged. What a player reads in the
+    /// plugin should say what a control does.
+    #[test]
+    fn nothing_the_package_ships_carries_a_trademark() {
+        const MARKS: [&str; 4] = ["Hammond", "Leslie", "Suzuki", "B-3"];
+        let shipped = [
+            (
+                "presets.json",
+                include_str!("../../../package/metadata/presets.json"),
+            ),
+            (
+                "parameters.json",
+                include_str!("../../../package/metadata/parameters.json"),
+            ),
+            (
+                "runtime.json",
+                include_str!("../../../package/metadata/runtime.json"),
+            ),
+            ("play.html", include_str!("../../../package/web/play.html")),
+            ("style.css", include_str!("../../../package/web/style.css")),
+            (
+                "rackforge-plugin.toml",
+                include_str!("../../../package/rackforge-plugin.toml"),
+            ),
+        ];
+        for (name, text) in shipped {
+            for mark in MARKS {
+                assert!(
+                    !text.contains(mark),
+                    "{name} ships the {mark} mark, which the notices promise it does not"
+                );
+            }
+        }
+        // And the promise itself is still on the page that makes it. The
+        // words are matched with the wrapping taken out, so re-flowing a
+        // paragraph does not read as breaking a promise.
+        let notices = include_str!("../../../THIRD_PARTY_NOTICES.md")
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert!(notices.contains("not used as the name of this product"));
+        assert!(notices.contains("of any of its controls or of any of its presets"));
+    }
+
+    #[test]
+    fn every_program_makes_a_sound() {
+        // An engine holds a contact per key per spring and does not fit on a
+        // test thread's own stack.
+        std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(|| {
+                for (id, _, _, settings) in presets() {
+                    let mut engine = OrganEngine::new(48_000.0).expect("engine");
+                    settings.apply(&mut engine);
+                    assert!(engine.note_on_part(OrganPart::Upper, 60, 1.0));
+                    assert!(engine.note_on_part(OrganPart::Lower, 55, 1.0));
+                    assert!(engine.note_on_part(OrganPart::Pedal, 36, 1.0));
+                    let mut peak = 0.0_f32;
+                    for _ in 0..4_800 {
+                        let frame = engine.next_sample();
+                        peak = peak.max(frame[0].abs()).max(frame[1].abs());
+                    }
+                    assert!(peak > 1.0e-3, "{id} made no sound: peak {peak}");
+                    assert!(peak.is_finite(), "{id} came out unbounded");
+                }
+            })
+            .expect("thread")
+            .join()
+            .expect("the programs all sound");
     }
 
     #[test]

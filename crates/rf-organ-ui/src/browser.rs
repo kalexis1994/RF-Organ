@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-use crate::client::{CONTROL_IDS, Client, PROTOCOL, host_lighting};
+use crate::client::{CONTROL_IDS, Client, PROTOCOL, VIEW_IDS, host_lighting};
 use crate::view;
 use js_sys::{JSON, Object};
 use rf_organ_dsp::{
@@ -10,7 +10,8 @@ use serde_json::{Value, json};
 use std::{cell::RefCell, rc::Rc};
 use wasm_bindgen::{JsCast, prelude::*};
 use web_sys::{
-    Document, Element, Event, HtmlInputElement, HtmlSelectElement, MessageEvent, Window,
+    Document, Element, Event, HtmlElement, HtmlInputElement, HtmlSelectElement, MessageEvent,
+    Window,
 };
 
 const PLUGIN_ID: &str = "org.rackforge.organ";
@@ -57,6 +58,7 @@ impl App {
                     input.set_checked(self.client.display(index) == 1.0);
                 } else {
                     input.set_value_as_number(self.client.display(index));
+                    mark_travel(input);
                 }
                 input.set_disabled(!ready);
             } else if let Some(select) = element.dyn_ref::<HtmlSelectElement>() {
@@ -231,6 +233,27 @@ impl App {
     }
 }
 
+/// Records how far along its travel a control sits, for the parts of the
+/// panel that draw the instrument rather than a slider.
+///
+/// A drawbar is the one that needs it: what is drawn is the length of bar
+/// that has come out of the panel, which is a quantity no stylesheet can work
+/// out on its own. Everything else ignores it. A control with no travel to
+/// speak of is left alone rather than divided by nothing.
+fn mark_travel(input: &HtmlInputElement) {
+    let low = input.min().parse::<f64>().unwrap_or(0.0);
+    let high = input.max().parse::<f64>().unwrap_or(1.0);
+    let span = high - low;
+    if !span.is_finite() || span <= 0.0 {
+        return;
+    }
+    let travel = ((input.value_as_number() - low) / span).clamp(0.0, 1.0);
+    let _ = input
+        .unchecked_ref::<HtmlElement>()
+        .style()
+        .set_property("--fill", &format!("{travel:.4}"));
+}
+
 fn control_events(app: &Shared) -> Result<(), JsValue> {
     for (index, id) in CONTROL_IDS.into_iter().enumerate() {
         let element = app.borrow().element(id);
@@ -250,6 +273,12 @@ fn control_events(app: &Shared) -> Result<(), JsValue> {
                     .parse()
                     .unwrap_or(f64::NAN)
             };
+            if let Some(input) = control.dyn_ref::<HtmlInputElement>() {
+                // While a drag is in flight the value is the browser's and
+                // not yet the engine's, so the drawing has to follow the
+                // control rather than wait for the round trip.
+                mark_travel(input);
+            }
             let mut app = shared.borrow_mut();
             app.client.queue(index, value);
             app.pump(false);
@@ -284,6 +313,14 @@ pub fn start() -> Result<(), JsValue> {
         .document()
         .ok_or_else(|| JsValue::from_str("missing document"))?;
     let origin = window.location().origin()?;
+    // Everything below reaches for these by name and cannot carry on without
+    // one. Saying so here beats failing in the middle of a frame, where the
+    // message is a panic and the cause is whichever element moved.
+    for id in CONTROL_IDS.into_iter().chain(VIEW_IDS) {
+        if document.get_element_by_id(id).is_none() {
+            return Err(JsValue::from_str(&format!("the surface is missing {id}")));
+        }
+    }
     let app = Rc::new(RefCell::new(App {
         window,
         document,

@@ -1,61 +1,145 @@
+/* The two faces the panel is lettered in, carried with the plugin rather
+   than fetched: a webview in a host need not have a network, and a surface
+   that changes shape depending on whether it does is not a surface.
+
+   Oswald is the console's own voice - a tall condensed grotesque, which is
+   what engraved tablet lettering and printed panel legends have always been,
+   and which stays legible at the sizes a control label is set in. Playfair
+   carries the name and the panel headings: a high-contrast serif of the
+   period the instrument comes from, with enough weight to be a nameplate
+   rather than a caption.
+
+   Both are under the SIL Open Font License; the licence travels with them in
+   `fonts/OFL.txt` and the provenance is in THIRD_PARTY_NOTICES.md. */
+@font-face {
+  font-family: "RF Console";
+  src: url("fonts/oswald.woff2") format("woff2-variations"),
+       url("fonts/oswald.woff2") format("woff2");
+  font-weight: 200 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: "RF Plate";
+  src: url("fonts/playfair.woff2") format("woff2-variations"),
+       url("fonts/playfair.woff2") format("woff2");
+  font-weight: 400 900;
+  font-display: swap;
+}
+
 :root {
   color-scheme: dark;
-  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  font-family: "RF Console", "Arial Narrow", Inter, system-ui, sans-serif;
   background: var(--ground);
   color: var(--text);
-  --ground: #17120d;
-  --body-glow: #3b281a;
-  --body-edge: #120f0c;
-  --text: #efe4ce;
-  --muted: #b9ab98;
-  --label: #cfc2ae;
-  --wood: #4c2d1b;
-  --header-start: #5c351e;
-  --header-end: #2c1c12;
-  --gold: #c9a058;
-  --panel: #28231e;
-  --panel-start: #302a24;
-  --panel-end: #201c18;
-  --field: #16130f;
-  --line: #5f5142;
-  --rotor: #65584a;
+  /* A console in a dark room: near-black around it, a walnut cheek catching
+     what light there is, brass on the things a hand goes to. The greens and
+     ambers are the ones a valve instrument actually shows. */
+  --ground: #0c0907;
+  --body-glow: #40240f;
+  --body-edge: #070504;
+  --text: #f6ecd8;
+  --muted: #a5947e;
+  --label: #cdb99d;
+  --wood: #6b3d1e;
+  --header-start: #7a4119;
+  --header-end: #24130a;
+  --gold: #e0ad5c;
+  --brass: #f0cb86;
+  --ember: #e08a3c;
+  --panel: #241e19;
+  --panel-start: #2b241d;
+  --panel-end: #16120f;
+  --field: #0f0c09;
+  --line: #6d5940;
+  --rotor: #6f6052;
 }
 
 :root[data-lighting="day"] {
   color-scheme: light;
-  --ground: #d8c7ad;
-  --body-glow: #f2e4ce;
-  --body-edge: #b49b7b;
-  --text: #2d2118;
+  --ground: #ddcdb2;
+  --body-glow: #f7ebd7;
+  --body-edge: #ab8f6c;
+  --text: #241a12;
   --muted: #6b5745;
-  --label: #493522;
-  --header-start: #bd8c61;
-  --header-end: #8d6041;
-  --gold: #74440f;
-  --panel-start: #eadcc8;
-  --panel-end: #cbb89e;
-  --field: #f6ecdd;
-  --line: #92785e;
+  --label: #402d1c;
+  --header-start: #c68d57;
+  --header-end: #7e5233;
+  --gold: #7a4409;
+  --brass: #a06618;
+  --ember: #a5521a;
+  --panel-start: #f0e3d0;
+  --panel-end: #c9b394;
+  --field: #fbf3e5;
+  --line: #8d7154;
   --rotor: #8a725b;
 }
 
 * { box-sizing: border-box; }
 body { margin: 0; min-width: 320px; background: radial-gradient(circle at 50% 0, var(--body-glow), var(--body-edge) 70%); }
 main { width: min(1440px, 100%); margin: auto; padding: 18px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
-header, .panel { border: 1px solid #72543a; box-shadow: 0 8px 24px #0008, inset 0 1px #ffffff12; }
-header { min-height: 104px; padding: 18px 22px; display: grid; grid-template-columns: 1fr minmax(190px, 300px) auto; align-items: center; gap: 24px; background: linear-gradient(120deg, var(--header-start), var(--header-end)); }
+header, .panel {
+  border: 1px solid #77552f;
+  box-shadow: 0 10px 30px #000000b0, inset 0 1px #ffffff18;
+}
+header {
+  min-height: 108px; padding: 18px 24px; display: grid;
+  grid-template-columns: 1fr minmax(190px, 300px) auto;
+  align-items: center; gap: 24px;
+  background:
+    radial-gradient(90% 200% at 8% 40%, #ffffff1f, transparent 55%),
+    linear-gradient(118deg, var(--header-start), var(--header-end) 78%);
+  border-bottom: 2px solid var(--brass);
+}
 h1, h2, p { margin: 0; }
-h1 { font-family: Georgia, serif; font-size: clamp(2rem, 5vw, 4.1rem); font-weight: 400; letter-spacing: .05em; }
-h1 span { color: var(--gold); }
-h2 { font-family: Georgia, serif; font-weight: 400; }
-.eyebrow { color: var(--gold); font-size: .66rem; letter-spacing: .18em; font-weight: 800; }
-#status { color: var(--muted); font-size: .78rem; max-width: 170px; }
-.panel { background: linear-gradient(145deg, var(--panel-start), var(--panel-end)); border-radius: 4px; padding: 16px; }
+h1 {
+  font-family: "RF Plate", Georgia, serif;
+  font-size: clamp(2rem, 5vw, 4.3rem);
+  font-weight: 700; letter-spacing: .015em; line-height: .96;
+  color: var(--text);
+  text-shadow: 0 1px 0 #00000070, 0 0 34px #e0ad5c26;
+}
+h1 span { color: var(--brass); }
+.wordmark { display: grid; gap: 2px; }
+.wordmark::after {
+  content: ""; height: 2px; width: min(340px, 60%);
+  background: linear-gradient(90deg, var(--brass), transparent);
+  opacity: .7;
+}
+h2 {
+  font-family: "RF Plate", Georgia, serif;
+  font-weight: 700; letter-spacing: .005em; font-size: 1.5rem; line-height: 1.12;
+}
+.eyebrow {
+  color: var(--gold); font-size: .68rem; letter-spacing: .24em; font-weight: 600;
+  text-transform: uppercase;
+}
+#status {
+  color: var(--muted); font-size: .76rem; max-width: 180px;
+  letter-spacing: .1em; text-transform: uppercase;
+}
+.panel {
+  position: relative;
+  background:
+    repeating-linear-gradient(90deg, #ffffff05 0 1px, transparent 1px 3px),
+    repeating-linear-gradient(0deg, #00000014 0 1px, transparent 1px 3px),
+    radial-gradient(120% 90% at 18% -10%, #ffffff10, transparent 60%),
+    linear-gradient(152deg, var(--panel-start), var(--panel-end));
+  border-radius: 5px; padding: 16px;
+}
+.panel::before {
+  content: ""; position: absolute; inset: 0 0 auto; height: 2px;
+  border-radius: 5px 5px 0 0;
+  background: linear-gradient(90deg, transparent, var(--brass) 18%, var(--brass) 82%, transparent);
+  opacity: .45; pointer-events: none;
+}
 .performance { display: grid; grid-template-columns: repeat(6, 1fr); gap: 16px; align-items: end; }
 .manuals { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
 .section-title, .switchboard, .pedals, .cabinet { display: flex; gap: 18px; align-items: center; justify-content: space-between; }
-.drawbars { display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); gap: 7px; margin-top: 16px; }
-.drawbars label { align-items: center; font-size: .72rem; }
+.drawbars { display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); gap: 4px; margin-top: 14px; }
+.drawbars label { align-items: center; justify-items: center; gap: 7px;
+  font-size: clamp(.52rem, 2.5cqw, .76rem); font-weight: 500; letter-spacing: .02em;
+  white-space: nowrap; text-transform: none;
+  color: #f2e3c9; text-shadow: 0 1px 1px #000000b0; }
 .drawbars input { writing-mode: vertical-lr; }
 .switchboard { justify-content: flex-start; flex-wrap: wrap; }
 .switchboard > div { margin-right: auto; }
@@ -63,10 +147,19 @@ h2 { font-family: Georgia, serif; font-weight: 400; }
 .pedals, .cabinet { align-items: end; }
 .pedals > div, .cabinet > div { align-self: center; margin-right: auto; }
 .cabinet label { min-width: 120px; }
-label { display: grid; gap: 6px; color: var(--label); font-size: .76rem; font-weight: 700; letter-spacing: .04em; }
+label {
+  display: grid; gap: 6px; color: var(--label);
+  font-size: .78rem; font-weight: 500; letter-spacing: .1em;
+  text-transform: uppercase;
+}
 .program { min-width: 200px; }
 select, input[type="range"] { width: 100%; accent-color: var(--gold); }
-select { color: var(--text); background: var(--field); border: 1px solid var(--line); border-radius: 3px; padding: 9px; }
+select {
+  color: var(--text); background: var(--field);
+  border: 1px solid var(--line); border-radius: 3px; padding: 9px 10px;
+  font-family: inherit; font-size: .84rem; font-weight: 500; letter-spacing: .06em;
+  box-shadow: inset 0 2px 6px #00000080;
+}
 input:disabled, select:disabled { opacity: .45; }
 .switch { display: flex; align-items: center; gap: 8px; }
 .switch input { width: 20px; height: 20px; accent-color: var(--gold); }
@@ -93,77 +186,139 @@ input:disabled, select:disabled { opacity: .45; }
 [data-rotary="chorale"] .rotary-view { --rotor: #d3ad63; }
 [data-rotary="tremolo"] .rotary-view { --rotor: #df873d; }
 [data-rotary="brake"] .rotary-view { --rotor: #bb7448; }
+/* The sizes the caps and the tabs take.
+   These are registered as lengths on purpose. A plain custom property is
+   substituted into the thumb as the tokens it was written with, and a
+   container unit does not resolve inside the thumb's own tree - the
+   declaration falls over there and the cap disappears. Registered, the value
+   is computed where it is written, on the input, and what the thumb inherits
+   is a length. */
+@property --cap-w { syntax: "<length>"; inherits: true; initial-value: 16px; }
+@property --cap-h { syntax: "<length>"; inherits: true; initial-value: 27px; }
+@property --tab-w { syntax: "<length>"; inherits: true; initial-value: 34px; }
+@property --tab-h { syntax: "<length>"; inherits: true; initial-value: 17px; }
+/* How far this drawbar has been drawn out, nought to one. The surface
+   writes it beside the value; without a plugin behind the page every bar
+   reads fully out, which is a sensible thing for a still page to show. */
+@property --fill { syntax: "<number>"; inherits: false; initial-value: 1; }
+
 /* The faders.
 
    A drawbar is not a slider with a coloured accent: it is a slotted tab that
    slides in a groove, and the console paints the nine in three groups - brown
    for the two sub harmonics, white for the octave-related ones, black for the
-   mutations. The art is inline so that the shapes are here to read and edit
-   rather than in a binary next door, and the control underneath stays a plain
-   range input, which is what the surface binds to and what a keyboard and a
-   screen reader already know how to drive.
+   mutations. The art is inline so the shapes are here to read and edit rather
+   than in a binary next door, and the control underneath stays a plain range
+   input, which is what the surface binds to and what a keyboard and a screen
+   reader already know how to drive.
 
-   The general faders get a different body on purpose. They are console
-   controls rather than harmonics, so they carry a knurled cap with one line
-   across it and nothing that suggests a drawbar. */
+   Everything is sized from the width of the row it sits in rather than in
+   fixed pixels, so a cap cannot grow past its column and two of them cannot
+   meet in the middle. The rails are drawn and stretched along the direction
+   of travel, which is why they survive a narrow panel: a groove made of
+   gradient stops disappears as soon as there is no room for the stops. */
 input[type="range"] {
   appearance: none; -webkit-appearance: none; background: none; cursor: pointer;
 }
 input[type="range"]::-webkit-slider-runnable-track { background: none; }
 input[type="range"]::-moz-range-track { background: none; }
 
-/* The general fader: a groove with a bright seam along it. */
+/* The general fader: a knurled cap on a drawn rail. */
+.performance label,
+.control-grid label,
+.cabinet-controls label,
+.program { container-type: inline-size; }
 .performance input[type="range"],
 .control-grid input[type="range"],
 .cabinet-controls input[type="range"],
-.pedal-drawbars { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 0; }
 .pedals > label input[type="range"] {
-  height: 34px;
-  background:
-    linear-gradient(180deg, transparent calc(50% - 4px), #000000a0 calc(50% - 4px),
-      #000000a0 calc(50% + 4px), transparent calc(50% + 4px)),
-    linear-gradient(180deg, transparent calc(50% - 1px), var(--line) calc(50% - 1px),
-      var(--line) calc(50% + 1px), transparent calc(50% + 1px));
-  border-radius: 4px;
+  --cap-w: clamp(11px, 13cqw, 20px);
+  --cap-h: calc(var(--cap-w) * 1.68);
+  height: var(--cap-h);
+  background: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20100%2010%22%20preserveAspectRatio%3D%22none%22%3E%20%3Crect%20x%3D%220%22%20y%3D%221%22%20width%3D%22100%22%20height%3D%228%22%20rx%3D%224%22%20fill%3D%22%23000000%22%20opacity%3D%22.55%22%2F%3E%20%3Crect%20x%3D%220%22%20y%3D%222.6%22%20width%3D%22100%22%20height%3D%222.2%22%20rx%3D%221.1%22%20fill%3D%22%23000000%22%20opacity%3D%22.5%22%2F%3E%20%3Crect%20x%3D%220%22%20y%3D%224.4%22%20width%3D%22100%22%20height%3D%221.4%22%20fill%3D%22%23c9a058%22%20opacity%3D%22.55%22%2F%3E%20%3Crect%20x%3D%220%22%20y%3D%227%22%20width%3D%22100%22%20height%3D%221.2%22%20rx%3D%22.6%22%20fill%3D%22%23ffffff%22%20opacity%3D%22.12%22%2F%3E%20%3C%2Fsvg%3E") center/100% min(10px, var(--cap-h)) no-repeat;
 }
 .performance input[type="range"]::-webkit-slider-thumb,
 .control-grid input[type="range"]::-webkit-slider-thumb,
 .cabinet-controls input[type="range"]::-webkit-slider-thumb,
 .pedals > label input[type="range"]::-webkit-slider-thumb {
-  -webkit-appearance: none; width: 20px; height: 34px;
-  background: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2020%2034%22%3E%20%3Cdefs%3E%20%3ClinearGradient%20id%3D%22c%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%220%22%3E%20%3Cstop%20offset%3D%220%22%20stop-color%3D%22%233a332b%22%2F%3E%20%3Cstop%20offset%3D%22.2%22%20stop-color%3D%22%238d8073%22%2F%3E%20%3Cstop%20offset%3D%22.5%22%20stop-color%3D%22%23cbbca6%22%2F%3E%20%3Cstop%20offset%3D%22.8%22%20stop-color%3D%22%237e7264%22%2F%3E%20%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23332d26%22%2F%3E%20%3C%2FlinearGradient%3E%20%3C%2Fdefs%3E%20%3Crect%20x%3D%221.2%22%20y%3D%221%22%20width%3D%2217.6%22%20height%3D%2232%22%20rx%3D%223.2%22%20fill%3D%22url%28%23c%29%22%20stroke%3D%22%231a1511%22%20stroke-width%3D%221.2%22%2F%3E%20%3Cg%20fill%3D%22%23000000%22%20opacity%3D%22.3%22%3E%20%3Crect%20x%3D%223%22%20y%3D%226%22%20width%3D%2214%22%20height%3D%221.3%22%2F%3E%20%3Crect%20x%3D%223%22%20y%3D%2210%22%20width%3D%2214%22%20height%3D%221.3%22%2F%3E%20%3Crect%20x%3D%223%22%20y%3D%2223%22%20width%3D%2214%22%20height%3D%221.3%22%2F%3E%20%3Crect%20x%3D%223%22%20y%3D%2227%22%20width%3D%2214%22%20height%3D%221.3%22%2F%3E%20%3C%2Fg%3E%20%3Crect%20x%3D%222.4%22%20y%3D%2215.6%22%20width%3D%2215.2%22%20height%3D%222.8%22%20rx%3D%221.4%22%20fill%3D%22%23c9a058%22%2F%3E%20%3Crect%20x%3D%222.4%22%20y%3D%2215.6%22%20width%3D%2215.2%22%20height%3D%221.2%22%20rx%3D%220.6%22%20fill%3D%22%23ffffff%22%20opacity%3D%22.45%22%2F%3E%20%3C%2Fsvg%3E") center/contain no-repeat;
+  -webkit-appearance: none;
+  width: var(--cap-w); height: var(--cap-h);
+  background: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2020%2034%22%3E%20%3Cdefs%3E%20%3ClinearGradient%20id%3D%22c%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%220%22%3E%20%3Cstop%20offset%3D%220%22%20stop-color%3D%22%233a332b%22%2F%3E%20%3Cstop%20offset%3D%22.2%22%20stop-color%3D%22%238d8073%22%2F%3E%20%3Cstop%20offset%3D%22.5%22%20stop-color%3D%22%23cbbca6%22%2F%3E%20%3Cstop%20offset%3D%22.8%22%20stop-color%3D%22%237e7264%22%2F%3E%20%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23332d26%22%2F%3E%20%3C%2FlinearGradient%3E%20%3C%2Fdefs%3E%20%3Crect%20x%3D%221.2%22%20y%3D%221%22%20width%3D%2217.6%22%20height%3D%2232%22%20rx%3D%223.2%22%20fill%3D%22url%28%23c%29%22%20stroke%3D%22%231a1511%22%20stroke-width%3D%221.2%22%2F%3E%20%3Cg%20fill%3D%22%23000000%22%20opacity%3D%22.3%22%3E%20%3Crect%20x%3D%223%22%20y%3D%226%22%20width%3D%2214%22%20height%3D%221.3%22%2F%3E%20%3Crect%20x%3D%223%22%20y%3D%2210%22%20width%3D%2214%22%20height%3D%221.3%22%2F%3E%20%3Crect%20x%3D%223%22%20y%3D%2223%22%20width%3D%2214%22%20height%3D%221.3%22%2F%3E%20%3Crect%20x%3D%223%22%20y%3D%2227%22%20width%3D%2214%22%20height%3D%221.3%22%2F%3E%20%3C%2Fg%3E%20%3Crect%20x%3D%222.4%22%20y%3D%2215.6%22%20width%3D%2215.2%22%20height%3D%222.8%22%20rx%3D%221.4%22%20fill%3D%22%23c9a058%22%2F%3E%20%3Crect%20x%3D%222.4%22%20y%3D%2215.6%22%20width%3D%2215.2%22%20height%3D%221.2%22%20rx%3D%22.6%22%20fill%3D%22%23ffffff%22%20opacity%3D%22.45%22%2F%3E%20%3C%2Fsvg%3E") center/100% 100% no-repeat;
   filter: drop-shadow(0 2px 3px #000000aa);
 }
 .performance input[type="range"]::-moz-range-thumb,
 .control-grid input[type="range"]::-moz-range-thumb,
 .cabinet-controls input[type="range"]::-moz-range-thumb,
 .pedals > label input[type="range"]::-moz-range-thumb {
-  width: 20px; height: 34px; border: none;
-  background: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2020%2034%22%3E%20%3Cdefs%3E%20%3ClinearGradient%20id%3D%22c%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%220%22%3E%20%3Cstop%20offset%3D%220%22%20stop-color%3D%22%233a332b%22%2F%3E%20%3Cstop%20offset%3D%22.2%22%20stop-color%3D%22%238d8073%22%2F%3E%20%3Cstop%20offset%3D%22.5%22%20stop-color%3D%22%23cbbca6%22%2F%3E%20%3Cstop%20offset%3D%22.8%22%20stop-color%3D%22%237e7264%22%2F%3E%20%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23332d26%22%2F%3E%20%3C%2FlinearGradient%3E%20%3C%2Fdefs%3E%20%3Crect%20x%3D%221.2%22%20y%3D%221%22%20width%3D%2217.6%22%20height%3D%2232%22%20rx%3D%223.2%22%20fill%3D%22url%28%23c%29%22%20stroke%3D%22%231a1511%22%20stroke-width%3D%221.2%22%2F%3E%20%3Cg%20fill%3D%22%23000000%22%20opacity%3D%22.3%22%3E%20%3Crect%20x%3D%223%22%20y%3D%226%22%20width%3D%2214%22%20height%3D%221.3%22%2F%3E%20%3Crect%20x%3D%223%22%20y%3D%2210%22%20width%3D%2214%22%20height%3D%221.3%22%2F%3E%20%3Crect%20x%3D%223%22%20y%3D%2223%22%20width%3D%2214%22%20height%3D%221.3%22%2F%3E%20%3Crect%20x%3D%223%22%20y%3D%2227%22%20width%3D%2214%22%20height%3D%221.3%22%2F%3E%20%3C%2Fg%3E%20%3Crect%20x%3D%222.4%22%20y%3D%2215.6%22%20width%3D%2215.2%22%20height%3D%222.8%22%20rx%3D%221.4%22%20fill%3D%22%23c9a058%22%2F%3E%20%3Crect%20x%3D%222.4%22%20y%3D%2215.6%22%20width%3D%2215.2%22%20height%3D%221.2%22%20rx%3D%220.6%22%20fill%3D%22%23ffffff%22%20opacity%3D%22.45%22%2F%3E%20%3C%2Fsvg%3E") center/contain no-repeat;
+  width: var(--cap-w); height: var(--cap-h); border: none;
+  background: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2020%2034%22%3E%20%3Cdefs%3E%20%3ClinearGradient%20id%3D%22c%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%220%22%3E%20%3Cstop%20offset%3D%220%22%20stop-color%3D%22%233a332b%22%2F%3E%20%3Cstop%20offset%3D%22.2%22%20stop-color%3D%22%238d8073%22%2F%3E%20%3Cstop%20offset%3D%22.5%22%20stop-color%3D%22%23cbbca6%22%2F%3E%20%3Cstop%20offset%3D%22.8%22%20stop-color%3D%22%237e7264%22%2F%3E%20%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23332d26%22%2F%3E%20%3C%2FlinearGradient%3E%20%3C%2Fdefs%3E%20%3Crect%20x%3D%221.2%22%20y%3D%221%22%20width%3D%2217.6%22%20height%3D%2232%22%20rx%3D%223.2%22%20fill%3D%22url%28%23c%29%22%20stroke%3D%22%231a1511%22%20stroke-width%3D%221.2%22%2F%3E%20%3Cg%20fill%3D%22%23000000%22%20opacity%3D%22.3%22%3E%20%3Crect%20x%3D%223%22%20y%3D%226%22%20width%3D%2214%22%20height%3D%221.3%22%2F%3E%20%3Crect%20x%3D%223%22%20y%3D%2210%22%20width%3D%2214%22%20height%3D%221.3%22%2F%3E%20%3Crect%20x%3D%223%22%20y%3D%2223%22%20width%3D%2214%22%20height%3D%221.3%22%2F%3E%20%3Crect%20x%3D%223%22%20y%3D%2227%22%20width%3D%2214%22%20height%3D%221.3%22%2F%3E%20%3C%2Fg%3E%20%3Crect%20x%3D%222.4%22%20y%3D%2215.6%22%20width%3D%2215.2%22%20height%3D%222.8%22%20rx%3D%221.4%22%20fill%3D%22%23c9a058%22%2F%3E%20%3Crect%20x%3D%222.4%22%20y%3D%2215.6%22%20width%3D%2215.2%22%20height%3D%221.2%22%20rx%3D%22.6%22%20fill%3D%22%23ffffff%22%20opacity%3D%22.45%22%2F%3E%20%3C%2Fsvg%3E") center/100% 100% no-repeat;
 }
 
-/* The drawbar: a tab in a slot, pulled towards the player. */
+/* The drawbar, seen from the zenith.
+
+   This is the one place the surface draws the instrument rather than a
+   control. On the console the nine bars slide out of a wooden panel towards
+   the player, so from above what there is to see is the panel, the length of
+   bar that has been drawn out of it, and the tab on the end. Below the tab
+   there is nothing, because the rest of the bar is inside the console - which
+   is why the groove that used to run the whole length has gone. Eight is all
+   the way out, which is the direction a player pulls.
+
+   Nine of them share the row, so the tab is a share of the row and not a
+   number of pixels. */
+.drawbars {
+  container-type: inline-size;
+  background: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20100%2030%22%20preserveAspectRatio%3D%22none%22%3E%20%3Cdefs%3E%20%3ClinearGradient%20id%3D%22w%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%220%22%20y2%3D%221%22%3E%20%3Cstop%20offset%3D%220%22%20stop-color%3D%22%236b4325%22%2F%3E%20%3Cstop%20offset%3D%22.45%22%20stop-color%3D%22%2353331c%22%2F%3E%20%3Cstop%20offset%3D%22.88%22%20stop-color%3D%22%233a2314%22%2F%3E%20%3Cstop%20offset%3D%221%22%20stop-color%3D%22%231d120a%22%2F%3E%20%3C%2FlinearGradient%3E%20%3C%2Fdefs%3E%20%3Crect%20x%3D%220%22%20y%3D%220%22%20width%3D%22100%22%20height%3D%2230%22%20fill%3D%22url%28%23w%29%22%2F%3E%20%3Crect%20x%3D%220%22%20y%3D%220%22%20width%3D%22100%22%20height%3D%221.6%22%20fill%3D%22%238a5c36%22%20opacity%3D%22.55%22%2F%3E%20%3Crect%20x%3D%220%22%20y%3D%2227.4%22%20width%3D%22100%22%20height%3D%222.6%22%20fill%3D%22%23000000%22%20opacity%3D%22.5%22%2F%3E%20%3C%2Fsvg%3E") top/100% 30px no-repeat;
+  padding: 5px 0 2px;
+  border-radius: 3px 3px 0 0;
+}
 .drawbars input[type="range"] {
-  width: 46px; height: 138px; justify-self: center;
+  --tab-w: clamp(12px, calc(9.7cqw - 4px), 54px);
+  --tab-h: max(7px, calc(var(--tab-w) * .5));
+  /* The travel, and the length of one step of the printed scale along it. */
+  --track: clamp(74px, 14vh, 138px);
+  --step: calc((var(--track) - var(--tab-h)) / 8);
+  /* How far the bar reaches: the travel used so far plus the half tab that
+     sits past the end of it. */
+  --reach: calc(var(--fill) * (var(--track) - var(--tab-h)) + var(--tab-h) / 2);
+  width: var(--tab-w);
+  height: var(--track);
+  justify-self: center;
+  /* The mouth is the panel's edge and sits over everything; the scale is
+     printed on the rod, so it sits over the rod. The scale is anchored to the
+     tab rather than to the panel, because it travels with the bar: pulling
+     the bar out lifts figures into view and the panel's edge crops the ones
+     that have not come out yet, which is the whole of how a drawbar is read.
+     Nothing is stretched here but the rod, so the figures keep their shape at
+     every length. */
   background:
-    linear-gradient(90deg, transparent calc(50% - 9px), #000000b0 calc(50% - 9px),
-      #000000b0 calc(50% + 9px), transparent calc(50% + 9px)),
-    linear-gradient(90deg, transparent calc(50% - 7px), #241d16 calc(50% - 7px),
-      #241d16 calc(50% + 7px), transparent calc(50% + 7px));
-  border-radius: 5px;
+    url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2020%208%22%20preserveAspectRatio%3D%22none%22%3E%20%3Crect%20x%3D%220%22%20y%3D%220%22%20width%3D%2220%22%20height%3D%226.4%22%20rx%3D%222.6%22%20fill%3D%22%23120b06%22%2F%3E%20%3Crect%20x%3D%220%22%20y%3D%220%22%20width%3D%2220%22%20height%3D%222.2%22%20rx%3D%221.1%22%20fill%3D%22%23000000%22%20opacity%3D%22.6%22%2F%3E%20%3Crect%20x%3D%220%22%20y%3D%226%22%20width%3D%2220%22%20height%3D%222%22%20rx%3D%221%22%20fill%3D%22%238a5c36%22%20opacity%3D%22.45%22%2F%3E%20%3C%2Fsvg%3E") top center/calc(var(--tab-w) * .58) 8px no-repeat,
+    url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2020%20160%22%3E%3Ctext%20x%3D%2210%22%20y%3D%2215%22%20font-family%3D%22Helvetica%2C%20Arial%2C%20sans-serif%22%20font-size%3D%2213%22%20font-weight%3D%22700%22%20text-anchor%3D%22middle%22%20fill%3D%22%23efe6d2%22%3E8%3C%2Ftext%3E%3Ctext%20x%3D%2210%22%20y%3D%2235%22%20font-family%3D%22Helvetica%2C%20Arial%2C%20sans-serif%22%20font-size%3D%2213%22%20font-weight%3D%22700%22%20text-anchor%3D%22middle%22%20fill%3D%22%23efe6d2%22%3E7%3C%2Ftext%3E%3Ctext%20x%3D%2210%22%20y%3D%2255%22%20font-family%3D%22Helvetica%2C%20Arial%2C%20sans-serif%22%20font-size%3D%2213%22%20font-weight%3D%22700%22%20text-anchor%3D%22middle%22%20fill%3D%22%23efe6d2%22%3E6%3C%2Ftext%3E%3Ctext%20x%3D%2210%22%20y%3D%2275%22%20font-family%3D%22Helvetica%2C%20Arial%2C%20sans-serif%22%20font-size%3D%2213%22%20font-weight%3D%22700%22%20text-anchor%3D%22middle%22%20fill%3D%22%23efe6d2%22%3E5%3C%2Ftext%3E%3Ctext%20x%3D%2210%22%20y%3D%2295%22%20font-family%3D%22Helvetica%2C%20Arial%2C%20sans-serif%22%20font-size%3D%2213%22%20font-weight%3D%22700%22%20text-anchor%3D%22middle%22%20fill%3D%22%23efe6d2%22%3E4%3C%2Ftext%3E%3Ctext%20x%3D%2210%22%20y%3D%22115%22%20font-family%3D%22Helvetica%2C%20Arial%2C%20sans-serif%22%20font-size%3D%2213%22%20font-weight%3D%22700%22%20text-anchor%3D%22middle%22%20fill%3D%22%23efe6d2%22%3E3%3C%2Ftext%3E%3Ctext%20x%3D%2210%22%20y%3D%22135%22%20font-family%3D%22Helvetica%2C%20Arial%2C%20sans-serif%22%20font-size%3D%2213%22%20font-weight%3D%22700%22%20text-anchor%3D%22middle%22%20fill%3D%22%23efe6d2%22%3E2%3C%2Ftext%3E%3Ctext%20x%3D%2210%22%20y%3D%22155%22%20font-family%3D%22Helvetica%2C%20Arial%2C%20sans-serif%22%20font-size%3D%2213%22%20font-weight%3D%22700%22%20text-anchor%3D%22middle%22%20fill%3D%22%23efe6d2%22%3E1%3C%2Ftext%3E%3C%2Fsvg%3E") center calc(var(--reach) - var(--tab-h) / 2 - 8 * var(--step))/calc(var(--tab-w) * .52)
+      calc(8 * var(--step)) no-repeat,
+    url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2016%20100%22%20preserveAspectRatio%3D%22none%22%3E%20%3Crect%20x%3D%220%22%20y%3D%220%22%20width%3D%2216%22%20height%3D%22100%22%20rx%3D%222.6%22%20fill%3D%22%23000000%22%20opacity%3D%22.5%22%2F%3E%20%3Crect%20x%3D%221%22%20y%3D%220%22%20width%3D%2214%22%20height%3D%22100%22%20rx%3D%222%22%20fill%3D%22%237a6d5d%22%2F%3E%20%3Crect%20x%3D%221%22%20y%3D%220%22%20width%3D%222.6%22%20height%3D%22100%22%20fill%3D%22%23000000%22%20opacity%3D%22.4%22%2F%3E%20%3Crect%20x%3D%2212.2%22%20y%3D%220%22%20width%3D%222%22%20height%3D%22100%22%20fill%3D%22%23ded2bd%22%20opacity%3D%22.6%22%2F%3E%20%3Crect%20x%3D%224.2%22%20y%3D%220%22%20width%3D%227.6%22%20height%3D%22100%22%20fill%3D%22%2316120e%22%2F%3E%20%3Crect%20x%3D%224.2%22%20y%3D%220%22%20width%3D%221.2%22%20height%3D%22100%22%20fill%3D%22%23000000%22%20opacity%3D%22.55%22%2F%3E%20%3C%2Fsvg%3E") top center/calc(var(--tab-w) * .38) var(--reach) no-repeat;
 }
 .drawbars input[type="range"]::-webkit-slider-thumb {
-  -webkit-appearance: none; width: 44px; height: 22px;
-  background: var(--tab) center/contain no-repeat;
-  filter: drop-shadow(0 3px 4px #000000bb);
+  -webkit-appearance: none;
+  width: var(--tab-w); height: var(--tab-h);
+  background: var(--tab) center/100% 100% no-repeat;
+  filter: drop-shadow(0 3px 4px #000000cc);
 }
 .drawbars input[type="range"]::-moz-range-thumb {
-  width: 44px; height: 22px; border: none;
-  background: var(--tab) center/contain no-repeat;
+  width: var(--tab-w); height: var(--tab-h); border: none;
+  background: var(--tab) center/100% 100% no-repeat;
 }
-.drawbars label.brown input { --tab: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2044%2022%22%3E%20%3Cdefs%3E%20%3ClinearGradient%20id%3D%22f%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%220%22%20y2%3D%221%22%3E%20%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23b07a4e%22%2F%3E%20%3Cstop%20offset%3D%22.46%22%20stop-color%3D%22%238a5836%22%2F%3E%20%3Cstop%20offset%3D%221%22%20stop-color%3D%22%235d3921%22%2F%3E%20%3C%2FlinearGradient%3E%20%3C%2Fdefs%3E%20%3Crect%20x%3D%22.7%22%20y%3D%22.7%22%20width%3D%2242.6%22%20height%3D%2220.6%22%20rx%3D%223.4%22%20fill%3D%22url%28%23f%29%22%20stroke%3D%22%232c1a0e%22%20stroke-width%3D%221.1%22%2F%3E%20%3Crect%20x%3D%223.4%22%20y%3D%222.2%22%20width%3D%2237.2%22%20height%3D%223.4%22%20rx%3D%221.7%22%20fill%3D%22%23ffffff%22%20opacity%3D%22.3%22%2F%3E%20%3Crect%20x%3D%2211%22%20y%3D%229.2%22%20width%3D%2222%22%20height%3D%223.6%22%20rx%3D%221.8%22%20fill%3D%22%233a2313%22%2F%3E%20%3Crect%20x%3D%2211%22%20y%3D%229.2%22%20width%3D%2222%22%20height%3D%221.5%22%20rx%3D%220.75%22%20fill%3D%22%23000000%22%20opacity%3D%22.25%22%2F%3E%20%3Crect%20x%3D%223.4%22%20y%3D%2217.6%22%20width%3D%2237.2%22%20height%3D%222%22%20rx%3D%221%22%20fill%3D%22%23000000%22%20opacity%3D%22.22%22%2F%3E%20%3C%2Fsvg%3E"); }
-.drawbars label.white input { --tab: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2044%2022%22%3E%20%3Cdefs%3E%20%3ClinearGradient%20id%3D%22f%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%220%22%20y2%3D%221%22%3E%20%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23fbf7ec%22%2F%3E%20%3Cstop%20offset%3D%22.46%22%20stop-color%3D%22%23e6dfd0%22%2F%3E%20%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23bdb4a2%22%2F%3E%20%3C%2FlinearGradient%3E%20%3C%2Fdefs%3E%20%3Crect%20x%3D%22.7%22%20y%3D%22.7%22%20width%3D%2242.6%22%20height%3D%2220.6%22%20rx%3D%223.4%22%20fill%3D%22url%28%23f%29%22%20stroke%3D%22%23554c3f%22%20stroke-width%3D%221.1%22%2F%3E%20%3Crect%20x%3D%223.4%22%20y%3D%222.2%22%20width%3D%2237.2%22%20height%3D%223.4%22%20rx%3D%221.7%22%20fill%3D%22%23ffffff%22%20opacity%3D%22.3%22%2F%3E%20%3Crect%20x%3D%2211%22%20y%3D%229.2%22%20width%3D%2222%22%20height%3D%223.6%22%20rx%3D%221.8%22%20fill%3D%22%238d8475%22%2F%3E%20%3Crect%20x%3D%2211%22%20y%3D%229.2%22%20width%3D%2222%22%20height%3D%221.5%22%20rx%3D%220.75%22%20fill%3D%22%23000000%22%20opacity%3D%22.25%22%2F%3E%20%3Crect%20x%3D%223.4%22%20y%3D%2217.6%22%20width%3D%2237.2%22%20height%3D%222%22%20rx%3D%221%22%20fill%3D%22%23000000%22%20opacity%3D%22.22%22%2F%3E%20%3C%2Fsvg%3E"); }
-.drawbars label.black input { --tab: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2044%2022%22%3E%20%3Cdefs%3E%20%3ClinearGradient%20id%3D%22f%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%220%22%20y2%3D%221%22%3E%20%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23423d37%22%2F%3E%20%3Cstop%20offset%3D%22.46%22%20stop-color%3D%22%231f1c19%22%2F%3E%20%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23100e0c%22%2F%3E%20%3C%2FlinearGradient%3E%20%3C%2Fdefs%3E%20%3Crect%20x%3D%22.7%22%20y%3D%22.7%22%20width%3D%2242.6%22%20height%3D%2220.6%22%20rx%3D%223.4%22%20fill%3D%22url%28%23f%29%22%20stroke%3D%22%23000000%22%20stroke-width%3D%221.1%22%2F%3E%20%3Crect%20x%3D%223.4%22%20y%3D%222.2%22%20width%3D%2237.2%22%20height%3D%223.4%22%20rx%3D%221.7%22%20fill%3D%22%23ffffff%22%20opacity%3D%22.3%22%2F%3E%20%3Crect%20x%3D%2211%22%20y%3D%229.2%22%20width%3D%2222%22%20height%3D%223.6%22%20rx%3D%221.8%22%20fill%3D%22%23000000%22%2F%3E%20%3Crect%20x%3D%2211%22%20y%3D%229.2%22%20width%3D%2222%22%20height%3D%221.5%22%20rx%3D%220.75%22%20fill%3D%22%23000000%22%20opacity%3D%22.25%22%2F%3E%20%3Crect%20x%3D%223.4%22%20y%3D%2217.6%22%20width%3D%2237.2%22%20height%3D%222%22%20rx%3D%221%22%20fill%3D%22%23ffffff%22%20opacity%3D%22.22%22%2F%3E%20%3C%2Fsvg%3E"); }
+.drawbars label.brown input { --tab: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2044%2022%22%3E%20%3Cdefs%3E%20%3ClinearGradient%20id%3D%22f%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%220%22%20y2%3D%221%22%3E%20%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23b07a4e%22%2F%3E%20%3Cstop%20offset%3D%22.46%22%20stop-color%3D%22%238a5836%22%2F%3E%20%3Cstop%20offset%3D%221%22%20stop-color%3D%22%235d3921%22%2F%3E%20%3C%2FlinearGradient%3E%20%3C%2Fdefs%3E%20%3Crect%20x%3D%22.7%22%20y%3D%22.7%22%20width%3D%2242.6%22%20height%3D%2220.6%22%20rx%3D%223.4%22%20fill%3D%22url%28%23f%29%22%20stroke%3D%22%232c1a0e%22%20stroke-width%3D%221.1%22%2F%3E%20%3Crect%20x%3D%223.4%22%20y%3D%222.2%22%20width%3D%2237.2%22%20height%3D%223.4%22%20rx%3D%221.7%22%20fill%3D%22%23ffffff%22%20opacity%3D%22.3%22%2F%3E%20%3Crect%20x%3D%2211%22%20y%3D%229.2%22%20width%3D%2222%22%20height%3D%223.6%22%20rx%3D%221.8%22%20fill%3D%22%233a2313%22%2F%3E%20%3Crect%20x%3D%2211%22%20y%3D%229.2%22%20width%3D%2222%22%20height%3D%221.5%22%20rx%3D%22.75%22%20fill%3D%22%23000000%22%20opacity%3D%22.25%22%2F%3E%20%3Crect%20x%3D%223.4%22%20y%3D%2217.6%22%20width%3D%2237.2%22%20height%3D%222%22%20rx%3D%221%22%20fill%3D%22%23000000%22%20opacity%3D%22.22%22%2F%3E%20%3C%2Fsvg%3E"); }
+.drawbars label.white input { --tab: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2044%2022%22%3E%20%3Cdefs%3E%20%3ClinearGradient%20id%3D%22f%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%220%22%20y2%3D%221%22%3E%20%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23fbf7ec%22%2F%3E%20%3Cstop%20offset%3D%22.46%22%20stop-color%3D%22%23e6dfd0%22%2F%3E%20%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23bdb4a2%22%2F%3E%20%3C%2FlinearGradient%3E%20%3C%2Fdefs%3E%20%3Crect%20x%3D%22.7%22%20y%3D%22.7%22%20width%3D%2242.6%22%20height%3D%2220.6%22%20rx%3D%223.4%22%20fill%3D%22url%28%23f%29%22%20stroke%3D%22%23554c3f%22%20stroke-width%3D%221.1%22%2F%3E%20%3Crect%20x%3D%223.4%22%20y%3D%222.2%22%20width%3D%2237.2%22%20height%3D%223.4%22%20rx%3D%221.7%22%20fill%3D%22%23ffffff%22%20opacity%3D%22.3%22%2F%3E%20%3Crect%20x%3D%2211%22%20y%3D%229.2%22%20width%3D%2222%22%20height%3D%223.6%22%20rx%3D%221.8%22%20fill%3D%22%238d8475%22%2F%3E%20%3Crect%20x%3D%2211%22%20y%3D%229.2%22%20width%3D%2222%22%20height%3D%221.5%22%20rx%3D%22.75%22%20fill%3D%22%23000000%22%20opacity%3D%22.25%22%2F%3E%20%3Crect%20x%3D%223.4%22%20y%3D%2217.6%22%20width%3D%2237.2%22%20height%3D%222%22%20rx%3D%221%22%20fill%3D%22%23000000%22%20opacity%3D%22.22%22%2F%3E%20%3C%2Fsvg%3E"); }
+.drawbars label.black input { --tab: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2044%2022%22%3E%20%3Cdefs%3E%20%3ClinearGradient%20id%3D%22f%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%220%22%20y2%3D%221%22%3E%20%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23423d37%22%2F%3E%20%3Cstop%20offset%3D%22.46%22%20stop-color%3D%22%231f1c19%22%2F%3E%20%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23100e0c%22%2F%3E%20%3C%2FlinearGradient%3E%20%3C%2Fdefs%3E%20%3Crect%20x%3D%22.7%22%20y%3D%22.7%22%20width%3D%2242.6%22%20height%3D%2220.6%22%20rx%3D%223.4%22%20fill%3D%22url%28%23f%29%22%20stroke%3D%22%23000000%22%20stroke-width%3D%221.1%22%2F%3E%20%3Crect%20x%3D%223.4%22%20y%3D%222.2%22%20width%3D%2237.2%22%20height%3D%223.4%22%20rx%3D%221.7%22%20fill%3D%22%23ffffff%22%20opacity%3D%22.3%22%2F%3E%20%3Crect%20x%3D%2211%22%20y%3D%229.2%22%20width%3D%2222%22%20height%3D%223.6%22%20rx%3D%221.8%22%20fill%3D%22%23000000%22%2F%3E%20%3Crect%20x%3D%2211%22%20y%3D%229.2%22%20width%3D%2222%22%20height%3D%221.5%22%20rx%3D%22.75%22%20fill%3D%22%23000000%22%20opacity%3D%22.25%22%2F%3E%20%3Crect%20x%3D%223.4%22%20y%3D%2217.6%22%20width%3D%2237.2%22%20height%3D%222%22%20rx%3D%221%22%20fill%3D%22%23ffffff%22%20opacity%3D%22.22%22%2F%3E%20%3C%2Fsvg%3E"); }
+/* The pedal clavier has two of these rather than nine, and it sits in a
+   row rather than filling one, so it is given a width to work from. */
+.pedal-drawbars {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  flex: 0 0 auto; width: clamp(104px, 46%, 188px); margin-top: 0;
+}
+/* Its share of the row is a half rather than a ninth, so the bar is sized
+   from that share and not from the manuals'. */
+.pedal-drawbars input[type="range"] { --tab-w: clamp(22px, calc(44cqw - 6px), 54px); }
 
 /* The tabs. Each panel is a sibling of the radio that shows it, so switching
    is one stylesheet rule and no script: the controls of a hidden tab are
@@ -171,9 +326,10 @@ input[type="range"]::-moz-range-track { background: none; }
 .tab-input { position: absolute; opacity: 0; pointer-events: none; }
 .tabs { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--line); }
 .tabs label {
-  display: block; cursor: pointer; padding: 11px 20px; border: 1px solid transparent;
-  border-bottom: none; border-radius: 4px 4px 0 0; margin-bottom: -1px;
-  color: var(--muted); font-size: .74rem; font-weight: 800; letter-spacing: .12em;
+  display: block; cursor: pointer; padding: 12px 22px 11px;
+  border: 1px solid transparent; border-bottom: none;
+  border-radius: 4px 4px 0 0; margin-bottom: -1px;
+  color: var(--muted); font-size: .82rem; font-weight: 500; letter-spacing: .2em;
   text-transform: uppercase;
 }
 .tabs label:hover { color: var(--text); }
@@ -186,8 +342,9 @@ input[type="range"]::-moz-range-track { background: none; }
 #tab-rotary:checked ~ .tabs label[for="tab-rotary"],
 #tab-generator:checked ~ .tabs label[for="tab-generator"],
 #tab-electronics:checked ~ .tabs label[for="tab-electronics"] {
-  color: var(--gold);
+  color: var(--brass);
   border-color: var(--line);
+  border-top: 2px solid var(--brass);
   background: linear-gradient(180deg, var(--panel-start), var(--panel-end));
 }
 .tab-input:focus-visible ~ .tabs label { outline: none; }
@@ -203,12 +360,15 @@ input[type="range"]::-moz-range-track { background: none; }
 .preset-key { margin-top: 16px; }
 .drawbar-groups { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; }
 .group-label {
-  margin: 16px 0 -8px; color: var(--gold); font-size: .62rem; font-weight: 800;
-  letter-spacing: .16em; text-transform: uppercase; opacity: .85;
+  margin: 16px 0 -8px; color: var(--gold); font-size: .7rem; font-weight: 500;
+  letter-spacing: .22em; text-transform: uppercase; opacity: .9;
 }
 
 .control-grid { margin-top: 18px; display: grid; grid-template-columns: repeat(auto-fit, minmax(168px, 1fr)); gap: 18px 20px; }
-.note { margin: 10px 0 0; font-size: .78rem; line-height: 1.5; opacity: .72; }
+.note {
+  margin: 10px 0 0; font-size: .82rem; line-height: 1.55; letter-spacing: .01em;
+  color: var(--muted); opacity: .9; max-width: 92ch;
+}
 
 @media (max-width: 1200px) {
   .drawbar-groups { grid-template-columns: minmax(0, 1fr); gap: 0; }
@@ -227,10 +387,7 @@ input[type="range"]::-moz-range-track { background: none; }
   main { padding: 8px; }
   header { grid-template-columns: 1fr; }
   .performance { grid-template-columns: 1fr 1fr; }
-  .drawbars { gap: 2px; }
-  .drawbars input[type="range"] { width: 34px; height: 112px; }
-  .drawbars input[type="range"]::-webkit-slider-thumb { width: 32px; height: 16px; }
-  .drawbars input[type="range"]::-moz-range-thumb { width: 32px; height: 16px; }
+  .drawbars { gap: 3px; }
   .control-grid { grid-template-columns: minmax(0, 1fr); }
   .tabs { gap: 2px; }
   .tabs label { padding: 9px 10px; font-size: .66rem; letter-spacing: .04em; }

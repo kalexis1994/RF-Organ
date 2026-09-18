@@ -345,7 +345,7 @@ impl Client {
                 {
                     self.values[index] = value;
                     self.loaded = true;
-                    self.status = "Connected to RackForge".into();
+                    self.status = String::new();
                 } else {
                     self.refresh = true;
                 }
@@ -354,7 +354,7 @@ impl Client {
                 if let Some(values) = snapshot(&message["result"]) {
                     self.values = values;
                     self.loaded = true;
-                    self.status = "Connected to RackForge".into();
+                    self.status = String::new();
                 } else {
                     self.loaded = false;
                     self.refresh = true;
