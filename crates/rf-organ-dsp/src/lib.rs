@@ -37,7 +37,10 @@ pub use rotary::{
 pub use scanner::{ScannerMode, ScannerVibrato};
 pub use taper::TAPER;
 pub use tonewheel::{TONEWHEEL_COUNT, gear_frequency, gear_teeth};
-pub use transformer::{MatchingTransformer, TransformerDiagnostics, TransformerUnit};
+pub use transformer::{
+    ASYMMETRY_DEFAULT as TRANSFORMER_ASYMMETRY_DEFAULT, MatchingTransformer,
+    TransformerDiagnostics, TransformerUnit,
+};
 pub use vibrato_line::{CUTOFF_HZ as SCANNER_LINE_CUTOFF_HZ, ROTOR_HZ as SCANNER_ROTOR_HZ};
 
 use manual::Manual;
@@ -257,6 +260,13 @@ impl OrganEngine {
     }
 
     /// How much of Hammond's documented contact delay to add to every press.
+    /// How lopsided the three transformers' cores are, together.
+    pub fn set_transformer_asymmetry(&mut self, amount: f32) -> bool {
+        self.lower_pedal_transformer.set_asymmetry(amount)
+            && self.upper_transformer.set_asymmetry(amount)
+            && self.output_transformer.set_asymmetry(amount)
+    }
+
     pub fn set_contact_delay(&mut self, amount: f32) -> bool {
         self.upper.set_contact_delay(amount) && self.lower.set_contact_delay(amount)
     }

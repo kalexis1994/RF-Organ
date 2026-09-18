@@ -6,10 +6,11 @@ use rf_organ_dsp::{
     MIC_SPACING_DEFAULT_M, MIC_SPACING_MAX_M, MainsFrequency, MicrophoneArray, MicrophonePair,
     MicrophoneType, OrganEngine, OrganPart, PEDAL_DRAWBAR_COUNT, PercussionDecay,
     PercussionHarmonic, PercussionVolume, RotaryMode, STAGE_CHARACTER_DEFAULT,
-    STAGE_CHARACTER_RANGE, SUB_LEVEL_DEFAULT_DB, ScannerMode, StopAngle, TransformerUnit,
+    STAGE_CHARACTER_RANGE, SUB_LEVEL_DEFAULT_DB, ScannerMode, StopAngle,
+    TRANSFORMER_ASYMMETRY_DEFAULT, TransformerUnit,
 };
 
-pub const PARAMETER_COUNT: usize = 73;
+pub const PARAMETER_COUNT: usize = 74;
 /// Per-stage offsets from the shared console character, ordered V4A, V4B, V3B.
 pub const CONSOLE_STAGE_TRIM_FIRST: u32 = 69;
 /// Bipolar per-transformer calibration trims, ordered T1, T2, T3.
@@ -43,6 +44,9 @@ pub struct Settings {
     pub console_stage_trims: [f64; 3],
     pub transformer_drive: f64,
     pub transformer_hysteresis: f64,
+    /// How lopsided the transformer cores are, which is what gives them a
+    /// second-order product at all.
+    pub transformer_asymmetry: f64,
     pub rotary_mode: RotaryMode,
     pub rotary_mix: f64,
     pub rotary_acceleration: f64,
@@ -110,6 +114,7 @@ impl Default for Settings {
             console_stage_trims: [0.0; 3],
             transformer_drive: 0.38,
             transformer_hysteresis: 0.32,
+            transformer_asymmetry: TRANSFORMER_ASYMMETRY_DEFAULT as f64,
             rotary_mode: RotaryMode::Off,
             rotary_mix: 0.82,
             rotary_acceleration: 0.5,
@@ -171,6 +176,7 @@ impl Settings {
             && self.console_stage_trims.iter().all(|trim| bipolar(*trim))
             && unit(self.transformer_drive)
             && unit(self.transformer_hysteresis)
+            && unit(self.transformer_asymmetry)
             && unit(self.rotary_mix)
             && unit(self.rotary_acceleration)
             && unit(self.console_drive)
@@ -268,6 +274,7 @@ impl Settings {
             68 => self.console_stage_character,
             69..=71 => self.console_stage_trims[(index - CONSOLE_STAGE_TRIM_FIRST) as usize],
             72 => self.contact_delay,
+            73 => self.transformer_asymmetry,
             52 => self.rotary_mic_pattern,
             53 => self.rotary_horn_radius,
             54 => self.rotary_drum_radius,
@@ -353,6 +360,7 @@ impl Settings {
                 self.console_stage_trims[(index - CONSOLE_STAGE_TRIM_FIRST) as usize] = value;
             }
             72 => self.contact_delay = value,
+            73 => self.transformer_asymmetry = value,
             52 => self.rotary_mic_pattern = value,
             53 => self.rotary_horn_radius = value,
             54 => self.rotary_drum_radius = value,
@@ -398,6 +406,7 @@ impl Settings {
             self.transformer_drive as f32,
             self.transformer_hysteresis as f32,
         );
+        let _ = engine.set_transformer_asymmetry(self.transformer_asymmetry as f32);
         for (unit, [drive, hysteresis]) in
             TransformerUnit::ALL.into_iter().zip(self.transformer_trims)
         {

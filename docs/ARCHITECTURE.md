@@ -166,7 +166,7 @@ microphones, so moving them back zooms out instead of pushing them off the
 edge. The parameter table the surface validates against is the engine's, not a
 copy of it; a range that moves in the DSP moves there too.
 
-## Version 0.40.0 limitations
+## Version 0.41.0 limitations
 
 - The classic B-3 pedal contact and resistor-panel topology is present. The
   L20 pedal-filter coefficient and console matching-network constants remain
@@ -204,14 +204,6 @@ copy of it; a range that moves in the DSP moves there too.
   that character and the comparator fits the three separately - again the
   arrangement the matching transformers use, and again the answer is only as
   separate as the measurement was.
-- The generator taper is flat. The service manual's table of generator output
-  voltages is in the same unreadable scan, so no per-wheel levels are claimed;
-  the laboratory measures the taper the model produces and the API applies one
-  wheel at a time once a console is measured.
-- Leakage keeps a constant level against what is played, while Hammond
-  describes it as rising with the number of notes held and exposes a control
-  for that rate. The laboratory reports leakage against note count, which is
-  where that gap will be closed.
 - The generator's per-wheel taper is every wheel at unity, which no real
   generator is. It is a table rather than a constant because what replaces it
   is a measurement: the laboratory renders a chromatic sweep, the comparator
@@ -292,9 +284,11 @@ copy of it; a range that moves in the DSP moves there too.
   it, which is what keeps the chorus position from arriving 11 dB down.
 - Contact bounce, matching-transformer, console tube-stage, expression-network
   and rotary constants are provisional.
-- The transformer model is an odd nonlinearity and therefore produces no
-  genuine second-order difference product. Its asymmetric magnetic behaviour is
-  not modelled yet, so the fit uses the third-order product; see
+- The transformer cores lean, so both intermodulation orders are present. How
+  far they lean is provisional and puts the second-order product about eleven
+  decibels under the third at the baseline character; the fit still works on
+  the third, which is the dominant and better conditioned of the two, and the
+  laboratory reports the spacing between them for a bench to contradict. See
   `docs/CALIBRATION.md`.
 - Cabinet reflections and angle-dependent filters are present, but
   their coefficients are not yet fitted to multi-angle cabinet measurements.

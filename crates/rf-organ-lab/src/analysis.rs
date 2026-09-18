@@ -2684,6 +2684,43 @@ mod tests {
         );
     }
 
+    /// An odd curve has no even harmonics to give, so a transformer modelled
+    /// as one produces no genuine second-order difference product however hard
+    /// it is driven. The cores lean now, and the two products have to stand in
+    /// the order a transformer stands them in: the symmetric saturation still
+    /// leads, and the lean is a perturbation on it.
+    #[test]
+    fn the_transformer_gives_both_orders_in_the_right_order() {
+        let (measurements, _) = with_analysis_stack(transformer_probe);
+        let value = |probe: &str, metric: &str| {
+            measurements
+                .iter()
+                .find(|measurement| measurement.probe == probe && measurement.metric == metric)
+                .expect("measurement")
+                .value
+        };
+        for probe in [
+            "transformer-baseline",
+            "transformer-drive",
+            "transformer-maximum",
+        ] {
+            let second = value(probe, "difference-product");
+            let third = value(probe, "third-order-product");
+            assert!(
+                second > -70.0,
+                "{probe} produced no second order at all: {second} dBc"
+            );
+            assert!(
+                second < third,
+                "{probe} let the lean overtake the saturation: {second} against {third}"
+            );
+            assert!(
+                third - second < 25.0,
+                "{probe} barely leans at all: {second} against {third}"
+            );
+        }
+    }
+
     #[test]
     fn the_whole_generator_strays_together() {
         let (measurements, csv) = with_analysis_stack(|| drive_wobble_probe().unwrap());

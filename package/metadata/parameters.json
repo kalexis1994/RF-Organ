@@ -795,6 +795,16 @@
       "kind": { "type": "float", "minimum": 0.0, "maximum": 1.0, "default": 0.0, "step": 0.001 },
       "flags": { "automatable": true, "advanced": true },
       "suggested_control": "knob"
+    },
+    {
+      "index": 73,
+      "id": "transformer-asymmetry",
+      "name": "Core Asymmetry",
+      "page": "generator",
+      "order": 14,
+      "kind": { "type": "float", "minimum": 0.0, "maximum": 1.0, "default": 0.1, "step": 0.001 },
+      "flags": { "automatable": true, "advanced": true },
+      "suggested_control": "knob"
     }
   ],
   "semantic_controls": [

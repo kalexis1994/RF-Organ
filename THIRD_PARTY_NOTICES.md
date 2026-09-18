@@ -27,6 +27,22 @@ marks is reproduced anywhere.
 - RF-Organ translates the relevant concepts and tables into safe Rust; it does
   not link the setBfree C implementation.
 
+## Transformer core asymmetry
+
+Version 0.41.0 gives the modelled cores a lean. What was there produced its
+saturation through the absolute value of its own input, which makes an odd
+function, and an odd function has no even harmonics to give however hard it is
+driven - so the model could not produce the second-order difference product a
+transformer produces, and the fit worked on the third-order one instead.
+
+The lean itself is textbook rather than Hammond's: a core keeps some of the
+magnetisation it has been given, so it does not sit at the middle of its own
+curve, and the two halves of a wave saturate differently. How far these lean
+is not published and is provisional. What the value chosen does publish is a
+spacing - the second-order product sits about eleven decibels under the third
+at the baseline character - which is a specific claim a bench can contradict
+by measuring both products on a real transformer.
+
 ## Contact delay
 
 Version 0.40.0 takes the contact delay from the XK-7 manual's own contact

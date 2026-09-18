@@ -469,6 +469,24 @@ the ladder for its delay, so it keeps the delay and lets the corner drift.
 Both numbers are held by tests, so changing the discretisation has to come
 past a measurement rather than past an opinion.
 
+## Transformer order protocol
+
+The `difference-product` and `third-order-product` rows of `measurements.csv`
+report both intermodulation orders at five characters. At the baseline they
+come to -44.8 and -33.5 dBc: the symmetric saturation leads and the core's
+lean sits about eleven decibels under it.
+
+Only the spacing is a claim. Both products rise together with drive, so a
+bench that measures them on a real transformer at two levels pins the lean
+without having to match absolute levels: it is the distance between the orders
+that the asymmetry sets, and the drive character that sets how far up the pair
+sits. A test holds the ordering at three characters - second present, second
+under third, and not so far under that the core is effectively symmetric.
+
+The fit still works on the third-order product. It is the dominant and better
+conditioned of the two, and moving it to the second would trade a measurement
+that works for one that is eleven decibels quieter.
+
 ## Console stage protocol
 
 `console-injection-*.wav` are three bench signals: a 1 kHz tone at a quarter
