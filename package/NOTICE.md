@@ -1,0 +1,544 @@
+# Third-party notices
+
+RF-Organ is an independent Rust implementation. It does not compile or embed
+source code from the projects below. Their publications, data tables and source
+code are used as technical references and are credited here as implementation
+work progresses.
+
+## Trademarks
+
+HAMMOND, B-3 and LESLIE are trademarks of Hammond Suzuki. RF-Organ is not
+affiliated with, endorsed by or sponsored by Hammond Suzuki or any of its
+subsidiaries. Those names appear in this repository only where they are needed
+to say factually which published instrument or document a model was derived
+from, which is how the rest of these notices work. They are not used as the
+name of this product, of any of its modules, of any of its controls or of any
+of its presets: the module that models a rotating-baffle cabinet is called the
+rotary speaker throughout, and no logo, typeface or other branding of those
+marks is reproduced anywhere.
+
+## setBfree
+
+- Project: https://github.com/pantherb/setBfree
+- License: GPL-2.0-or-later
+- Authors include Fredrik Kilander, Robin Gareus and Will Panther.
+- Reference use in version 0.1.0: 60 Hz gear-ratio table, 91-wheel generator
+  numbering, B-3-style foldback rules and physical tonewheel compartment pairs.
+- RF-Organ translates the relevant concepts and tables into safe Rust; it does
+  not link the setBfree C implementation.
+
+## Transformer core asymmetry
+
+Version 0.41.0 gives the modelled cores a lean. What was there produced its
+saturation through the absolute value of its own input, which makes an odd
+function, and an odd function has no even harmonics to give however hard it is
+driven - so the model could not produce the second-order difference product a
+transformer produces, and the fit worked on the third-order one instead.
+
+The lean itself is textbook rather than Hammond's: a core keeps some of the
+magnetisation it has been given, so it does not sit at the middle of its own
+curve, and the two halves of a wave saturate differently. How far these lean
+is not published and is provisional. What the value chosen does publish is a
+spacing - the second-order product sits about eleven decibels under the third
+at the baseline character - which is a specific claim a bench can contradict
+by measuring both products on a real transformer.
+
+## Shipped programs
+
+Version 0.46.0 doubles the programs the plugin ships with, and the eight it
+adds are tone colours whose registrations are Hammond's rather than this
+project's. The XK-7 manual publishes a table of drawbar registration patterns
+for the four families a pipe organ is built from - Flute, Diapason, Reed and
+String - and explains the notation it uses for them: "Drawbar registrations
+are expressed in number groups of 2, 4 and 3. This '2-4-3' number formula for
+Drawbar Registration has been a Hammond convention since the beginning."
+
+The eight quoted here are Tibia 8' (00 7030 000), Chorus of Flutes 16'
+(80 8605 002), Open Diapason 8' (01 8866 430), Clarinet 8' (00 6070 540),
+Salicional 8' (00 2453 321) and Vox Humana 8' (00 4720 123), each digit for
+digit from that table. Two are not registrations from it: "Percussion Switch"
+comes from the same manual's note that "some jazz organists have taken
+advantage of this idiosyncrasy by keeping the 1' Drawbar pulled out and
+turning Percussion 'ON' and 'OFF' while playing", and "Two Registrations"
+demonstrates the console's two adjust keys.
+
+What surrounds each registration - cabinet speed, drive, whether the scanner
+is in, what the lower manual and pedals carry - is this plugin's arrangement
+and not Hammond's. The same manual carries a second table, of modern
+registrations named Jazz, Bluesy, Groovy & Funky, Max Power and Squabble, but
+their figures are drawings that the scan reachable from `docs/RESEARCH.md`
+does not render as text. They are absent rather than guessed.
+
+## Preset panel registrations
+
+Version 0.44.0 fills the nine preset keys of each manual. The B-3/C-3 service
+manual describes what a preset key is - nine wires screwed to nine bars, where
+fastening one "is equivalent to setting a harmonic drawbar to the
+corresponding number" - and says the organ ships with "its presets set up as
+shown in the booklet, 'Creating Beautiful Tone Colors with the Harmonic
+Drawbars,' which may be obtained free on request". It does not reproduce the
+booklet. The card it does reproduce explains how to change the panel and
+offers `006523411` on the upper D# as a worked example, which is an example
+and not a factory setting.
+
+The eighteen registrations used here are the standard console ones, taken from
+two independent sources that agree digit for digit:
+
+- HammondWiki, "Standard Presets", https://www.dairiki.org/HammondWiki/StandardPresets,
+  which attributes them to the Hammond *Spinet Organ Playing Guide*.
+- Hammond Today, "Hammond Console Factory Presets",
+  https://www.hammondtoday.com/2016/02/29/hammond-console-factory-presets/,
+  which presents them as the factory presets of the B-3, C-3 and A-100 and
+  cites no source of its own.
+
+Neither is the booklet the service manual names, and neither is a measurement
+of a console's own panel - which, being screw terminals, need not still hold
+what the factory set. The digits are therefore documented, corroborated and
+second-hand, and are labelled as such. What the laboratory checks is not the
+digits but that each one reaches the audio as the level it stands for.
+
+## Preset and adjust keys
+
+Version 0.43.0 takes the twelve reverse-colour keys at the left of each manual
+from the B-3/C-3 service manual's console chapter, which describes them as a
+circuit rather than as a convenience: the busbars have no wires on them, so
+"a preset or adjust key must be depressed before any circuit can be
+completed"; the cancel key has no contacts; the adjust keys A# and B are wired
+to the two groups of nine drawbars, with A# on the left hand group of the
+pair; and only one of the twelve can be down at a time.
+
+All twelve keys are modelled. The nine between cancel and the adjust keys are
+wired to a panel where each harmonic is screwed to one of nine bars, which the
+same manual says is "equivalent to setting a harmonic drawbar to the
+corresponding number"; where the registrations on those bars came from is the
+section above.
+
+The percussion's dependence on the B key is quoted from the same manual. That
+the drawbar attenuation goes with it is an inference from the borrowing the
+manual describes, not a sentence it contains, and it is marked as one.
+
+## Key click
+
+Version 0.42.0 takes the key click from the XK-7 manual's own control, which
+publishes both of its ends: at zero "the note will sound with no 'click' at
+the onset of the sound as with a traditional electronic instrument", and a
+higher value "will create a faster attack as well as introduce Key Click".
+Those two sentences are one mechanism said twice - the click and the attack
+are the same event, a contact either arriving abruptly or not - so the model
+turns the arrival into a ramp rather than adding a click on top of a tone.
+
+What is documented is the two ends and that they are the same control. How
+long the gentle end takes is not, and the ten milliseconds used here is
+provisional: it is past the point where a step stops being heard as a click,
+which is the property the sentence asks for, but it is not a measured figure.
+
+## Contact delay
+
+Version 0.40.0 takes the contact delay from the XK-7 manual's own contact
+page, where it is a control with a published range: a virtual contact may be
+delayed by up to 725.6 ms after the physical one is made. The same manual
+describes the 9 (+1 for percussion) contacts of a B-3/C-3 being simulated by
+6 physical contacts and software delays, with velocity measured between the
+first and the sixth.
+
+That number is what this model was missing. Its own spread - what a press
+gives the contacts on its own - tops out at eight milliseconds, which is three
+orders of magnitude short of what the same manual's percussion page needs when
+it describes a key "pressed very slowly" leaving "only the end of the decay or
+no sound". The delay is a control here because it is a control there, it starts
+at zero so that nothing already recorded moves, and at the published ceiling
+the percussion measures 15.3 dB down.
+
+What is still not documented is the mapping: how long a real key at a real
+speed actually takes between its first contact and its last. The published
+range bounds it and the percussion measures it; the keyboard action study that
+would settle it is behind a paywall.
+
+## Dynamic contact-envelope research
+
+- Paper: Giulio Moro, Andrew P. McPherson and Mark B. Sandler, "Dynamic
+  temporal behaviour of the keyboard action on the Hammond organ and its
+  perceptual significance," JASA 142(5), 2017.
+- Research code: https://github.com/giuliomoro/setBfree/tree/dynamic-envelopes
+- License: GPL-2.0-or-later.
+- Reference use in version 0.1.0: velocity-dependent contact spread and bounded
+  contact chatter. The current implementation is a provisional deterministic
+  model, not a reproduction of the published experimental fit.
+
+## Published physical-model references
+
+The vibrato/chorus is an independent Rust implementation of the documented
+B-3 circuit, informed by the Hammond service documentation, patent US2560568A
+and Werner, Dunkel and Germain's DAFx-2016 wave-digital-filter paper.
+
+Version 0.2 used a reduced delay-line stand-in. Version 0.16.0 replaces it with
+the circuit itself: eighteen 500 mH sections, seventeen 0.004 µF shunt
+capacitors and a final 0.001 µF one, the six tap dividers, the 15 kΩ
+termination, the 22 kΩ source resistor that the vibrato/chorus switch shorts,
+the nineteen tap nodes, the three depth tap sets and the sixteen-stack scanner
+that crossfades between adjacent terminals. Those component values and tap
+tables are Hammond service-manual data, tabulated in Table 1 and Table 2 of the
+DAFx-2016 paper and used here as data, not as code.
+
+The discretisation is our own and deliberately different from the paper's: the
+ladder is linear and, with its states interleaved section by section,
+tridiagonal, so RF-Organ applies the trapezoidal rule and solves the resulting
+system directly each sample rather than building a wave-digital tree. No WDF
+adaptor, scattering equation or third-party implementation code is reproduced.
+The insertion-loss make-up that keeps the chorus position usable is a
+provisional stand-in for the AO-28 vibrato amplifier, derived from the
+resistor network rather than fitted.
+
+## Panel lettering
+
+Version 0.46.0 letters the play surface in two typefaces carried with the
+plugin rather than fetched at load. A webview inside a host need not have a
+network, and a surface whose lettering depends on whether it does is not a
+surface.
+
+- Oswald, `package/web/fonts/oswald.woff2`, latin subset, variable weight.
+  Copyright 2016 The Oswald Project Authors,
+  https://github.com/googlefonts/OswaldFont
+- Playfair Display, `package/web/fonts/playfair.woff2`, latin subset, variable
+  weight. Copyright 2017 The Playfair Display Project Authors,
+  https://github.com/clauseggers/Playfair-Display
+
+Both are licensed under the SIL Open Font License, Version 1.1, which is
+compatible with distributing them alongside GPL-2.0-or-later software and
+which requires its notice to travel with the fonts. It does:
+`package/web/fonts/OFL.txt` carries the licence and both copyright lines, and
+ships inside the package. The files are the latin subsets Google Fonts serves,
+which is what this surface writes; together they are about forty-five
+kilobytes.
+
+Neither face is Hammond's. The trademark note above applies to the lettering
+as much as to the name: these are period-appropriate types, not a copy of an
+instrument's branding.
+
+## Branding artwork
+
+The icon, banner and splash in `package/branding/` are images generated with
+OpenAI's image tool from prompts written for this project, and then cropped,
+resized and encoded to what the host will accept. They replace the drawings
+`tools/make-artwork.py` used to produce, which are still what that script
+makes and which are still what the package would carry if anyone ran it.
+
+The subject of all three is a generic console organ and a rotating-baffle
+cabinet. No maker's name, badge, logo or nameplate appears on any of them, and
+the trademark note above applies to the artwork as much as to the text: the
+instrument depicted is the kind of instrument, not a particular manufacturer's
+product. The splash and the banner carry no lettering at all; the icon carries
+this project's own name and nothing else.
+
+What that means for licensing is worth stating plainly rather than assuming.
+These are not drawings made from geometry any more, so the older claim that no
+artwork licence applies has been removed. OpenAI assigns the output of its
+image tool to the account that generated it, which is the right under which
+they are distributed here; they are not photographs of any instrument and
+contain no third party's artwork or lettering. The prompts they came from are
+in the project's history.
+
+## Vibrato line discretisation
+
+The DAFx-2016 vibrato paper discretises the ladder's reactances with the
+frequency-warped bilinear transform, giving `T' = 2 tan(W T / 2) / W` so that
+one continuous-time frequency is mapped exactly, in order to place the
+ladder's sharp cutoff. RF-Organ implements the same ladder and does not use
+that step, which is a departure worth recording rather than a detail: the
+paper is matching magnitude responses and this model is using the ladder for
+its delay, and a warped step scales that delay with the sample rate. Both
+behaviours were measured before the choice was made; the numbers are in
+`docs/CALIBRATION.md`.
+
+## Generator taper
+
+Version 0.35.0 does not add a taper. It adds the table the taper goes in, and
+the machinery that fills it from a real instrument, and it says plainly that
+the table is currently every wheel at unity.
+
+What the taper physically is, the service manual does give: "there are filters
+consisting of small transformers and condensers associated with certain
+frequencies", each having "a single tapped winding" whose tap is grounded, so
+that the side "connected to the corresponding magnet coil through a condenser,
+forms a resonant circuit for the fundamental frequency of that coil", which
+"tends to emphasize the fundamental and suppress harmonics". Which wheels carry
+one appears only in two figures, and the scans of those figures cannot be read.
+
+So `crates/rf-organ-dsp/src/taper.rs` holds 91 unity entries and says why, and
+`rf-organ-lab compare` produces the replacement from a chromatic capture of a
+console. A real generator is not flat here; RF-Organ is, and says so rather
+than inventing a curve that would sound like a measurement.
+
+## Leakage rate documentation
+
+Version 0.34.0 takes the growth of the leakage from the XK-7 manual, which
+gives a control over "the rate at which the Leakage Tone increases as more
+notes are played simultaneously", with a higher setting causing it to
+"increase at a faster rate". RF-Organ had leakage that grew with what was
+played and therefore stayed at the same level against it, which is not what
+that sentence describes.
+
+The reason there is a rate to set is not in that manual, but it follows from
+the service manual's wiring: what leaks onto a busbar arrives from the whole
+generator through the harness, and every contact that closes gives it another
+way in, while the note a key asked for only grows by that one key. How
+steeply it grows, and where the control sits by default, are not published, so
+both are provisional; that it grows, and that the rate is a control, are not.
+
+## Generator drive documentation
+
+Version 0.33.0 takes the drive from the Hammond service manual, which
+describes it as springy at every joint: the shaft is "resiliently coupled to
+the synchronous running motor", it "is divided into several sections connected
+by flexible couplings", the wheel assemblies are "coupled resiliently to the
+drive shaft", and each bakelite gear "rotate[s] freely on the shafts with the
+tone wheels" while being held to its assembly "by a pair of coil springs". The
+same manual gives the run motor a 2-pole field and a 6-pole armature at
+1200 rpm on sixty cycles, and a 4-pole armature at 1500 rpm on fifty.
+
+What follows from that is structural rather than numerical: a drive built
+this way cannot turn perfectly evenly, and because all 91 wheels are geared to
+that one shaft, whatever it does it does to every wheel at once and in the
+same proportion. RF-Organ models that structure. How far the shaft strays,
+how fast the motor's coupling lets it swing, and where the coil springs
+resonate are not figures Hammond publishes, so all of them are provisional
+and the laboratory reports the pitch deviation they come to.
+
+## Rotary cabinet documentation
+
+Version 0.21.0 takes the mechanical description Hammond publishes for a
+digital rotating cabinet: the horn turns counter-clockwise and the drum
+clockwise; slow speeds run from 20 to 120 rpm and fast speeds from 200 to
+500 rpm; a rise, a fall and a brake time are separate per rotor, floored at
+0.8 s for the horn and 1.0 s for the drum and ceilinged at 12.5 s; a mode
+switch can be delayed by up to a second before the rotor responds; and a time
+means the time to cross the whole speed range, so a shorter move takes
+proportionally less and the rate is what stays constant.
+
+Version 0.32.0 adds the last setting on that page: the step past the widest
+pair in the width control, which the manual calls "Side" and describes as
+placing the microphones "on each side of the cabinet" rather than in front of
+it. RF-Organ makes it a switch of its own instead of the last step of the
+width, so that the width beside it stays a width all the way along; the
+setting is the documented one either way. What it needs and the manual does
+not give on that page is how wide the cabinet is, since that is what a
+microphone put beside it has to clear, so the 36 cm half-footprint is
+provisional.
+
+Version 0.31.0 gives them a stand each as well. That manual's width, centre
+and distance are all listed per rotor, and RF-Organ had one of each shared
+between the two pairs, with the drum's centre wired to the negative of the
+horn's. The negation came from a note in the manual - that a positive value on
+the horn and a negative one on the drum emphasise the different directions the
+baffles approach from - which is advice to whoever is placing the microphones,
+not something the cabinet does on its own. Both pairs stand where they are put
+now, and that advice is available rather than enforced.
+
+Version 0.30.0 gives the horn and the drum a volume each, which is how that
+manual has them: three microphone volumes in decibels, from unity down through
+-76 to silence, one for each of the horn's pair, the drum's pair and the
+woofer. Before this the first two shared one bipolar balance between them,
+which could only ever turn one of them down.
+
+Version 0.29.0 adds the woofer and the capsules, both from the microphone page
+of the same manual. The woofer's sound is described there as dry and
+unmodulated, as not leaving the cabinet directly, and as being picked up by the
+drum's microphone primarily and the horn's slightly; its level is one of three
+the manual gives in decibels from silence to unity. How much less the horn's
+pair hears is not a number it publishes, so the quarter RF-Organ uses is
+provisional, as is where the level sits by default. The two capsules are given
+only as characters - a dynamic one that "enhances the sense of perspective" and
+a condenser one that is "natural" - with no response and no model named. The
+part of that which is not taste is in the geometry: a pressure-gradient capsule
+lifts the bass as it nears a source, by an amount the distance and the pattern
+decide, so RF-Organ derives it rather than choosing it, and bounds it because a
+real capsule rolls off underneath. The presence and the top that separate the
+two characters are provisional, and the laboratory reports what they come to.
+
+Version 0.28.0 adds the supply the motors run from. This one is not from a
+Hammond document: the speeds are, and the rest is how an alternating-current
+motor works, which is that its shaft turns at the supply's frequency over its
+pole pairs. So the speeds a cabinet is quoted at belong to the supply it was
+built for, and the same cabinet on another supply turns in proportion - five
+sixths of everything on fifty cycles against sixty. What RF-Organ models is
+one cabinet on either supply, which is a real thing that happens to a cabinet
+that travels; it is not the two cabinets a manufacturer would sell into the
+two markets, because an exported one was re-belted or re-motored to reach its
+rated speeds there. The console's own generator is left at concert pitch and
+does not follow this switch.
+
+Version 0.26.0 adds the stop angle from the same description: each rotor has
+one, documented as a whole degree from 0 to 359 or "Rnd" for a random angle,
+and the brake time is documented specifically as the time to stop from the
+fast speed. Both are modelled, and where they conflict the engine keeps the
+documented brake time and lets the stop from a slower speed run long; see
+`docs/CALIBRATION.md`.
+
+RF-Organ runs its rotors at 400 and 40 rpm for the horn and 340 and 40 for the
+drum, the figures usually quoted for a 122 and the ones Hammond's own worked
+examples use. The six transition times are provisional, inside the documented
+floors, and the laboratory measures what they produce.
+
+## Rotating source geometry
+
+Version 0.24.0 places the microphones by the same geometry Smith, Serafin, Abel
+and Berners set out in "Doppler Simulation and the Leslie" (Proceedings of the
+5th International Conference on Digital Audio Effects, Hamburg, 2002): the
+radiating mouth is treated as an omnidirectional point on a circle, the
+listener as a point off that circle, and the pitch deviation as what the
+changing distance between them does to the arrival time, whose far-field form
+is the tangential speed of the radiating point over the speed of sound. The
+paper also gives the reason the omnidirectional assumption is fair, which is
+the diffuser fitted into the mouth of the horn.
+
+Nothing was taken from that paper but its description of the physics, which is
+not a copyrightable element and carries no licence obligation; no code, figure
+or table of it is reproduced here, and the implementation in
+`crates/rf-organ-dsp/src/leslie.rs` is our own.
+
+The microphone placement follows the ranges Hammond publishes for a digital
+cabinet: 0 to 170 cm in front, 0 to 40 cm between the pair, and an offset of
+the pair from the rotor's pivot. RF-Organ exposes those as distances in metres,
+the way RackForge's Concert Grand exposes its own microphone placement, and
+adds a pattern control from omnidirectional through cardioid to a figure of
+eight, which on a rotating source decides how much of the sweep arrives as
+level and how much as tone.
+
+What is not documented anywhere we can cite is the radius each mouth actually
+turns at. So the horn's 18 cm and the drum's 12 cm are not constants: they are
+the defaults of two controls on a model page, in metres, where a measurement
+can replace them without a rebuild. `artifacts/measurements.csv` reports the
+pitch deviation they produce against the deviation the same geometry
+predicts.
+
+## Generator compartments and wheel motion
+
+Version 0.20.0 takes three documented things about the generator.
+
+The B-3/C-3 service manual describes the generator as divided into
+compartments, each holding four tone wheels driven by one gear and shielded
+magnetically from the rest, and lays the compartments out by tooth count: one
+holds 2, 32, 8 and 128, the next holds 4, 64, 16 and 192, and a speed with no
+192-tooth wheel leaves that position blank. RF-Organ derives its compartment
+table from that layout, so leakage now reaches a wheel from up to three
+companions instead of the single four-octave partner it used before, and every
+wheel belongs to a compartment where five previously belonged to none.
+
+Hammond's XK-7/XK-7D manual describes what differs between individual
+generators — level, wow and flutter, and eccentricity — and defines them: wow
+is a once-per-revolution change of pitch or phase caused by gear backlash, and
+eccentricity is a wheel stamped off-centre whose high spots pass nearer to and
+further from the pickup once per revolution, so the tone becomes slightly
+louder and softer. RF-Organ models the eccentricity as that once-per-revolution
+level change, at a depth that is provisional; wow and flutter are not modelled
+yet.
+
+Münster and Pfeifle's ISMA-2019 measurements of a Model A report the induced
+voltage as approximately sine-like with strong amplitude fluctuation caused by
+the unsteady motion of the wheels, which is the same effect from the other
+side. Their paper gives no per-wheel table, and the service manual's own
+generator output voltages are in a scan that does not survive character
+recognition, so the per-wheel taper stays flat and exposed rather than
+invented.
+
+## AO-28 stage shape
+
+Version 0.19.0 records what could not be sourced. The B-3/C-3 preamplifier
+schematic in the service manual available to this project is a scan whose
+optical character recognition returns unusable fragments for the component
+labels, and the parts list covers assemblies rather than resistor and
+capacitor values. The AO-28's stage constants therefore cannot be ported the
+way the vibrato ladder's were, and they stay provisional.
+
+Version 0.36.0 does not find those values either - the schematic was rendered
+again at the highest resolution the scan holds and the component labels are
+grey mush. What it adds is the way to measure the stages from outside, which
+is a bench injection: a steady tone into the preamplifier's own input at three
+drives, and a fit that reads the second harmonic back out. That gives the one
+number such a reading can honestly give, which is how lopsided the chain is
+altogether. How the three stages divide it between them cannot be seen from
+the output, since the tone passes through all three, so the fit reports that
+split as underdetermined rather than settling it.
+
+Version 0.37.0 adds the injection that tells the three apart. A probe at one
+stage's grid and another at its plate sees that stage and nothing else, which
+is how a bench separates what an output reading cannot, and it is the same
+arrangement the matching transformers already use for T1, T2 and T3. Each
+stage gets a trim off the shared character, and the comparator fits each from
+its own injection.
+
+What the stages did get is their shape. A single-ended triode's plate current
+follows roughly a three-halves power of grid voltage, so its transfer curve is
+asymmetric and its distortion is led by the second harmonic, with the third
+falling away as the square of level. That is textbook tube behaviour rather
+than anything specific to Hammond, and it is stated here as such. The stages
+previously used a symmetric soft clipper, which put the third harmonic 29 dB
+above the second; they now put the second ahead by 19 to 42 dB across the
+normal range. The asymmetry of each stage remains a provisional number, and
+the laboratory reports the harmonic structure it produces.
+
+## Hammond percussion documentation
+
+Version 0.17.0 takes the percussion behaviour Hammond documents for the
+vintage console in the XK-7/XK-7D owner's manual: the 1' drawbar is cancelled
+while percussion is on, the second harmonic is the 4' bus and the third is the
+2 2/3' bus, the envelope is single-trigger so that re-keying is required, and
+at Normal volume the upper drawbars are reduced "by a small amount (about
+6 dB)" while Soft leaves them alone. The 6 dB figure is the manufacturer's,
+and RF-Organ applies it as such.
+
+Version 0.39.0 takes one more sentence from the XK-7 manual, about when the
+envelope starts: "The Percussion 'decay' begins at the #1 contact and is
+released at a specified contact. If you press a key very slowly, you may hear
+the Percussion tone but only the end of the decay or no sound." RF-Organ
+triggered it at the key event instead, which is a different machine - the
+supply was discharged by a decision rather than by a contact touching a
+busbar. It is discharged by the contact now, and since the tone is already
+heard through the harmonic buses' own contacts, the behaviour that sentence
+describes is what the two together produce rather than a rule written down.
+
+Hammond documents no decay times, attack time or recovery behaviour in
+seconds, so those constants stay provisional and are exposed as measurements
+instead: the laboratory reports the four decay curves, the attack, the
+recovery after release and the nine contact closure times, and the comparator
+turns a reference capture into candidate values for them directly.
+
+See `docs/RESEARCH.md` for the Hammond service documentation, tonewheel,
+scanner-vibrato and rotating-cabinet papers that define the wider research
+baseline.
+
+## Hammond pedal-switch service documentation
+
+Version 0.9.0 translates the documented late-console 25-note pedal topology
+into an independent reduced Rust model: eight harmonic contacts, four busbars,
+and the 470/47/10-ohm and 20/5/5-ohm drawbar-mixing branches shown for B-3/C-3
+consoles. The L20 filter is presently represented by a provisional bounded
+one-pole pending component measurement.
+
+## Hammond AO-28 service documentation
+
+Version 0.10.0 translates the documented B-3/C-3 console routing into an
+independent Rust signal graph. Separate magnetic states represent the T2 upper
+and T1 lower-plus-pedal matching transformers before the vibrato tablets. The
+percussion channel bypasses the matching transformers and scanner and joins
+the signal at the V4A summing stage. Component values and tube stages remain
+reduced models pending reference-console calibration; no service-manual
+artwork or third-party source code is embedded.
+
+Version 0.11.0 separates reduced pre- and post-expression nonlinear stages and
+uses the documented 60 pF-per-section expression control with R34's 15 MOhm
+value to expose a calibratable low-frequency corner. Low/mid/high attenuation
+remains a reduced model informed by Hammond's published description of
+expression as both volume and tonal control; it is not represented as a solved
+AO-28 circuit.
+
+Version 0.12.0 places a reduced 200 Hz tone shelf after V4B, followed by a
+separate V3B/12BH7 stage and T3 magnetic state. The physical console offered
+tone cut only; RF-Organ retains the existing bipolar calibration parameter and
+uses Hammond's documented modern ±9 dB extension around neutral. The response
+and output-transformer coefficients remain provisional pending measurement.
+
+Version 0.13.0 adds an independently written two-tone transformer probe and
+upper/lower reference-capture triplets based on Hammond's published C/F
+difference-product listening test. It reports combined T2+T3 and T1+T3 paths;
+no individual transformer coefficient is presented as measured or fitted.

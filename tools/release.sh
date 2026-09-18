@@ -50,6 +50,12 @@ if [ "$quick" -eq 0 ]; then
   cargo test --locked --workspace
 fi
 
+# The package carries the licence and the notices because the archive is
+# conveyed on its own: someone downloads it, and the host compiles it into its
+# binary. Refreshed here so the copies cannot drift from the originals.
+cp LICENSE package/LICENSE
+cp THIRD_PARTY_NOTICES.md package/NOTICE.md
+
 echo "== wasm =="
 cargo build --locked --release -p rf-organ-plugin --target wasm32-unknown-unknown
 cp target/wasm32-unknown-unknown/release/rf_organ_plugin.wasm package/component.wasm

@@ -663,6 +663,22 @@ mod tests {
     /// the plugin is what writes it. Nothing held those two together and they
     /// drifted two versions apart before this test existed, which the host
     /// would have had no way to notice.
+    /// The package is conveyed on its own - downloaded, and compiled into the
+    /// host's binary - so the licence and the notices have to be inside it
+    /// rather than only in the repository it was built from. They are copies,
+    /// and a copy nothing checks is a copy that goes stale.
+    #[test]
+    fn the_package_carries_the_licence_and_the_notices() {
+        assert_eq!(
+            include_str!("../../../package/LICENSE"),
+            include_str!("../../../LICENSE")
+        );
+        assert_eq!(
+            include_str!("../../../package/NOTICE.md"),
+            include_str!("../../../THIRD_PARTY_NOTICES.md")
+        );
+    }
+
     #[test]
     fn the_manifest_agrees_with_the_state_the_plugin_writes() {
         let manifest = include_str!("../../../package/rackforge-plugin.toml");

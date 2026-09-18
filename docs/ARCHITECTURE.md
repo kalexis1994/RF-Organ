@@ -209,7 +209,7 @@ microphones, so moving them back zooms out instead of pushing them off the
 edge. The parameter table the surface validates against is the engine's, not a
 copy of it; a range that moves in the DSP moves there too.
 
-## Version 0.47.0 limitations
+## Version 0.48.0 limitations
 
 - The classic B-3 pedal contact and resistor-panel topology is present. The
   L20 pedal-filter coefficient and console matching-network constants remain

@@ -1,0 +1,177 @@
+# Publishes an installable RF-Organ for the host to preinstall.
+#
+# RackForge bundles official plugins by compiling the archives in a directory
+# into its own binary, and it gets them from `tools/fetch-official-plugins.py`
+# in the host repository, which pins each one to a tag, a filename and a
+# SHA-256. So a release here has to produce a stable name at a predictable URL
+# and a digest to pin, not just an attachment:
+#
+#     https://github.com/kalexis1994/RF-Organ/releases/download/vX.Y.Z/RF-Organ.rfplugin
+#
+# The versioned name is published beside it for people, and both carry their
+# checksum. Adding the entry to the host's registry is a separate commit there;
+# this side's job is to make the URL and the digest exist.
+#
+# The gate is `tools/release.sh`, which is what a release is built with by
+# hand: formatting, lints, the whole test suite, the wasm build, the host's own
+# package validation, the staleness check against the committed component, the
+# sample-rate sweep, and a pack done twice and compared so that a version which
+# cannot be rebuilt to the same bytes never ships. Running the same script here
+# is the point - a release that CI builds differently from a developer is a
+# release nobody can reproduce.
+name: Release
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  # Keep this in step with the same name in ci.yml: both pin the SDK to the
+  # revision Cargo.lock records, and a release must be built against the host
+  # the branch was tested against.
+  RACKFORGE_REF: 8e8991b67ddcb55507911abd93dcf52dfd6b5ef6
+  # Must match the wasm-bindgen version in Cargo.lock, or the generated surface
+  # will not load against the built module.
+  WASM_BINDGEN_VERSION: 0.2.127
+
+jobs:
+  publish:
+    name: Validate, pack and publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    steps:
+      - name: Check out RF-Organ
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: RF-Organ
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check out the RackForge SDK
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: kalexis1994/rackforge
+          ref: ${{ env.RACKFORGE_REF }}
+          path: rackforge
+          persist-credentials: false
+
+      - name: Lint this workflow
+        uses: docker://rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 # 1.7.12
+        with:
+          args: -color RF-Organ/.github/workflows/release.yml
+
+      - name: Match the tag to the packaged version
+        id: version
+        shell: bash
+        working-directory: RF-Organ
+        # A tag that disagrees with the package is the one mistake that cannot
+        # be corrected after the fact: the URL is already public and the digest
+        # is already wrong. It is checked before anything is built.
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -1)
+          test -n "$version"
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            test "${{ github.ref_name }}" = "v$version"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+
+      - name: Install native dependencies
+        shell: bash
+        # rackforge-core links ALSA and udev on Linux; the package validation
+        # runs through the host, so they are needed here too.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libasound2-dev \
+            libudev-dev \
+            pkg-config
+
+      - name: Install the pinned toolchain and the wasm target
+        shell: bash
+        working-directory: RF-Organ
+        run: rustup show
+
+      - name: Install the matching wasm-bindgen
+        shell: bash
+        run: cargo install wasm-bindgen-cli --version "$WASM_BINDGEN_VERSION" --locked
+
+      - name: Validate, build and pack
+        shell: bash
+        working-directory: RF-Organ
+        run: bash tools/release.sh
+
+      - name: Name the archive for the host and checksum both
+        id: artefacts
+        shell: bash
+        working-directory: RF-Organ/dist
+        # The host's registry pins a filename without a version in it, so the
+        # same copy is published twice: once named for people reading the
+        # release page, once named for the machine that fetches it.
+        run: |
+          versioned="RF-Organ-${{ steps.version.outputs.version }}.rfplugin"
+          test -f "$versioned"
+          cp "$versioned" RF-Organ.rfplugin
+          sha256sum "$versioned" > "$versioned.sha256"
+          sha256sum RF-Organ.rfplugin > RF-Organ.rfplugin.sha256
+          digest=$(cut -d' ' -f1 RF-Organ.rfplugin.sha256)
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          {
+            echo "### RF-Organ ${{ steps.version.outputs.version }}"
+            echo
+            echo "Entry for \`tools/fetch-official-plugins.py\` in the host:"
+            echo
+            echo '```python'
+            echo '{'
+            echo '    "filename": "RF-Organ.rfplugin",'
+            echo '    "plugin_id": "org.rackforge.organ",'
+            echo "    \"version\": \"${{ steps.version.outputs.version }}\","
+            echo '    "url": ('
+            echo '        "https://github.com/kalexis1994/RF-Organ/"'
+            echo "        \"releases/download/${{ steps.version.outputs.tag }}/RF-Organ.rfplugin\""
+            echo '    ),'
+            echo "    \"sha256\": \"$digest\","
+            echo '}'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Preserve the validated artefacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: RF-Organ-${{ steps.version.outputs.version }}
+          path: |
+            RF-Organ/dist/RF-Organ-${{ steps.version.outputs.version }}.rfplugin
+            RF-Organ/dist/RF-Organ-${{ steps.version.outputs.version }}.rfplugin.sha256
+            RF-Organ/dist/RF-Organ.rfplugin
+            RF-Organ/dist/RF-Organ.rfplugin.sha256
+          if-no-files-found: error
+          compression-level: 0
+
+      - name: Publish the GitHub release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        working-directory: RF-Organ
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            --verify-tag \
+            --title "RF-Organ ${{ steps.version.outputs.version }}" \
+            --generate-notes \
+            "dist/RF-Organ-${{ steps.version.outputs.version }}.rfplugin" \
+            "dist/RF-Organ-${{ steps.version.outputs.version }}.rfplugin.sha256" \
+            dist/RF-Organ.rfplugin \
+            dist/RF-Organ.rfplugin.sha256
