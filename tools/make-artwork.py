@@ -1,10 +1,17 @@
 #!/usr/bin/env python3
 """Draws RF-Organ's branding assets.
 
+These are not what the package currently carries. The branding in
+`package/branding/` is now artwork of the instrument itself, and running this
+script replaces it - so it refuses to unless `--force` says that is meant.
+Nothing in the build runs it; it is kept because a drawing that can be rebuilt
+from the repository is worth having, and because it documents the palette the
+artwork was matched to.
+
 RackForge's manifest schema 3 wants three PNGs at exact sizes: a 512x512 icon,
 a 1600x400 banner and a 1920x1080 splash. They are drawn here rather than
 painted so that the package can be rebuilt from the repository, and they carry
-no lettering, which keeps the artwork free of any font's licence.
+no lettering, which keeps the drawings free of any font's licence.
 
 The subject is the instrument's own control: nine drawbars in the colours a
 console gives them - two brown, four white and three black, the first black
@@ -20,6 +27,7 @@ Requires Pillow. The generated files live in `package/branding/`.
 from __future__ import annotations
 
 import os
+import sys
 from PIL import Image, ImageDraw, ImageFilter
 
 GROUND = (0x17, 0x12, 0x0D)
@@ -219,6 +227,17 @@ def main():
     here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     out = os.path.join(here, "package", "branding")
     os.makedirs(out, exist_ok=True)
+    existing = [
+        name
+        for name in ("icon", "banner", "splash")
+        if os.path.exists(os.path.join(out, f"{name}.png"))
+    ]
+    if existing and "--force" not in sys.argv:
+        print(
+            "refusing to overwrite the artwork in package/branding "
+            f"({', '.join(existing)}); pass --force if the drawings are wanted back"
+        )
+        return
     for name, render in (("icon", icon), ("banner", banner), ("splash", splash)):
         path = os.path.join(out, f"{name}.png")
         width, height = render(path)

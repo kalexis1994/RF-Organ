@@ -158,6 +158,15 @@ slow speed takes a tenth of the time braking from fast does, and the drum takes
 several times longer than the horn either way. A mode switch waits briefly
 before the rotor responds, as a relay and a clutch do.
 
+The package's icon, banner and splash are artwork of a console organ and a
+rotating-baffle cabinet rather than the drawings a script used to make. The
+host decodes each of them before it will install a package and is strict about
+how - exact dimensions, eight bits, RGB or RGBA, no palette - so the only way
+to make a photograph small there is to give it less to encode. Posterising to
+six bits a channel does that without a visible seam in the gradients, where
+five bits blotches them, and takes the three from 3.2 MB to 1.7 MB. The script
+that drew the old ones is kept and now refuses to overwrite them.
+
 The surface is lettered in two typefaces carried with the plugin rather than
 fetched, because a webview inside a host need not have a network and a panel
 whose lettering depends on whether it does is not a panel. Both are under the
@@ -200,7 +209,7 @@ microphones, so moving them back zooms out instead of pushing them off the
 edge. The parameter table the surface validates against is the engine's, not a
 copy of it; a range that moves in the DSP moves there too.
 
-## Version 0.46.0 limitations
+## Version 0.47.0 limitations
 
 - The classic B-3 pedal contact and resistor-panel topology is present. The
   L20 pedal-filter coefficient and console matching-network constants remain

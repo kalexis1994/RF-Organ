@@ -217,12 +217,26 @@ instrument's branding.
 
 ## Branding artwork
 
-The icon, banner and splash in `package/branding/` are drawn by
-`tools/make-artwork.py` from geometry and from the play surface's own palette.
-They contain no lettering and no third-party image, so no font or artwork
-licence applies to them. Their subject is the drawbar layout every tonewheel
-console shares - two brown, four white and three black - which Hammond's
-manual refers to when it calls the 2 2/3' the first black drawbar.
+The icon, banner and splash in `package/branding/` are images generated with
+OpenAI's image tool from prompts written for this project, and then cropped,
+resized and encoded to what the host will accept. They replace the drawings
+`tools/make-artwork.py` used to produce, which are still what that script
+makes and which are still what the package would carry if anyone ran it.
+
+The subject of all three is a generic console organ and a rotating-baffle
+cabinet. No maker's name, badge, logo or nameplate appears on any of them, and
+the trademark note above applies to the artwork as much as to the text: the
+instrument depicted is the kind of instrument, not a particular manufacturer's
+product. The splash and the banner carry no lettering at all; the icon carries
+this project's own name and nothing else.
+
+What that means for licensing is worth stating plainly rather than assuming.
+These are not drawings made from geometry any more, so the older claim that no
+artwork licence applies has been removed. OpenAI assigns the output of its
+image tool to the account that generated it, which is the right under which
+they are distributed here; they are not photographs of any instrument and
+contain no third party's artwork or lettering. The prompts they came from are
+in the project's history.
 
 ## Vibrato line discretisation
 
