@@ -443,6 +443,46 @@ several touches, read the percussion peak against the briskest, and the delay
 that explains the curve is the delay. It costs a recording rather than access
 to the keyboard action study that sits behind a paywall.
 
+## Preset and adjust keys
+
+`registration-response.csv` presses each of the modelled reverse-colour keys
+with a different registration on each adjust key, so that each group's tone is
+a frequency the other cannot produce. What it reports is how much of the other
+group is present, which under a key wired to one group is none of it.
+
+| key | own tone | other group | other over own |
+| --- | --- | --- | --- |
+| cancel | silence | silence | -300 dB |
+| A# adjust | -25.21 dBFS | -191.24 dBFS | -166.04 dB |
+| B adjust | -25.20 dBFS | -192.99 dBFS | -167.79 dB |
+
+These are not fits. The cancel row is the model's silence floor, which is what
+"no circuit can be completed" has to produce, and the two adjust rows are
+numerical noise: the other group is not attenuated, it is not connected.
+
+`switch-held` presses the A# key, holds a note, and presses B halfway through
+without lifting it. The B group's tone rises 140.7 dB across the switch, which
+is the difference between absent and present. The adjust key is in series with
+the busbars, so this is the behaviour rather than a courtesy.
+
+The percussion rows took two attempts. Comparing the two keys directly, with
+the percussion on under both, reported 2.42 dB - the percussion is a fraction
+of a peak that is mostly the tone at 888, so most of what it adds does not
+show up in a peak. Rendering each key twice, with the percussion switched on
+and off, asks the question that was meant: what does the tablet do under this
+key?
+
+| key | percussion on | percussion off | what the tablet did |
+| --- | --- | --- | --- |
+| B adjust | -19.32 dBFS | -15.74 dBFS | -3.58 dB |
+| A# adjust | -15.74 dBFS | -15.74 dBFS | 0.00 dB |
+
+Under the A# key the answer is an exact zero, and that exactness is the point:
+the tablet is not made quiet under the wrong key, it is out of circuit. Under
+the B key the tablet costs 3.58 dB on balance, which is the six decibels the
+Normal volume takes out of the drawbars less what the percussion itself adds
+back at the onset.
+
 ## Key click
 
 `key-click-response.csv` keys one note at four settings of the click control

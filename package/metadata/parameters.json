@@ -33,7 +33,7 @@
     {
       "index": 2,
       "id": "drawbar-16",
-      "name": "16'",
+      "name": "16' B",
       "page": "organ",
       "order": 2,
       "kind": { "type": "integer", "minimum": 0, "maximum": 8, "default": 8, "step": 1 },
@@ -43,7 +43,7 @@
     {
       "index": 3,
       "id": "drawbar-5-1-3",
-      "name": "5 1/3'",
+      "name": "5 1/3' B",
       "page": "organ",
       "order": 3,
       "kind": { "type": "integer", "minimum": 0, "maximum": 8, "default": 8, "step": 1 },
@@ -53,7 +53,7 @@
     {
       "index": 4,
       "id": "drawbar-8",
-      "name": "8'",
+      "name": "8' B",
       "page": "organ",
       "order": 4,
       "kind": { "type": "integer", "minimum": 0, "maximum": 8, "default": 8, "step": 1 },
@@ -63,7 +63,7 @@
     {
       "index": 5,
       "id": "drawbar-4",
-      "name": "4'",
+      "name": "4' B",
       "page": "organ",
       "order": 5,
       "kind": { "type": "integer", "minimum": 0, "maximum": 8, "default": 0, "step": 1 },
@@ -73,7 +73,7 @@
     {
       "index": 6,
       "id": "drawbar-2-2-3",
-      "name": "2 2/3'",
+      "name": "2 2/3' B",
       "page": "organ",
       "order": 6,
       "kind": { "type": "integer", "minimum": 0, "maximum": 8, "default": 0, "step": 1 },
@@ -83,7 +83,7 @@
     {
       "index": 7,
       "id": "drawbar-2",
-      "name": "2'",
+      "name": "2' B",
       "page": "organ",
       "order": 7,
       "kind": { "type": "integer", "minimum": 0, "maximum": 8, "default": 0, "step": 1 },
@@ -93,7 +93,7 @@
     {
       "index": 8,
       "id": "drawbar-1-3-5",
-      "name": "1 3/5'",
+      "name": "1 3/5' B",
       "page": "organ",
       "order": 8,
       "kind": { "type": "integer", "minimum": 0, "maximum": 8, "default": 0, "step": 1 },
@@ -103,7 +103,7 @@
     {
       "index": 9,
       "id": "drawbar-1-1-3",
-      "name": "1 1/3'",
+      "name": "1 1/3' B",
       "page": "organ",
       "order": 9,
       "kind": { "type": "integer", "minimum": 0, "maximum": 8, "default": 0, "step": 1 },
@@ -113,7 +113,7 @@
     {
       "index": 10,
       "id": "drawbar-1",
-      "name": "1'",
+      "name": "1' B",
       "page": "organ",
       "order": 10,
       "kind": { "type": "integer", "minimum": 0, "maximum": 8, "default": 0, "step": 1 },
@@ -295,7 +295,7 @@
     {
       "index": 24,
       "id": "lower-drawbar-16",
-      "name": "16'",
+      "name": "16' B",
       "page": "lower",
       "order": 0,
       "kind": { "type": "integer", "minimum": 0, "maximum": 8, "default": 8, "step": 1 },
@@ -305,7 +305,7 @@
     {
       "index": 25,
       "id": "lower-drawbar-5-1-3",
-      "name": "5 1/3'",
+      "name": "5 1/3' B",
       "page": "lower",
       "order": 1,
       "kind": { "type": "integer", "minimum": 0, "maximum": 8, "default": 8, "step": 1 },
@@ -315,7 +315,7 @@
     {
       "index": 26,
       "id": "lower-drawbar-8",
-      "name": "8'",
+      "name": "8' B",
       "page": "lower",
       "order": 2,
       "kind": { "type": "integer", "minimum": 0, "maximum": 8, "default": 8, "step": 1 },
@@ -325,7 +325,7 @@
     {
       "index": 27,
       "id": "lower-drawbar-4",
-      "name": "4'",
+      "name": "4' B",
       "page": "lower",
       "order": 3,
       "kind": { "type": "integer", "minimum": 0, "maximum": 8, "default": 0, "step": 1 },
@@ -335,7 +335,7 @@
     {
       "index": 28,
       "id": "lower-drawbar-2-2-3",
-      "name": "2 2/3'",
+      "name": "2 2/3' B",
       "page": "lower",
       "order": 4,
       "kind": { "type": "integer", "minimum": 0, "maximum": 8, "default": 0, "step": 1 },
@@ -345,7 +345,7 @@
     {
       "index": 29,
       "id": "lower-drawbar-2",
-      "name": "2'",
+      "name": "2' B",
       "page": "lower",
       "order": 5,
       "kind": { "type": "integer", "minimum": 0, "maximum": 8, "default": 0, "step": 1 },
@@ -355,7 +355,7 @@
     {
       "index": 30,
       "id": "lower-drawbar-1-3-5",
-      "name": "1 3/5'",
+      "name": "1 3/5' B",
       "page": "lower",
       "order": 6,
       "kind": { "type": "integer", "minimum": 0, "maximum": 8, "default": 0, "step": 1 },
@@ -365,7 +365,7 @@
     {
       "index": 31,
       "id": "lower-drawbar-1-1-3",
-      "name": "1 1/3'",
+      "name": "1 1/3' B",
       "page": "lower",
       "order": 7,
       "kind": { "type": "integer", "minimum": 0, "maximum": 8, "default": 0, "step": 1 },
@@ -375,7 +375,7 @@
     {
       "index": 32,
       "id": "lower-drawbar-1",
-      "name": "1'",
+      "name": "1' B",
       "page": "lower",
       "order": 8,
       "kind": { "type": "integer", "minimum": 0, "maximum": 8, "default": 0, "step": 1 },
@@ -815,6 +815,222 @@
       "kind": { "type": "float", "minimum": 0.0, "maximum": 1.0, "default": 1.0, "step": 0.001 },
       "flags": { "automatable": true },
       "suggested_control": "knob"
+    },
+    {
+      "index": 75,
+      "id": "drawbar-a-16",
+      "name": "16' A",
+      "page": "organ",
+      "order": 20,
+      "kind": { "type": "integer", "minimum": 0, "maximum": 8, "default": 8, "step": 1 },
+      "flags": { "automatable": true },
+      "suggested_control": "knob"
+    },
+    {
+      "index": 76,
+      "id": "drawbar-a-5-1-3",
+      "name": "5 1/3' A",
+      "page": "organ",
+      "order": 21,
+      "kind": { "type": "integer", "minimum": 0, "maximum": 8, "default": 8, "step": 1 },
+      "flags": { "automatable": true },
+      "suggested_control": "knob"
+    },
+    {
+      "index": 77,
+      "id": "drawbar-a-8",
+      "name": "8' A",
+      "page": "organ",
+      "order": 22,
+      "kind": { "type": "integer", "minimum": 0, "maximum": 8, "default": 8, "step": 1 },
+      "flags": { "automatable": true },
+      "suggested_control": "knob"
+    },
+    {
+      "index": 78,
+      "id": "drawbar-a-4",
+      "name": "4' A",
+      "page": "organ",
+      "order": 23,
+      "kind": { "type": "integer", "minimum": 0, "maximum": 8, "default": 0, "step": 1 },
+      "flags": { "automatable": true },
+      "suggested_control": "knob"
+    },
+    {
+      "index": 79,
+      "id": "drawbar-a-2-2-3",
+      "name": "2 2/3' A",
+      "page": "organ",
+      "order": 24,
+      "kind": { "type": "integer", "minimum": 0, "maximum": 8, "default": 0, "step": 1 },
+      "flags": { "automatable": true },
+      "suggested_control": "knob"
+    },
+    {
+      "index": 80,
+      "id": "drawbar-a-2",
+      "name": "2' A",
+      "page": "organ",
+      "order": 25,
+      "kind": { "type": "integer", "minimum": 0, "maximum": 8, "default": 0, "step": 1 },
+      "flags": { "automatable": true },
+      "suggested_control": "knob"
+    },
+    {
+      "index": 81,
+      "id": "drawbar-a-1-3-5",
+      "name": "1 3/5' A",
+      "page": "organ",
+      "order": 26,
+      "kind": { "type": "integer", "minimum": 0, "maximum": 8, "default": 0, "step": 1 },
+      "flags": { "automatable": true },
+      "suggested_control": "knob"
+    },
+    {
+      "index": 82,
+      "id": "drawbar-a-1-1-3",
+      "name": "1 1/3' A",
+      "page": "organ",
+      "order": 27,
+      "kind": { "type": "integer", "minimum": 0, "maximum": 8, "default": 0, "step": 1 },
+      "flags": { "automatable": true },
+      "suggested_control": "knob"
+    },
+    {
+      "index": 83,
+      "id": "drawbar-a-1",
+      "name": "1' A",
+      "page": "organ",
+      "order": 28,
+      "kind": { "type": "integer", "minimum": 0, "maximum": 8, "default": 0, "step": 1 },
+      "flags": { "automatable": true },
+      "suggested_control": "knob"
+    },
+    {
+      "index": 84,
+      "id": "lower-drawbar-a-16",
+      "name": "16' A",
+      "page": "lower",
+      "order": 20,
+      "kind": { "type": "integer", "minimum": 0, "maximum": 8, "default": 8, "step": 1 },
+      "flags": { "automatable": true },
+      "suggested_control": "knob"
+    },
+    {
+      "index": 85,
+      "id": "lower-drawbar-a-5-1-3",
+      "name": "5 1/3' A",
+      "page": "lower",
+      "order": 21,
+      "kind": { "type": "integer", "minimum": 0, "maximum": 8, "default": 8, "step": 1 },
+      "flags": { "automatable": true },
+      "suggested_control": "knob"
+    },
+    {
+      "index": 86,
+      "id": "lower-drawbar-a-8",
+      "name": "8' A",
+      "page": "lower",
+      "order": 22,
+      "kind": { "type": "integer", "minimum": 0, "maximum": 8, "default": 8, "step": 1 },
+      "flags": { "automatable": true },
+      "suggested_control": "knob"
+    },
+    {
+      "index": 87,
+      "id": "lower-drawbar-a-4",
+      "name": "4' A",
+      "page": "lower",
+      "order": 23,
+      "kind": { "type": "integer", "minimum": 0, "maximum": 8, "default": 0, "step": 1 },
+      "flags": { "automatable": true },
+      "suggested_control": "knob"
+    },
+    {
+      "index": 88,
+      "id": "lower-drawbar-a-2-2-3",
+      "name": "2 2/3' A",
+      "page": "lower",
+      "order": 24,
+      "kind": { "type": "integer", "minimum": 0, "maximum": 8, "default": 0, "step": 1 },
+      "flags": { "automatable": true },
+      "suggested_control": "knob"
+    },
+    {
+      "index": 89,
+      "id": "lower-drawbar-a-2",
+      "name": "2' A",
+      "page": "lower",
+      "order": 25,
+      "kind": { "type": "integer", "minimum": 0, "maximum": 8, "default": 0, "step": 1 },
+      "flags": { "automatable": true },
+      "suggested_control": "knob"
+    },
+    {
+      "index": 90,
+      "id": "lower-drawbar-a-1-3-5",
+      "name": "1 3/5' A",
+      "page": "lower",
+      "order": 26,
+      "kind": { "type": "integer", "minimum": 0, "maximum": 8, "default": 0, "step": 1 },
+      "flags": { "automatable": true },
+      "suggested_control": "knob"
+    },
+    {
+      "index": 91,
+      "id": "lower-drawbar-a-1-1-3",
+      "name": "1 1/3' A",
+      "page": "lower",
+      "order": 27,
+      "kind": { "type": "integer", "minimum": 0, "maximum": 8, "default": 0, "step": 1 },
+      "flags": { "automatable": true },
+      "suggested_control": "knob"
+    },
+    {
+      "index": 92,
+      "id": "lower-drawbar-a-1",
+      "name": "1' A",
+      "page": "lower",
+      "order": 28,
+      "kind": { "type": "integer", "minimum": 0, "maximum": 8, "default": 0, "step": 1 },
+      "flags": { "automatable": true },
+      "suggested_control": "knob"
+    },
+    {
+      "index": 93,
+      "id": "registration",
+      "name": "Preset Key",
+      "page": "organ",
+      "order": 12,
+      "kind": {
+        "type": "enum",
+        "default": 2,
+        "choices": [
+          { "value": 0, "name": "Cancel" },
+          { "value": 1, "name": "A# Adjust" },
+          { "value": 2, "name": "B Adjust" }
+        ]
+      },
+      "flags": { "automatable": true },
+      "suggested_control": "list"
+    },
+    {
+      "index": 94,
+      "id": "lower-registration",
+      "name": "Preset Key",
+      "page": "lower",
+      "order": 12,
+      "kind": {
+        "type": "enum",
+        "default": 2,
+        "choices": [
+          { "value": 0, "name": "Cancel" },
+          { "value": 1, "name": "A# Adjust" },
+          { "value": 2, "name": "B Adjust" }
+        ]
+      },
+      "flags": { "automatable": true },
+      "suggested_control": "list"
     }
   ],
   "semantic_controls": [

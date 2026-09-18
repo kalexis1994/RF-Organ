@@ -9,8 +9,8 @@ mod wav;
 
 use captures::{PHRASE_SECONDS as SECONDS, SAMPLE_RATE, TRANSFORMER_CAPTURES};
 use rf_organ_dsp::{
-    OrganEngine, OrganPart, PercussionDecay, PercussionHarmonic, PercussionVolume, Rotary,
-    RotaryMode, ScannerMode, TONEWHEEL_COUNT, gear_frequency,
+    OrganEngine, OrganPart, PercussionDecay, PercussionHarmonic, PercussionVolume, Registration,
+    Rotary, RotaryMode, ScannerMode, TONEWHEEL_COUNT, gear_frequency,
 };
 use std::env;
 use std::error::Error;
@@ -290,6 +290,10 @@ fn render_suite(destination: &Path, trims: captures::Trims) -> Result<(), Box<dy
         analysis.key_click_response,
     )?;
     fs::write(
+        destination.join("registration-response.csv"),
+        analysis.registration_response,
+    )?;
+    fs::write(
         destination.join("scanner-sidebands.csv"),
         analysis.scanner_sidebands,
     )?;
@@ -438,13 +442,23 @@ fn configure(engine: &mut OrganEngine, scenario: Scenario) {
             let _ = engine.set_transformer(0.62, 0.38);
             let _ = engine.set_console(0.48, 0.18, -0.08);
             for (index, position) in [8, 8, 8, 8, 6, 8, 4, 8, 6].into_iter().enumerate() {
-                let _ = engine.set_manual_drawbar(OrganPart::Upper, index, position);
+                let _ = engine.set_manual_drawbar(
+                    OrganPart::Upper,
+                    Registration::AdjustB,
+                    index,
+                    position,
+                );
             }
             for (index, position) in [8, 8, 8, 8, 6, 0, 0, 0, 0].into_iter().enumerate() {
-                let _ = engine.set_manual_drawbar(OrganPart::Lower, index, position);
+                let _ = engine.set_manual_drawbar(
+                    OrganPart::Lower,
+                    Registration::AdjustB,
+                    index,
+                    position,
+                );
             }
-            let _ = engine.set_manual_drawbar(OrganPart::Pedal, 0, 8);
-            let _ = engine.set_manual_drawbar(OrganPart::Pedal, 1, 8);
+            let _ = engine.set_manual_drawbar(OrganPart::Pedal, Registration::AdjustB, 0, 8);
+            let _ = engine.set_manual_drawbar(OrganPart::Pedal, Registration::AdjustB, 1, 8);
         }
         Scenario::Pedal16 | Scenario::Pedal8 | Scenario::PedalBoth => {
             let registrations = match scenario {
@@ -454,7 +468,12 @@ fn configure(engine: &mut OrganEngine, scenario: Scenario) {
                 _ => unreachable!(),
             };
             for (index, position) in registrations.into_iter().enumerate() {
-                let _ = engine.set_manual_drawbar(OrganPart::Pedal, index, position);
+                let _ = engine.set_manual_drawbar(
+                    OrganPart::Pedal,
+                    Registration::AdjustB,
+                    index,
+                    position,
+                );
             }
         }
     }
@@ -551,7 +570,7 @@ mod tests {
     fn every_drawbar_can_be_closed_for_reference_renders() {
         let mut engine = OrganEngine::new(48_000.0).unwrap();
         for drawbar in 0..rf_organ_dsp::DRAWBAR_COUNT {
-            assert!(engine.set_manual_drawbar(OrganPart::Upper, drawbar, 0));
+            assert!(engine.set_manual_drawbar(OrganPart::Upper, Registration::AdjustB, drawbar, 0));
         }
     }
 

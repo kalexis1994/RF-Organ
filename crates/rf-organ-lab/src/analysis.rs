@@ -5,8 +5,8 @@ use crate::signal::{decay_time, decibels, peak, rms, zero_crossing_frequency};
 use rf_organ_dsp::{
     ConsoleElectronics, DRAWBAR_COUNT, LEVEL_SILENT_DB, MANUAL_FIRST_NOTE, MANUAL_KEY_COUNT,
     MainsFrequency, MatchingTransformer, MicrophoneArray, MicrophonePair, MicrophoneType,
-    OrganEngine, OrganPart, PercussionDecay, PercussionHarmonic, PercussionVolume, Rotary,
-    RotaryGeometry, RotaryMode, RotaryPlacement, ScannerMode, ScannerVibrato, StopAngle,
+    OrganEngine, OrganPart, PercussionDecay, PercussionHarmonic, PercussionVolume, Registration,
+    Rotary, RotaryGeometry, RotaryMode, RotaryPlacement, ScannerMode, ScannerVibrato, StopAngle,
     TransformerUnit, compartment_companions, drawbar_wheel, gear_frequency,
 };
 use std::f64::consts::{PI, TAU};
@@ -21,6 +21,7 @@ pub struct Artifacts {
     pub percussion_recovery: String,
     pub keying_contacts: String,
     pub key_click_response: String,
+    pub registration_response: String,
     pub scanner_sidebands: String,
     pub scanner_line_response: String,
     pub scanner_line_cutoff: String,
@@ -83,6 +84,8 @@ fn analyze_inner() -> Result<Artifacts, String> {
     measurements.extend(keying);
     let (click, key_click_response) = key_click_probe()?;
     measurements.extend(click);
+    let (registration, registration_response) = registration_probe()?;
+    measurements.extend(registration);
     let (scanner, scanner_sidebands, scanner_line_response) = scanner_probe();
     measurements.extend(scanner);
     let (cutoff, scanner_line_cutoff) = scanner_cutoff_probe();
@@ -103,6 +106,7 @@ fn analyze_inner() -> Result<Artifacts, String> {
         percussion_recovery,
         keying_contacts,
         key_click_response,
+        registration_response,
         scanner_sidebands,
         scanner_line_response,
         scanner_line_cutoff,
@@ -595,7 +599,12 @@ fn pedal_probe() -> Result<(Vec<Measurement>, String, String), String> {
 fn render_pedal(drawbars: [u8; 2]) -> Result<Vec<f64>, String> {
     let mut engine = clean_engine()?;
     for (index, position) in drawbars.into_iter().enumerate() {
-        assert!(engine.set_manual_drawbar(OrganPart::Pedal, index, position));
+        assert!(engine.set_manual_drawbar(
+            OrganPart::Pedal,
+            Registration::AdjustB,
+            index,
+            position
+        ));
     }
     assert!(engine.note_on_part(OrganPart::Pedal, 24, 1.0));
     let mut samples = Vec::with_capacity(SAMPLE_RATE);
@@ -610,7 +619,7 @@ fn render_pedal(drawbars: [u8; 2]) -> Result<Vec<f64>, String> {
 
 fn render_pedal_release() -> Result<Vec<f64>, String> {
     let mut engine = clean_engine()?;
-    assert!(engine.set_manual_drawbar(OrganPart::Pedal, 0, 8));
+    assert!(engine.set_manual_drawbar(OrganPart::Pedal, Registration::AdjustB, 0, 8));
     assert!(engine.note_on_part(OrganPart::Pedal, 24, 1.0));
     for _ in 0..SAMPLE_RATE {
         engine.next_sample();
@@ -643,7 +652,7 @@ fn generator_taper_probe() -> Result<(Vec<Measurement>, String), String> {
         let revolutions = frequency / teeth;
 
         let mut engine = clean_engine()?;
-        assert!(engine.set_manual_drawbar(OrganPart::Upper, BUS, 8));
+        assert!(engine.set_manual_drawbar(OrganPart::Upper, Registration::AdjustB, BUS, 8));
         assert!(engine.note_on_part(OrganPart::Upper, note, 1.0));
         let mut samples = Vec::with_capacity(WINDOW);
         for frame in 0..SETTLE + WINDOW {
@@ -734,7 +743,7 @@ fn generator_leakage_probe() -> Result<(Vec<Measurement>, String), String> {
     for (name, notes) in CHORDS {
         let mut engine = clean_engine()?;
         assert!(engine.set_leakage(0.2));
-        assert!(engine.set_manual_drawbar(OrganPart::Upper, BUS, 8));
+        assert!(engine.set_manual_drawbar(OrganPart::Upper, Registration::AdjustB, BUS, 8));
         for note in notes {
             assert!(engine.note_on_part(OrganPart::Upper, *note, 1.0));
         }
@@ -810,7 +819,7 @@ fn tonewheel_probe() -> Result<Vec<Measurement>, String> {
     const NOTE: u8 = 69;
     const BUS: usize = 2;
     let mut engine = clean_engine()?;
-    assert!(engine.set_manual_drawbar(OrganPart::Upper, BUS, 8));
+    assert!(engine.set_manual_drawbar(OrganPart::Upper, Registration::AdjustB, BUS, 8));
     assert!(engine.note_on_part(OrganPart::Upper, NOTE, 1.0));
     let mut samples = Vec::with_capacity(SAMPLE_RATE * 2);
     for _ in 0..SAMPLE_RATE * 2 {
@@ -988,7 +997,7 @@ fn percussion_harmonic_probe() -> Result<Vec<Measurement>, String> {
 fn drawbar_level(volume: Option<PercussionVolume>) -> Result<f64, String> {
     let mut engine = clean_engine()?;
     for drawbar in 0..3 {
-        assert!(engine.set_manual_drawbar(OrganPart::Upper, drawbar, 8));
+        assert!(engine.set_manual_drawbar(OrganPart::Upper, Registration::AdjustB, drawbar, 8));
     }
     if let Some(volume) = volume {
         engine.set_percussion_enabled(true);
@@ -1164,7 +1173,7 @@ fn render_contact(bus: usize, velocity: f32) -> Result<Vec<f64>, String> {
     let mut engine = clean_engine()?;
     assert!(engine.set_contact_spread(0.55));
     assert!(engine.set_contact_bounce(0.45));
-    assert!(engine.set_manual_drawbar(OrganPart::Upper, bus, 8));
+    assert!(engine.set_manual_drawbar(OrganPart::Upper, Registration::AdjustB, bus, 8));
     assert!(engine.note_on_part(OrganPart::Upper, 60, velocity));
     Ok((0..SAMPLE_RATE / 2)
         .map(|_| f64::from(engine.next_sample()[0]))
@@ -2059,7 +2068,7 @@ fn drive_wobble_probe() -> Result<(Vec<Measurement>, String), String> {
             let mut engine = clean_engine()?;
             assert!(engine.set_drive_wobble(wobble));
             assert!(engine.set_eccentricity(0.0));
-            assert!(engine.set_manual_drawbar(OrganPart::Upper, BUS, 8));
+            assert!(engine.set_manual_drawbar(OrganPart::Upper, Registration::AdjustB, BUS, 8));
             assert!(engine.note_on_part(OrganPart::Upper, note, 1.0));
             // Drawbar 2 is the eight foot, so the wheel behind it sings at
             // the note's own pitch.
@@ -2303,7 +2312,7 @@ fn key_click_probe() -> Result<(Vec<Measurement>, String), String> {
         let mut engine = clean_engine()?;
         assert!(engine.set_key_click(amount));
         assert!(engine.set_contact_bounce(0.0));
-        assert!(engine.set_manual_drawbar(OrganPart::Upper, BUS, 8));
+        assert!(engine.set_manual_drawbar(OrganPart::Upper, Registration::AdjustB, BUS, 8));
         // Silence first. The arrival is a discontinuity and a discontinuity
         // has to have something before it: keying on the first rendered sample
         // puts the step outside the window and the measurement then finds
@@ -2351,15 +2360,197 @@ fn key_click_probe() -> Result<(Vec<Measurement>, String), String> {
     Ok((measurements, csv))
 }
 
+/// What the twelve reverse-colour keys at the left of a manual do.
+///
+/// The service manual makes three claims about them and all three are
+/// measurable. "As there are no wires connected to these busbars, a preset or
+/// adjust key must be depressed before any circuit can be completed" - so
+/// cancel is silence. "The adjust keys, A# and B, are connected by flexible
+/// wires ... to the corresponding nine drawbars" - so each key reaches its own
+/// group and no part of the other. And "Percussion is available only on the
+/// upper manual and only when the 'B' preset key is depressed".
+///
+/// The two groups are given different drawbars here, so that each one's tone
+/// is a frequency the other cannot produce and the answer is how much of the
+/// other group is present. For the percussion the two groups are made
+/// identical instead, so that the only difference left is which key is down.
+fn registration_probe() -> Result<(Vec<Measurement>, String), String> {
+    // Two buses whose wheels are far apart: the fundamental and the twelfth.
+    const A_BUS: usize = 2;
+    const B_BUS: usize = 5;
+    const FRAMES: usize = SAMPLE_RATE / 2;
+
+    let key = usize::from(C_NOTE - MANUAL_FIRST_NOTE);
+    let tone = |bus: usize| -> Result<f64, String> {
+        let wheel = drawbar_wheel(key, bus).ok_or("bus has no wheel")?;
+        Ok(f64::from(
+            gear_frequency(wheel).ok_or("wheel has no frequency")?,
+        ))
+    };
+    let a_hz = tone(A_BUS)?;
+    let b_hz = tone(B_BUS)?;
+
+    let render = |registration: Registration, switch: Option<Registration>| -> Vec<f64> {
+        let mut engine = clean_engine().expect("engine");
+        assert!(engine.set_manual_drawbar(OrganPart::Upper, Registration::AdjustA, A_BUS, 8));
+        assert!(engine.set_manual_drawbar(OrganPart::Upper, Registration::AdjustB, B_BUS, 8));
+        assert!(engine.set_manual_registration(OrganPart::Upper, registration));
+        assert!(engine.note_on_part(OrganPart::Upper, C_NOTE, 1.0));
+        let mut samples = Vec::with_capacity(FRAMES);
+        for frame in 0..FRAMES {
+            if let Some(next) = switch.filter(|_| frame == FRAMES / 2) {
+                // Without lifting the key: the adjust key is in series with
+                // the busbars, not in front of them.
+                assert!(engine.set_manual_registration(OrganPart::Upper, next));
+            }
+            samples.push(f64::from(engine.next_sample()[0]));
+        }
+        samples
+    };
+
+    let mut csv = String::from("registration,own_dbfs,other_dbfs,other_over_own_db\n");
+    let mut measurements = Vec::new();
+    for (name, probe, registration, own, other) in [
+        (
+            "cancel",
+            "registration-cancel",
+            Registration::Cancel,
+            a_hz,
+            b_hz,
+        ),
+        (
+            "adjust-a",
+            "registration-adjust-a",
+            Registration::AdjustA,
+            a_hz,
+            b_hz,
+        ),
+        (
+            "adjust-b",
+            "registration-adjust-b",
+            Registration::AdjustB,
+            b_hz,
+            a_hz,
+        ),
+    ] {
+        let samples = render(registration, None);
+        let settled = &samples[SAMPLE_RATE / 8..];
+        let own_level = spectral_amplitude(settled, own);
+        let other_level = spectral_amplitude(settled, other);
+        let relative = decibels(other_level / own_level.max(1.0e-15));
+        writeln!(
+            &mut csv,
+            "{name},{:.6},{:.6},{relative:.6}",
+            decibels(own_level),
+            decibels(other_level)
+        )
+        .expect("string write cannot fail");
+        measurements.push(Measurement {
+            probe,
+            // Under cancel there is no own tone either, so what is worth
+            // reporting is the level of the whole manual, not a ratio.
+            metric: if registration == Registration::Cancel {
+                "manual-level"
+            } else {
+                "other-group-over-own"
+            },
+            value: if registration == Registration::Cancel {
+                decibels(rms(settled))
+            } else {
+                relative
+            },
+            unit: "dB",
+        });
+    }
+
+    // Switching under a held key. The B group's tone is absent in the first
+    // half and is the whole of the second.
+    let switched = render(Registration::AdjustA, Some(Registration::AdjustB));
+    let before = spectral_amplitude(&switched[SAMPLE_RATE / 8..FRAMES / 2], b_hz);
+    let after = spectral_amplitude(&switched[FRAMES / 2 + SAMPLE_RATE / 8..], b_hz);
+    writeln!(
+        &mut csv,
+        "switch-held,{:.6},{:.6},{:.6}",
+        decibels(after),
+        decibels(before),
+        decibels(after / before.max(1.0e-15))
+    )
+    .expect("string write cannot fail");
+    measurements.push(Measurement {
+        probe: "registration-switch-held",
+        metric: "after-over-before",
+        value: decibels(after / before.max(1.0e-15)),
+        unit: "dB",
+    });
+
+    // The percussion, with the two groups made identical so that the key is
+    // the only thing that differs between the two readings.
+    //
+    // What is read is the percussion's own contribution and not the peak of
+    // the note: at 888 the tone is most of the peak, so a first attempt that
+    // compared the two keys directly reported the percussion as 2.4 dB rather
+    // than as absent. Each key is therefore rendered twice, with the
+    // percussion switched on and off, and the answer is what switching it on
+    // adds. Under a key the percussion is not wired to, that has to be
+    // nothing at all.
+    let percussion_peak = |registration: Registration, enabled: bool| -> f64 {
+        let mut engine = clean_engine().expect("engine");
+        for adjust in [Registration::AdjustA, Registration::AdjustB] {
+            for bus in 0..3 {
+                assert!(engine.set_manual_drawbar(OrganPart::Upper, adjust, bus, 8));
+            }
+        }
+        assert!(engine.set_manual_registration(OrganPart::Upper, registration));
+        engine.set_percussion_enabled(enabled);
+        assert!(engine.note_on_part(OrganPart::Upper, C_NOTE, 1.0));
+        let mut peak = 0.0_f64;
+        for _ in 0..SAMPLE_RATE / 10 {
+            peak = peak.max(f64::from(engine.next_sample()[0]).abs());
+        }
+        peak
+    };
+    for (name, probe, registration) in [
+        (
+            "percussion-adjust-b",
+            "registration-percussion-adjust-b",
+            Registration::AdjustB,
+        ),
+        (
+            "percussion-adjust-a",
+            "registration-percussion-adjust-a",
+            Registration::AdjustA,
+        ),
+    ] {
+        let with = percussion_peak(registration, true);
+        let without = percussion_peak(registration, false);
+        let added = decibels(with / without.max(1.0e-15));
+        writeln!(
+            &mut csv,
+            "{name},{:.6},{:.6},{added:.6}",
+            decibels(with),
+            decibels(without)
+        )
+        .expect("string write cannot fail");
+        measurements.push(Measurement {
+            probe,
+            metric: "percussion-over-none",
+            value: added,
+            unit: "dB",
+        });
+    }
+
+    Ok((measurements, csv))
+}
+
 fn clean_engine() -> Result<OrganEngine, String> {
     let mut engine = OrganEngine::new(SAMPLE_RATE as f32).map_err(|error| error.0.to_owned())?;
     for part in [OrganPart::Upper, OrganPart::Lower] {
         for drawbar in 0..DRAWBAR_COUNT {
-            assert!(engine.set_manual_drawbar(part, drawbar, 0));
+            assert!(engine.set_manual_drawbar(part, Registration::AdjustB, drawbar, 0));
         }
     }
     for drawbar in 0..2 {
-        assert!(engine.set_manual_drawbar(OrganPart::Pedal, drawbar, 0));
+        assert!(engine.set_manual_drawbar(OrganPart::Pedal, Registration::AdjustB, drawbar, 0));
     }
     assert!(engine.set_contact_spread(0.0));
     assert!(engine.set_contact_bounce(0.0));
@@ -2522,7 +2713,7 @@ mod tests {
             let mut engine = clean_engine().unwrap();
             assert!(engine.set_leakage(0.2));
             assert!(engine.set_leakage_boost(boost));
-            assert!(engine.set_manual_drawbar(OrganPart::Upper, 2, 8));
+            assert!(engine.set_manual_drawbar(OrganPart::Upper, Registration::AdjustB, 2, 8));
             for note in notes {
                 assert!(engine.note_on_part(OrganPart::Upper, *note, 1.0));
             }
@@ -2724,6 +2915,56 @@ mod tests {
         );
         assert!(value("rate-spread") < 8.0);
         assert!(value("corner-gain") < 0.0);
+    }
+
+    /// The service manual's three claims about the reverse-colour keys, each
+    /// as a number. Cancel is a circuit that is not completed, the two adjust
+    /// keys reach their own group of drawbars and nothing of the other, and
+    /// the percussion is wired to the B key alone.
+    #[test]
+    fn the_preset_keys_are_the_circuit_the_service_manual_describes() {
+        let (measurements, csv) = with_analysis_stack(|| registration_probe().unwrap());
+        let value = |probe: &str| {
+            measurements
+                .iter()
+                .find(|measurement| measurement.probe == probe)
+                .expect("probe")
+                .value
+        };
+        assert_eq!(csv.lines().count(), 7);
+        // "A preset or adjust key must be depressed before any circuit can be
+        // completed", and the cancel key has no contacts at all.
+        assert!(
+            value("registration-cancel") < -200.0,
+            "the cancel key still sounded: {} dB",
+            value("registration-cancel")
+        );
+        // Each adjust key is wired to its own nine drawbars, so the other
+        // group's tone is not merely quiet but absent.
+        for probe in ["registration-adjust-a", "registration-adjust-b"] {
+            assert!(
+                value(probe) < -100.0,
+                "{probe} leaked the other group at {} dB",
+                value(probe)
+            );
+        }
+        // The key is in series with the busbars, so a held note changes with
+        // it rather than waiting to be played again.
+        assert!(
+            value("registration-switch-held") > 60.0,
+            "a held note did not follow the key: {} dB",
+            value("registration-switch-held")
+        );
+        // "Percussion is available only on the upper manual and only when the
+        // 'B' preset key is depressed." Under the other key the tablet may do
+        // nothing whatever, including take the documented level out of the
+        // drawbars.
+        assert_eq!(value("registration-percussion-adjust-a"), 0.0);
+        assert!(
+            value("registration-percussion-adjust-b") < -1.0,
+            "the percussion did nothing under its own key: {} dB",
+            value("registration-percussion-adjust-b")
+        );
     }
 
     /// Hammond's own key click control runs from a note that "will sound with

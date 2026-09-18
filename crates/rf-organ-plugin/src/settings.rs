@@ -5,12 +5,12 @@ use rf_organ_dsp::{
     MIC_DISTANCE_DEFAULT_M, MIC_DISTANCE_RANGE_M, MIC_OFFSET_MAX_M, MIC_PATTERN_DEFAULT,
     MIC_SPACING_DEFAULT_M, MIC_SPACING_MAX_M, MainsFrequency, MicrophoneArray, MicrophonePair,
     MicrophoneType, OrganEngine, OrganPart, PEDAL_DRAWBAR_COUNT, PercussionDecay,
-    PercussionHarmonic, PercussionVolume, RotaryMode, STAGE_CHARACTER_DEFAULT,
+    PercussionHarmonic, PercussionVolume, Registration, RotaryMode, STAGE_CHARACTER_DEFAULT,
     STAGE_CHARACTER_RANGE, SUB_LEVEL_DEFAULT_DB, ScannerMode, StopAngle,
     TRANSFORMER_ASYMMETRY_DEFAULT, TransformerUnit,
 };
 
-pub const PARAMETER_COUNT: usize = 75;
+pub const PARAMETER_COUNT: usize = 95;
 /// Per-stage offsets from the shared console character, ordered V4A, V4B, V3B.
 pub const CONSOLE_STAGE_TRIM_FIRST: u32 = 69;
 /// Bipolar per-transformer calibration trims, ordered T1, T2, T3.
@@ -20,13 +20,30 @@ pub const DRAWBAR_LAST: u32 = DRAWBAR_FIRST + DRAWBAR_COUNT as u32 - 1;
 pub const LOWER_DRAWBAR_FIRST: u32 = 24;
 pub const LOWER_DRAWBAR_LAST: u32 = LOWER_DRAWBAR_FIRST + DRAWBAR_COUNT as u32 - 1;
 pub const PEDAL_DRAWBAR_FIRST: u32 = 33;
+/// The A# adjust key's group, which the service manual calls the left hand
+/// group of the pair. It arrives after everything already recorded, so the
+/// indices the B group has keep their meaning.
+pub const ADJUST_A_DRAWBAR_FIRST: u32 = 75;
+pub const ADJUST_A_DRAWBAR_LAST: u32 = ADJUST_A_DRAWBAR_FIRST + DRAWBAR_COUNT as u32 - 1;
+pub const LOWER_ADJUST_A_DRAWBAR_FIRST: u32 = 84;
+pub const LOWER_ADJUST_A_DRAWBAR_LAST: u32 =
+    LOWER_ADJUST_A_DRAWBAR_FIRST + DRAWBAR_COUNT as u32 - 1;
+pub const REGISTRATION: u32 = 93;
+pub const LOWER_REGISTRATION: u32 = 94;
 pub const PEDAL_DRAWBAR_LAST: u32 = PEDAL_DRAWBAR_FIRST + PEDAL_DRAWBAR_COUNT as u32 - 1;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Settings {
     pub output_level: f64,
     pub expression: f64,
-    pub drawbars: [u8; DRAWBAR_COUNT],
+    /// The B adjust key's group, and the key a B-3 is played on: the
+    /// percussion is "available only on the upper manual and only when the
+    /// 'B' preset key is depressed".
+    pub drawbars_b: [u8; DRAWBAR_COUNT],
+    /// The A# adjust key's group, which is the left hand one of the pair.
+    pub drawbars_a: [u8; DRAWBAR_COUNT],
+    /// Which reverse-colour key is locked down on this manual.
+    pub registration: Registration,
     pub contact_spread: f64,
     pub contact_bounce: f64,
     /// Hammond's documented per-contact delay, as a fraction of its published
@@ -58,7 +75,9 @@ pub struct Settings {
     pub percussion_harmonic: PercussionHarmonic,
     pub percussion_volume: PercussionVolume,
     pub percussion_decay: PercussionDecay,
-    pub lower_drawbars: [u8; DRAWBAR_COUNT],
+    pub lower_drawbars_b: [u8; DRAWBAR_COUNT],
+    pub lower_drawbars_a: [u8; DRAWBAR_COUNT],
+    pub lower_registration: Registration,
     pub pedal_drawbars: [u8; PEDAL_DRAWBAR_COUNT],
     pub upper_scanner: bool,
     pub lower_scanner: bool,
@@ -106,7 +125,9 @@ impl Default for Settings {
         Self {
             output_level: 0.72,
             expression: 1.0,
-            drawbars: [8, 8, 8, 0, 0, 0, 0, 0, 0],
+            drawbars_b: [8, 8, 8, 0, 0, 0, 0, 0, 0],
+            drawbars_a: [8, 8, 8, 0, 0, 0, 0, 0, 0],
+            registration: Registration::AdjustB,
             contact_spread: 0.55,
             contact_bounce: 0.45,
             contact_delay: 0.0,
@@ -127,7 +148,9 @@ impl Default for Settings {
             percussion_harmonic: PercussionHarmonic::Third,
             percussion_volume: PercussionVolume::Normal,
             percussion_decay: PercussionDecay::Fast,
-            lower_drawbars: [8, 8, 8, 0, 0, 0, 0, 0, 0],
+            lower_drawbars_b: [8, 8, 8, 0, 0, 0, 0, 0, 0],
+            lower_drawbars_a: [8, 8, 8, 0, 0, 0, 0, 0, 0],
+            lower_registration: Registration::AdjustB,
             pedal_drawbars: [8, 0],
             upper_scanner: true,
             lower_scanner: false,
@@ -163,8 +186,10 @@ impl Settings {
     pub fn valid(self) -> bool {
         finite_range(self.output_level, 0.0, 1.5)
             && unit(self.expression)
-            && self.drawbars.iter().all(|position| *position <= 8)
-            && self.lower_drawbars.iter().all(|position| *position <= 8)
+            && self.drawbars_b.iter().all(|position| *position <= 8)
+            && self.drawbars_a.iter().all(|position| *position <= 8)
+            && self.lower_drawbars_b.iter().all(|position| *position <= 8)
+            && self.lower_drawbars_a.iter().all(|position| *position <= 8)
             && self.pedal_drawbars.iter().all(|position| *position <= 8)
             && unit(self.contact_spread)
             && unit(self.contact_bounce)
@@ -227,7 +252,7 @@ impl Settings {
             0 => self.output_level,
             1 => self.expression,
             DRAWBAR_FIRST..=DRAWBAR_LAST => {
-                f64::from(self.drawbars[(index - DRAWBAR_FIRST) as usize])
+                f64::from(self.drawbars_b[(index - DRAWBAR_FIRST) as usize])
             }
             11 => self.contact_spread,
             12 => self.contact_bounce,
@@ -249,7 +274,7 @@ impl Settings {
             22 => f64::from(self.percussion_volume as u8),
             23 => f64::from(self.percussion_decay as u8),
             LOWER_DRAWBAR_FIRST..=LOWER_DRAWBAR_LAST => {
-                f64::from(self.lower_drawbars[(index - LOWER_DRAWBAR_FIRST) as usize])
+                f64::from(self.lower_drawbars_b[(index - LOWER_DRAWBAR_FIRST) as usize])
             }
             PEDAL_DRAWBAR_FIRST..=PEDAL_DRAWBAR_LAST => {
                 f64::from(self.pedal_drawbars[(index - PEDAL_DRAWBAR_FIRST) as usize])
@@ -281,6 +306,14 @@ impl Settings {
             72 => self.contact_delay,
             73 => self.transformer_asymmetry,
             74 => self.key_click,
+            ADJUST_A_DRAWBAR_FIRST..=ADJUST_A_DRAWBAR_LAST => {
+                f64::from(self.drawbars_a[(index - ADJUST_A_DRAWBAR_FIRST) as usize])
+            }
+            LOWER_ADJUST_A_DRAWBAR_FIRST..=LOWER_ADJUST_A_DRAWBAR_LAST => {
+                f64::from(self.lower_drawbars_a[(index - LOWER_ADJUST_A_DRAWBAR_FIRST) as usize])
+            }
+            REGISTRATION => f64::from(self.registration.index()),
+            LOWER_REGISTRATION => f64::from(self.lower_registration.index()),
             52 => self.rotary_mic_pattern,
             53 => self.rotary_horn_radius,
             54 => self.rotary_drum_radius,
@@ -304,7 +337,7 @@ impl Settings {
             DRAWBAR_FIRST..=DRAWBAR_LAST
                 if value.fract() == 0.0 && (0.0..=8.0).contains(&value) =>
             {
-                self.drawbars[(index - DRAWBAR_FIRST) as usize] = value as u8;
+                self.drawbars_b[(index - DRAWBAR_FIRST) as usize] = value as u8;
             }
             11 => self.contact_spread = value,
             12 => self.contact_bounce = value,
@@ -332,7 +365,7 @@ impl Settings {
             LOWER_DRAWBAR_FIRST..=LOWER_DRAWBAR_LAST
                 if value.fract() == 0.0 && (0.0..=8.0).contains(&value) =>
             {
-                self.lower_drawbars[(index - LOWER_DRAWBAR_FIRST) as usize] = value as u8;
+                self.lower_drawbars_b[(index - LOWER_DRAWBAR_FIRST) as usize] = value as u8;
             }
             PEDAL_DRAWBAR_FIRST..=PEDAL_DRAWBAR_LAST
                 if value.fract() == 0.0 && (0.0..=8.0).contains(&value) =>
@@ -368,6 +401,23 @@ impl Settings {
             72 => self.contact_delay = value,
             73 => self.transformer_asymmetry = value,
             74 => self.key_click = value,
+            ADJUST_A_DRAWBAR_FIRST..=ADJUST_A_DRAWBAR_LAST
+                if value.fract() == 0.0 && (0.0..=8.0).contains(&value) =>
+            {
+                self.drawbars_a[(index - ADJUST_A_DRAWBAR_FIRST) as usize] = value as u8;
+            }
+            LOWER_ADJUST_A_DRAWBAR_FIRST..=LOWER_ADJUST_A_DRAWBAR_LAST
+                if value.fract() == 0.0 && (0.0..=8.0).contains(&value) =>
+            {
+                self.lower_drawbars_a[(index - LOWER_ADJUST_A_DRAWBAR_FIRST) as usize] =
+                    value as u8;
+            }
+            REGISTRATION if value.fract() == 0.0 => {
+                self.registration = Registration::from_index(value as u8)?;
+            }
+            LOWER_REGISTRATION if value.fract() == 0.0 => {
+                self.lower_registration = Registration::from_index(value as u8)?;
+            }
             52 => self.rotary_mic_pattern = value,
             53 => self.rotary_horn_radius = value,
             54 => self.rotary_drum_radius = value,
@@ -390,14 +440,27 @@ impl Settings {
         debug_assert!(self.valid());
         let _ = engine.set_output_level(self.output_level as f32);
         let _ = engine.set_expression(self.expression as f32);
-        for (index, position) in self.drawbars.into_iter().enumerate() {
-            let _ = engine.set_manual_drawbar(OrganPart::Upper, index, position);
+        for (part, groups) in [
+            (OrganPart::Upper, [self.drawbars_a, self.drawbars_b]),
+            (
+                OrganPart::Lower,
+                [self.lower_drawbars_a, self.lower_drawbars_b],
+            ),
+        ] {
+            for (key, group) in [Registration::AdjustA, Registration::AdjustB]
+                .into_iter()
+                .zip(groups)
+            {
+                for (index, position) in group.into_iter().enumerate() {
+                    let _ = engine.set_manual_drawbar(part, key, index, position);
+                }
+            }
         }
-        for (index, position) in self.lower_drawbars.into_iter().enumerate() {
-            let _ = engine.set_manual_drawbar(OrganPart::Lower, index, position);
-        }
+        let _ = engine.set_manual_registration(OrganPart::Upper, self.registration);
+        let _ = engine.set_manual_registration(OrganPart::Lower, self.lower_registration);
         for (index, position) in self.pedal_drawbars.into_iter().enumerate() {
-            let _ = engine.set_manual_drawbar(OrganPart::Pedal, index, position);
+            let _ =
+                engine.set_manual_drawbar(OrganPart::Pedal, Registration::AdjustB, index, position);
         }
         let _ = engine.set_contact_spread(self.contact_spread as f32);
         let _ = engine.set_contact_bounce(self.contact_bounce as f32);
@@ -498,7 +561,7 @@ pub fn presets() -> [(&'static str, &'static str, &'static str, Settings); 8] {
             "Tremolo Jazz",
             "Third-harmonic single-trigger percussion with fast integrated rotary motion.",
             Settings {
-                drawbars: [8, 8, 8, 0, 0, 0, 0, 8, 0],
+                drawbars_b: [8, 8, 8, 0, 0, 0, 0, 8, 0],
                 rotary_mode: RotaryMode::Tremolo,
                 transformer_drive: 0.52,
                 console_drive: 0.44,
@@ -518,7 +581,7 @@ pub fn presets() -> [(&'static str, &'static str, &'static str, Settings); 8] {
             "Jazz Comp",
             "Hollow comping registration with third-harmonic percussion and slow rotary motion.",
             Settings {
-                drawbars: [8, 0, 8, 0, 0, 0, 0, 0, 0],
+                drawbars_b: [8, 0, 8, 0, 0, 0, 0, 0, 0],
                 rotary_mode: RotaryMode::Chorale,
                 percussion_enabled: true,
                 percussion_harmonic: PercussionHarmonic::Third,
@@ -534,7 +597,7 @@ pub fn presets() -> [(&'static str, &'static str, &'static str, Settings); 8] {
             "Ballad Chorus",
             "Fundamental registration through the C3 vibrato line, cabinet stationary.",
             Settings {
-                drawbars: [8, 8, 8, 0, 0, 0, 0, 0, 0],
+                drawbars_b: [8, 8, 8, 0, 0, 0, 0, 0, 0],
                 scanner_mode: ScannerMode::Chorus3,
                 upper_scanner: true,
                 rotary_mode: RotaryMode::Off,
@@ -547,8 +610,8 @@ pub fn presets() -> [(&'static str, &'static str, &'static str, Settings); 8] {
             "Pedal Bass",
             "Pedal clavier forward with a quiet lower manual, for left-hand and feet.",
             Settings {
-                drawbars: [0, 0, 0, 0, 0, 0, 0, 0, 0],
-                lower_drawbars: [8, 4, 6, 0, 0, 0, 0, 0, 0],
+                drawbars_b: [0, 0, 0, 0, 0, 0, 0, 0, 0],
+                lower_drawbars_b: [8, 4, 6, 0, 0, 0, 0, 0, 0],
                 pedal_drawbars: [8, 6],
                 rotary_mode: RotaryMode::Off,
                 leakage: 0.14,
@@ -560,8 +623,8 @@ pub fn presets() -> [(&'static str, &'static str, &'static str, Settings); 8] {
             "Full Shout",
             "Every drawbar out on both manuals with fast rotary motion and console drive.",
             Settings {
-                drawbars: [8, 8, 8, 8, 8, 8, 8, 8, 8],
-                lower_drawbars: [8, 8, 8, 0, 0, 0, 0, 0, 0],
+                drawbars_b: [8, 8, 8, 8, 8, 8, 8, 8, 8],
+                lower_drawbars_b: [8, 8, 8, 0, 0, 0, 0, 0, 0],
                 pedal_drawbars: [8, 8],
                 rotary_mode: RotaryMode::Tremolo,
                 transformer_drive: 0.66,
@@ -577,7 +640,7 @@ pub fn presets() -> [(&'static str, &'static str, &'static str, Settings); 8] {
             "Gospel Full",
             "Full drawbars, C3 scanner chorus, transformer drive and slow rotary motion.",
             Settings {
-                drawbars: [8, 8, 8, 8, 6, 8, 4, 8, 6],
+                drawbars_b: [8, 8, 8, 8, 6, 8, 4, 8, 6],
                 rotary_mode: RotaryMode::Chorale,
                 transformer_drive: 0.62,
                 console_drive: 0.48,
@@ -585,7 +648,7 @@ pub fn presets() -> [(&'static str, &'static str, &'static str, Settings); 8] {
                 console_treble: -0.08,
                 leakage: 0.28,
                 scanner_mode: ScannerMode::Chorus3,
-                lower_drawbars: [8, 8, 8, 8, 6, 0, 0, 0, 0],
+                lower_drawbars_b: [8, 8, 8, 8, 6, 0, 0, 0, 0],
                 pedal_drawbars: [8, 8],
                 upper_scanner: true,
                 lower_scanner: true,

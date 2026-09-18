@@ -12,8 +12,8 @@ use crate::captures::CHARACTER;
 use crate::signal::{decay_time, decibels, rms, spectral_amplitude, zero_crossing_frequency};
 use rf_organ_dsp::{
     ConsoleElectronics, DRAWBAR_COUNT, MANUAL_FIRST_NOTE, MatchingTransformer, OrganEngine,
-    OrganPart, PercussionDecay, PercussionHarmonic, PercussionVolume, Rotary, RotaryMode,
-    ScannerMode, ScannerVibrato, drawbar_wheel, gear_frequency,
+    OrganPart, PercussionDecay, PercussionHarmonic, PercussionVolume, Registration, Rotary,
+    RotaryMode, ScannerMode, ScannerVibrato, drawbar_wheel, gear_frequency,
 };
 use std::f64::consts::TAU;
 use std::fmt::Write as _;
@@ -153,11 +153,11 @@ fn clean_engine(rate: u32) -> Result<OrganEngine, String> {
     let mut engine = OrganEngine::new(rate as f32).map_err(|error| error.0.to_owned())?;
     for part in [OrganPart::Upper, OrganPart::Lower] {
         for drawbar in 0..DRAWBAR_COUNT {
-            assert!(engine.set_manual_drawbar(part, drawbar, 0));
+            assert!(engine.set_manual_drawbar(part, Registration::AdjustB, drawbar, 0));
         }
     }
     for drawbar in 0..2 {
-        assert!(engine.set_manual_drawbar(OrganPart::Pedal, drawbar, 0));
+        assert!(engine.set_manual_drawbar(OrganPart::Pedal, Registration::AdjustB, drawbar, 0));
     }
     assert!(engine.set_contact_spread(0.0));
     assert!(engine.set_contact_bounce(0.0));
@@ -187,7 +187,7 @@ fn tonewheel_frequency(rate: u32) -> Result<f64, String> {
     const NOTE: u8 = 69;
     const BUS: usize = 2;
     let mut engine = clean_engine(rate)?;
-    assert!(engine.set_manual_drawbar(OrganPart::Upper, BUS, 8));
+    assert!(engine.set_manual_drawbar(OrganPart::Upper, Registration::AdjustB, BUS, 8));
     assert!(engine.note_on_part(OrganPart::Upper, NOTE, 1.0));
     let samples = render(&mut engine, rate as usize / 2, rate as usize);
     zero_crossing_frequency(&samples, f64::from(rate))
@@ -203,7 +203,7 @@ fn tonewheel_error_cents(rate: u32) -> Result<f64, String> {
 fn chord_level(rate: u32) -> Result<f64, String> {
     let mut engine = clean_engine(rate)?;
     for drawbar in 0..3 {
-        assert!(engine.set_manual_drawbar(OrganPart::Upper, drawbar, 8));
+        assert!(engine.set_manual_drawbar(OrganPart::Upper, Registration::AdjustB, drawbar, 8));
     }
     for note in [48, 55, 60, 64] {
         assert!(engine.note_on_part(OrganPart::Upper, note, 0.86));
@@ -331,7 +331,7 @@ fn transformer_third_order(rate: u32) -> Result<f64, String> {
 
 fn pedal_key_off(rate: u32) -> Result<f64, String> {
     let mut engine = clean_engine(rate)?;
-    assert!(engine.set_manual_drawbar(OrganPart::Pedal, 0, 8));
+    assert!(engine.set_manual_drawbar(OrganPart::Pedal, Registration::AdjustB, 0, 8));
     assert!(engine.note_on_part(OrganPart::Pedal, 24, 1.0));
     for _ in 0..rate {
         engine.next_sample();
@@ -459,11 +459,21 @@ fn benchmark_inner() -> Result<Vec<Performance>, String> {
 fn console(rate: u32, load: Load) -> Result<OrganEngine, String> {
     let mut engine = OrganEngine::new(rate as f32).map_err(|error| error.0.to_owned())?;
     for (index, position) in [8, 8, 8, 8, 6, 8, 4, 8, 6].into_iter().enumerate() {
-        assert!(engine.set_manual_drawbar(OrganPart::Upper, index, position));
-        assert!(engine.set_manual_drawbar(OrganPart::Lower, index, position));
+        assert!(engine.set_manual_drawbar(
+            OrganPart::Upper,
+            Registration::AdjustB,
+            index,
+            position
+        ));
+        assert!(engine.set_manual_drawbar(
+            OrganPart::Lower,
+            Registration::AdjustB,
+            index,
+            position
+        ));
     }
     for drawbar in 0..2 {
-        assert!(engine.set_manual_drawbar(OrganPart::Pedal, drawbar, 8));
+        assert!(engine.set_manual_drawbar(OrganPart::Pedal, Registration::AdjustB, drawbar, 8));
     }
     assert!(engine.set_transformer(0.62, 0.38));
     assert!(engine.set_console(0.48, 0.18, -0.08));

@@ -9,8 +9,8 @@
 use rf_organ_dsp::{
     ConsoleElectronics, ConsoleStage, DRAWBAR_COUNT, MANUAL_FIRST_NOTE, MANUAL_KEY_COUNT,
     MatchingTransformer, OrganEngine, OrganPart, PEDAL_DRAWBAR_COUNT, PercussionDecay,
-    PercussionHarmonic, PercussionVolume, RotaryMode, ScannerMode, TransformerUnit, drawbar_wheel,
-    gear_frequency,
+    PercussionHarmonic, PercussionVolume, Registration, RotaryMode, ScannerMode, TransformerUnit,
+    drawbar_wheel, gear_frequency,
 };
 use std::f64::consts::{PI, TAU};
 
@@ -569,11 +569,12 @@ pub fn render_taper_sweep() -> Vec<f32> {
     let mut engine = OrganEngine::new(SAMPLE_RATE as f32).expect("valid engine");
     for drawbar in 0..DRAWBAR_COUNT {
         let position = if drawbar == TAPER_BUS { 8 } else { 0 };
-        let _ = engine.set_manual_drawbar(OrganPart::Upper, drawbar, position);
-        let _ = engine.set_manual_drawbar(OrganPart::Lower, drawbar, 0);
+        let _ =
+            engine.set_manual_drawbar(OrganPart::Upper, Registration::AdjustB, drawbar, position);
+        let _ = engine.set_manual_drawbar(OrganPart::Lower, Registration::AdjustB, drawbar, 0);
     }
     for drawbar in 0..PEDAL_DRAWBAR_COUNT {
-        let _ = engine.set_manual_drawbar(OrganPart::Pedal, drawbar, 0);
+        let _ = engine.set_manual_drawbar(OrganPart::Pedal, Registration::AdjustB, drawbar, 0);
     }
     let _ = engine.set_output_level(1.0);
     let _ = engine.set_expression(1.0);
@@ -612,11 +613,11 @@ pub fn render_expression_phrase(capture: &ExpressionCapture) -> Vec<f32> {
     let release = SAMPLE_RATE as usize * 3;
     let mut engine = OrganEngine::new(SAMPLE_RATE as f32).expect("valid engine");
     for drawbar in 0..DRAWBAR_COUNT {
-        let _ = engine.set_manual_drawbar(OrganPart::Upper, drawbar, 8);
-        let _ = engine.set_manual_drawbar(OrganPart::Lower, drawbar, 0);
+        let _ = engine.set_manual_drawbar(OrganPart::Upper, Registration::AdjustB, drawbar, 8);
+        let _ = engine.set_manual_drawbar(OrganPart::Lower, Registration::AdjustB, drawbar, 0);
     }
     for drawbar in 0..PEDAL_DRAWBAR_COUNT {
-        let _ = engine.set_manual_drawbar(OrganPart::Pedal, drawbar, 0);
+        let _ = engine.set_manual_drawbar(OrganPart::Pedal, Registration::AdjustB, drawbar, 0);
     }
     let _ = engine.set_output_level(1.0);
     let _ = engine.set_transformer(CHARACTER.0, CHARACTER.1);
@@ -651,14 +652,15 @@ pub fn render_percussion_phrase(capture: &PercussionCapture) -> Vec<f32> {
     let mut engine = OrganEngine::new(SAMPLE_RATE as f32).expect("valid engine");
     for manual in [OrganPart::Upper, OrganPart::Lower] {
         for drawbar in 0..DRAWBAR_COUNT {
-            let _ = engine.set_manual_drawbar(manual, drawbar, 0);
+            let _ = engine.set_manual_drawbar(manual, Registration::AdjustB, drawbar, 0);
         }
     }
     for drawbar in 0..PEDAL_DRAWBAR_COUNT {
-        let _ = engine.set_manual_drawbar(OrganPart::Pedal, drawbar, 0);
+        let _ = engine.set_manual_drawbar(OrganPart::Pedal, Registration::AdjustB, drawbar, 0);
     }
     for (drawbar, position) in PERCUSSION_DRAWBARS.into_iter().enumerate() {
-        let _ = engine.set_manual_drawbar(OrganPart::Upper, drawbar, position);
+        let _ =
+            engine.set_manual_drawbar(OrganPart::Upper, Registration::AdjustB, drawbar, position);
     }
     let _ = engine.set_output_level(1.0);
     let _ = engine.set_transformer(CHARACTER.0, CHARACTER.1);
@@ -756,13 +758,13 @@ fn manual_engine(capture: &TransformerCapture, trims: Trims) -> OrganEngine {
     let mut engine = OrganEngine::new(SAMPLE_RATE as f32).expect("valid engine");
     for manual in [OrganPart::Upper, OrganPart::Lower] {
         for drawbar in 0..DRAWBAR_COUNT {
-            let _ = engine.set_manual_drawbar(manual, drawbar, 0);
+            let _ = engine.set_manual_drawbar(manual, Registration::AdjustB, drawbar, 0);
         }
     }
     for drawbar in 0..PEDAL_DRAWBAR_COUNT {
-        let _ = engine.set_manual_drawbar(OrganPart::Pedal, drawbar, 0);
+        let _ = engine.set_manual_drawbar(OrganPart::Pedal, Registration::AdjustB, drawbar, 0);
     }
-    let _ = engine.set_manual_drawbar(part, 2, capture.level.drawbar());
+    let _ = engine.set_manual_drawbar(part, Registration::AdjustB, 2, capture.level.drawbar());
     let _ = engine.set_output_level(1.0);
     let _ = engine.set_transformer(CHARACTER.0, CHARACTER.1);
     for unit in TransformerUnit::ALL {

@@ -43,6 +43,27 @@ spacing - the second-order product sits about eleven decibels under the third
 at the baseline character - which is a specific claim a bench can contradict
 by measuring both products on a real transformer.
 
+## Preset and adjust keys
+
+Version 0.43.0 takes the twelve reverse-colour keys at the left of each manual
+from the B-3/C-3 service manual's console chapter, which describes them as a
+circuit rather than as a convenience: the busbars have no wires on them, so
+"a preset or adjust key must be depressed before any circuit can be
+completed"; the cancel key has no contacts; the adjust keys A# and B are wired
+to the two groups of nine drawbars, with A# on the left hand group of the
+pair; and only one of the twelve can be down at a time.
+
+What is modelled is the two adjust keys and the cancel key. The nine preset
+keys are wired to a panel where each harmonic is screwed to one of nine bars,
+which the same manual says is "equivalent to setting a harmonic drawbar to the
+corresponding number" - so they are nine more registrations and nothing else,
+and the registrations the factory shipped are in a booklet the manual names
+rather than reproduces. They are absent rather than guessed.
+
+The percussion's dependence on the B key is quoted from the same manual. That
+the drawbar attenuation goes with it is an inference from the borrowing the
+manual describes, not a sentence it contains, and it is marked as one.
+
 ## Key click
 
 Version 0.42.0 takes the key click from the XK-7 manual's own control, which

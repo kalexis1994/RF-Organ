@@ -14,7 +14,7 @@ use web_sys::{
 };
 
 const PLUGIN_ID: &str = "org.rackforge.organ";
-const CONTROL_IDS: [&str; 75] = [
+const CONTROL_IDS: [&str; 95] = [
     "output",
     "expression",
     "u16",
@@ -90,6 +90,26 @@ const CONTROL_IDS: [&str; 75] = [
     "contact-delay",
     "transformer-asymmetry",
     "key-click",
+    "drawbar-a-16",
+    "drawbar-a-5-1-3",
+    "drawbar-a-8",
+    "drawbar-a-4",
+    "drawbar-a-2-2-3",
+    "drawbar-a-2",
+    "drawbar-a-1-3-5",
+    "drawbar-a-1-1-3",
+    "drawbar-a-1",
+    "lower-drawbar-a-16",
+    "lower-drawbar-a-5-1-3",
+    "lower-drawbar-a-8",
+    "lower-drawbar-a-4",
+    "lower-drawbar-a-2-2-3",
+    "lower-drawbar-a-2",
+    "lower-drawbar-a-1-3-5",
+    "lower-drawbar-a-1-1-3",
+    "lower-drawbar-a-1",
+    "registration",
+    "lower-registration",
 ];
 
 /// Steps of the display's own rotor model per second.

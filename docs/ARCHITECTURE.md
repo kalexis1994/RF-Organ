@@ -166,7 +166,7 @@ microphones, so moving them back zooms out instead of pushing them off the
 edge. The parameter table the surface validates against is the engine's, not a
 copy of it; a range that moves in the DSP moves there too.
 
-## Version 0.42.0 limitations
+## Version 0.43.0 limitations
 
 - The classic B-3 pedal contact and resistor-panel topology is present. The
   L20 pedal-filter coefficient and console matching-network constants remain
@@ -185,6 +185,30 @@ copy of it; a range that moves in the DSP moves there too.
   percussion, and the percussion is now the way to measure it: a console
   recorded at several touches gives the spread directly, without the keyboard
   action study that sits behind a paywall.
+- Each manual carries the two adjustable drawbar groups the console has,
+  reached through the adjust keys: "The adjust keys, A# and B, are connected
+  by flexible wires ... to the corresponding nine drawbars", and "In each case
+  the A# adjust key controls the left hand group of drawbars for that manual".
+  The cancel key is silence rather than a neutral position, because "as there
+  are no wires connected to these busbars, a preset or adjust key must be
+  depressed before any circuit can be completed". The key sits in series with
+  the busbars, so a held note changes colour when the key changes.
+- The percussion follows the B adjust key, which is what "percussion is
+  available only on the upper manual and only when the 'B' preset key is
+  depressed" says. Everything the percussion does to the drawbars goes with
+  it, including the six decibels the Normal volume takes out of them: Hammond
+  describes the effect as borrowing the harmonic from the drawbar "and
+  returning part of the signal to the same drawbar", and that borrowing runs
+  through the same key. The availability is stated; this consequence of it is
+  an inference from the circuit the manual describes, and the laboratory
+  reports it as an exact zero rather than as a small number.
+- The nine preset keys between cancel and the adjust keys are absent. They are
+  not a separate mechanism - each is nine wires screwed to nine bars, and
+  "this is equivalent to setting a harmonic drawbar to the corresponding
+  number" - so what is missing is only the registrations themselves, which the
+  service manual does not carry: it names the booklet they are printed in.
+  Nine registrations per manual is what it would take to add them, and
+  inventing them would be inventing the instrument's factory voice.
 - The key click is Hammond's own control and not an added noise: the contact
   gate ramps instead of stepping, so turning the click down slows the attack
   with it, which is what the XK-7 manual describes. Both ends are documented

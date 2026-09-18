@@ -2,6 +2,73 @@
 use crate::tonewheel::TONEWHEEL_COUNT;
 
 pub const DRAWBAR_COUNT: usize = 9;
+/// Adjustable drawbar groups per manual. The service manual's own count:
+/// "9 PRESET KEYS AND 2 SETS OF 9 ADJUSTABLE HARMONIC DRAWBARS FOR EACH
+/// MANUAL".
+pub const DRAWBAR_SET_COUNT: usize = 2;
+
+/// Which of the twelve reverse-colour keys at the left of a manual is down.
+///
+/// The service manual makes this a circuit rather than a preference: "As
+/// there are no wires connected to these busbars, a preset or adjust key must
+/// be depressed before any circuit can be completed." The key at the extreme
+/// left is the cancel key, "with no contacts, which releases any preset or
+/// adjust key that happens to be depressed" - so cancel is silence, not a
+/// neutral position.
+///
+/// The two at the extreme right are the adjust keys: "The adjust keys, A# and
+/// B, are connected by flexible wires ... to the corresponding nine
+/// drawbars", and "In each case the A# adjust key controls the left hand
+/// group of drawbars for that manual."
+///
+/// The nine between them, C# to A, are wired to the preset panel, where each
+/// harmonic is screwed to one of nine bars and "this is equivalent to setting
+/// a harmonic drawbar to the corresponding number". They are therefore nine
+/// more registrations and nothing else - but what the factory put on them
+/// lives in a booklet the service manual only names, so they are absent here
+/// rather than invented.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum Registration {
+    Cancel = 0,
+    AdjustA = 1,
+    AdjustB = 2,
+}
+
+impl Registration {
+    pub const ALL: [Self; 3] = [Self::Cancel, Self::AdjustA, Self::AdjustB];
+
+    pub const fn from_index(index: u8) -> Option<Self> {
+        match index {
+            0 => Some(Self::Cancel),
+            1 => Some(Self::AdjustA),
+            2 => Some(Self::AdjustB),
+            _ => None,
+        }
+    }
+
+    pub const fn index(self) -> u8 {
+        self as u8
+    }
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Cancel => "cancel",
+            Self::AdjustA => "adjust-a",
+            Self::AdjustB => "adjust-b",
+        }
+    }
+
+    /// Which group of drawbars this key is wired to, if it is wired to one.
+    /// The cancel key has no contacts at all.
+    pub const fn drawbars(self) -> Option<usize> {
+        match self {
+            Self::Cancel => None,
+            Self::AdjustA => Some(0),
+            Self::AdjustB => Some(1),
+        }
+    }
+}
 
 /// How much louder the leakage gets for each extra key held, at the top of
 /// the rate control. Provisional: Hammond publishes that the rate exists and
@@ -184,7 +251,14 @@ impl Key {
 
 pub struct Manual {
     keys: [Key; MANUAL_KEY_COUNT],
-    drawbars: [u8; DRAWBAR_COUNT],
+    drawbars: [[u8; DRAWBAR_COUNT]; DRAWBAR_SET_COUNT],
+    /// Which of the reverse-colour keys is locked down. Only one can be:
+    /// "These keys have a locking and trip mechanism which allows only one
+    /// key to be in operation at one time."
+    registration: Registration,
+    /// What the busbars actually reach through the key that is down, which is
+    /// nothing at all under the cancel key.
+    levels: [f32; DRAWBAR_COUNT],
     wheel_gains: [f32; TONEWHEEL_COUNT],
     sample_rate: f32,
     contact_spread: f32,
@@ -205,7 +279,11 @@ impl Manual {
     pub fn new(sample_rate: f32) -> Self {
         let mut manual = Self {
             keys: [Key::EMPTY; MANUAL_KEY_COUNT],
-            drawbars: [8, 8, 8, 0, 0, 0, 0, 0, 0],
+            drawbars: [[8, 8, 8, 0, 0, 0, 0, 0, 0]; DRAWBAR_SET_COUNT],
+            // The B key, because that is the one the percussion needs and so
+            // the one a B-3 is played on.
+            registration: Registration::AdjustB,
+            levels: [0.0; DRAWBAR_COUNT],
             wheel_gains: [0.0; TONEWHEEL_COUNT],
             sample_rate,
             contact_spread: 0.55,
@@ -223,20 +301,38 @@ impl Manual {
                     drawbar_wheel(key, bus).expect("bounded contact") as u8;
             }
         }
+        manual.rebuild_levels();
         manual
     }
 
-    pub fn set_drawbar(&mut self, index: usize, position: u8) -> bool {
+    /// Moves one drawbar of one adjust key's group. The cancel key has no
+    /// drawbars to move, so naming it is an error rather than a silent no-op.
+    pub fn set_drawbar(&mut self, key: Registration, index: usize, position: u8) -> bool {
+        let Some(set) = key.drawbars() else {
+            return false;
+        };
         if index >= DRAWBAR_COUNT || position > 8 {
             return false;
         }
-        self.drawbars[index] = position;
-        self.rebuild_gains();
+        self.drawbars[set][index] = position;
+        self.rebuild_levels();
         true
     }
 
-    pub fn drawbar(&self, index: usize) -> Option<u8> {
-        self.drawbars.get(index).copied()
+    pub fn drawbar(&self, key: Registration, index: usize) -> Option<u8> {
+        self.drawbars.get(key.drawbars()?)?.get(index).copied()
+    }
+
+    /// Presses one of the reverse-colour keys, which releases whichever was
+    /// down. A held note changes with it: the key is in series with the
+    /// busbars, not in front of them.
+    pub fn set_registration(&mut self, key: Registration) {
+        self.registration = key;
+        self.rebuild_levels();
+    }
+
+    pub const fn registration(&self) -> Registration {
+        self.registration
     }
 
     pub fn set_contact_spread(&mut self, value: f32) -> bool {
@@ -350,7 +446,7 @@ impl Manual {
             for (bus, contact) in key.contacts.iter_mut().enumerate() {
                 let before = contact.gate;
                 if contact.tick() {
-                    let level = DRAWBAR_LEVELS[self.drawbars[bus] as usize];
+                    let level = self.levels[bus];
                     self.wheel_gains[contact.wheel as usize] += (contact.gate - before) * level;
                 }
                 // The first of the nine to touch anything, whichever it is.
@@ -426,7 +522,7 @@ impl Manual {
             output += gain * (wheels[index] + leakage * compartment_leak(wheels, index));
         }
         if suppress_ninth_drawbar {
-            let level = DRAWBAR_LEVELS[self.drawbars[8] as usize];
+            let level = self.levels[8];
             for key in self.keys.iter().filter(|key| key.sounding()) {
                 let contact = key.contacts[8];
                 let index = contact.wheel as usize;
@@ -465,12 +561,26 @@ impl Manual {
         }
     }
 
+    /// What the key that is down connects the busbars to, and then the gains
+    /// that follow from it.
+    fn rebuild_levels(&mut self) {
+        match self.registration.drawbars() {
+            Some(set) => {
+                for bus in 0..DRAWBAR_COUNT {
+                    self.levels[bus] = DRAWBAR_LEVELS[self.drawbars[set][bus] as usize];
+                }
+            }
+            // No contacts, so no circuit.
+            None => self.levels.fill(0.0),
+        }
+        self.rebuild_gains();
+    }
+
     fn rebuild_gains(&mut self) {
         self.wheel_gains.fill(0.0);
         for key in &self.keys {
             for (bus, contact) in key.contacts.iter().enumerate() {
-                self.wheel_gains[contact.wheel as usize] +=
-                    contact.gate * DRAWBAR_LEVELS[self.drawbars[bus] as usize];
+                self.wheel_gains[contact.wheel as usize] += contact.gate * self.levels[bus];
             }
         }
     }

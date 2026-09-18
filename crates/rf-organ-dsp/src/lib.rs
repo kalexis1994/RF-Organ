@@ -22,8 +22,8 @@ pub use electronics::{
     STAGE_CHARACTER_RANGE,
 };
 pub use manual::{
-    DRAWBAR_COUNT, LEAKAGE_BOOST_DEFAULT, MANUAL_FIRST_NOTE, MANUAL_KEY_COUNT,
-    compartment_companions, drawbar_wheel,
+    DRAWBAR_COUNT, DRAWBAR_SET_COUNT, LEAKAGE_BOOST_DEFAULT, MANUAL_FIRST_NOTE, MANUAL_KEY_COUNT,
+    Registration, compartment_companions, drawbar_wheel,
 };
 pub use pedal::{PEDAL_DRAWBAR_COUNT, PEDAL_FIRST_NOTE, PEDAL_KEY_COUNT};
 pub use percussion::{PercussionDecay, PercussionHarmonic, PercussionVolume};
@@ -189,26 +189,56 @@ impl OrganEngine {
         }
     }
 
-    pub fn set_drawbar(&mut self, index: usize, position: u8) -> bool {
-        self.upper.set_drawbar(index, position)
+    pub fn set_drawbar(&mut self, key: Registration, index: usize, position: u8) -> bool {
+        self.upper.set_drawbar(key, index, position)
     }
 
-    pub fn drawbar(&self, index: usize) -> Option<u8> {
-        self.upper.drawbar(index)
+    pub fn drawbar(&self, key: Registration, index: usize) -> Option<u8> {
+        self.upper.drawbar(key, index)
     }
 
-    pub fn set_manual_drawbar(&mut self, part: OrganPart, index: usize, position: u8) -> bool {
+    /// Moves one drawbar of one adjust key's group.
+    ///
+    /// The pedals have no adjust keys - the service manual gives them two
+    /// drawbars and no reverse-colour keys of their own on this console - so
+    /// the key names which group only on the manuals.
+    pub fn set_manual_drawbar(
+        &mut self,
+        part: OrganPart,
+        key: Registration,
+        index: usize,
+        position: u8,
+    ) -> bool {
         match part {
-            OrganPart::Upper => self.upper.set_drawbar(index, position),
-            OrganPart::Lower => self.lower.set_drawbar(index, position),
+            OrganPart::Upper => self.upper.set_drawbar(key, index, position),
+            OrganPart::Lower => self.lower.set_drawbar(key, index, position),
             OrganPart::Pedal => self.pedals.set_drawbar(index, position),
         }
     }
 
-    pub fn manual_drawbar(&self, part: OrganPart, index: usize) -> Option<u8> {
+    /// Presses one of the twelve reverse-colour keys at the left of a manual.
+    /// The pedals have none, so they ignore it.
+    pub fn set_manual_registration(&mut self, part: OrganPart, key: Registration) -> bool {
         match part {
-            OrganPart::Upper => self.upper.drawbar(index),
-            OrganPart::Lower => self.lower.drawbar(index),
+            OrganPart::Upper => self.upper.set_registration(key),
+            OrganPart::Lower => self.lower.set_registration(key),
+            OrganPart::Pedal => return false,
+        }
+        true
+    }
+
+    pub fn manual_registration(&self, part: OrganPart) -> Option<Registration> {
+        match part {
+            OrganPart::Upper => Some(self.upper.registration()),
+            OrganPart::Lower => Some(self.lower.registration()),
+            OrganPart::Pedal => None,
+        }
+    }
+
+    pub fn manual_drawbar(&self, part: OrganPart, key: Registration, index: usize) -> Option<u8> {
+        match part {
+            OrganPart::Upper => self.upper.drawbar(key, index),
+            OrganPart::Lower => self.lower.drawbar(key, index),
             OrganPart::Pedal => self.pedals.drawbar(index),
         }
     }
@@ -463,17 +493,37 @@ impl OrganEngine {
         // contact". A key pressed slowly touches that contact early and opens
         // the harmonic bus late, so what is left to hear by then is the end of
         // the decay, or nothing.
-        if self.upper.took_first_contact() && self.percussion_armed {
+        // "Percussion is available only on the upper manual and only when
+        // the 'B' preset key is depressed." It borrows its harmonic from that
+        // key's drawbars, so under any other key there is nothing to borrow.
+        if self.upper.took_first_contact()
+            && self.percussion_armed
+            && self.upper.registration() == Registration::AdjustB
+        {
             self.percussion_armed = false;
             self.percussion.trigger();
         }
         self.lower.tick_contacts();
         self.pedals.tick_contacts();
         let wheels = self.tonewheels.samples();
+        // The percussion is in circuit only under the B adjust key, so
+        // everything it does to the drawbars is too. Hammond describes the
+        // effect as "borrowing the second or third harmonic signal from the
+        // corresponding manual drawbar ... and returning part of the signal
+        // to the same drawbar": the cancelled 1' and the level the drawbars
+        // lose are that borrowing, and the borrowing runs through the same
+        // key. The manual states the availability and not this consequence of
+        // it, so the tie is an inference from the circuit it describes.
+        let percussion_in_circuit =
+            self.percussion.enabled() && self.upper.registration() == Registration::AdjustB;
         let upper = self
             .upper
-            .sample(wheels, self.leakage, self.percussion.enabled())
-            * self.percussion.drawbar_attenuation();
+            .sample(wheels, self.leakage, percussion_in_circuit)
+            * if percussion_in_circuit {
+                self.percussion.drawbar_attenuation()
+            } else {
+                1.0
+            };
         let lower = self.lower.sample(wheels, self.leakage, false);
         let pedals = self.pedals.sample(wheels);
         let percussion_bus = match self.percussion.harmonic() {
@@ -481,7 +531,11 @@ impl OrganEngine {
             PercussionHarmonic::Third => 4,
         };
         let percussion = self.percussion.process(
-            self.upper.harmonic_sample(wheels, percussion_bus),
+            if percussion_in_circuit {
+                self.upper.harmonic_sample(wheels, percussion_bus)
+            } else {
+                0.0
+            },
             self.held_notes > 0,
         );
         let console = self.route_ao28_inputs(upper, lower, pedals, percussion);
@@ -552,7 +606,12 @@ mod tests {
         let onset = |velocity: f32| {
             let mut engine = OrganEngine::new(48_000.0).expect("engine");
             for drawbar in 0..DRAWBAR_COUNT {
-                assert!(engine.set_manual_drawbar(OrganPart::Upper, drawbar, 0));
+                assert!(engine.set_manual_drawbar(
+                    OrganPart::Upper,
+                    Registration::AdjustB,
+                    drawbar,
+                    0
+                ));
             }
             assert!(engine.set_leakage(0.0));
             assert!(engine.set_contact_spread(1.0));
@@ -626,7 +685,7 @@ mod tests {
     fn percussion_sounds_with_the_drawbars_closed() {
         let mut engine = OrganEngine::new(48_000.0).expect("valid engine");
         for drawbar in 0..DRAWBAR_COUNT {
-            assert!(engine.set_drawbar(drawbar, 0));
+            assert!(engine.set_drawbar(Registration::AdjustB, drawbar, 0));
         }
         engine.set_percussion_enabled(true);
         engine.set_percussion_harmonic(PercussionHarmonic::Third);
@@ -643,7 +702,7 @@ mod tests {
     fn lower_manual_and_pedals_share_the_generator() {
         let mut engine = OrganEngine::new(48_000.0).expect("valid engine");
         for drawbar in 0..DRAWBAR_COUNT {
-            assert!(engine.set_manual_drawbar(OrganPart::Upper, drawbar, 0));
+            assert!(engine.set_manual_drawbar(OrganPart::Upper, Registration::AdjustB, drawbar, 0));
         }
         assert!(engine.note_on_part(OrganPart::Lower, 60, 0.8));
         assert!(engine.note_on_part(OrganPart::Pedal, 24, 1.0));
