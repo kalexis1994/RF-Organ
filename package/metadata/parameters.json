@@ -1007,6 +1007,15 @@
         "default": 2,
         "choices": [
           { "value": 0, "name": "Cancel" },
+          { "value": 3, "name": "C# Stopped Flute" },
+          { "value": 4, "name": "D Dulciana" },
+          { "value": 5, "name": "D# French Horn" },
+          { "value": 6, "name": "E Salicional" },
+          { "value": 7, "name": "F Flutes 8' & 4'" },
+          { "value": 8, "name": "F# Oboe Horn" },
+          { "value": 9, "name": "G Swell Diapason" },
+          { "value": 10, "name": "G# Trumpet" },
+          { "value": 11, "name": "A Full Swell" },
           { "value": 1, "name": "A# Adjust" },
           { "value": 2, "name": "B Adjust" }
         ]
@@ -1025,6 +1034,15 @@
         "default": 2,
         "choices": [
           { "value": 0, "name": "Cancel" },
+          { "value": 3, "name": "C# Cello" },
+          { "value": 4, "name": "D Flute & String" },
+          { "value": 5, "name": "D# Clarinet" },
+          { "value": 6, "name": "E Diapason, Gamba & Flute" },
+          { "value": 7, "name": "F Great no Reeds" },
+          { "value": 8, "name": "F# Open Diapason" },
+          { "value": 9, "name": "G Full Great" },
+          { "value": 10, "name": "G# Tibia Clausa" },
+          { "value": 11, "name": "A Full Great 16'" },
           { "value": 1, "name": "A# Adjust" },
           { "value": 2, "name": "B Adjust" }
         ]

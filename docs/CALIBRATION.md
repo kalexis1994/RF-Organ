@@ -443,6 +443,31 @@ several touches, read the percussion peak against the briskest, and the delay
 that explains the curve is the delay. It costs a recording rather than access
 to the keyboard action study that sits behind a paywall.
 
+## Preset panel
+
+`preset-panel-response.csv` plays one note under each of the nine preset keys
+of each manual and reads the level of all nine buses, against the same note
+played with every drawbar out. Dividing by that reference takes each wheel's
+own level out of the answer, so what is left is the ratio the printed digits
+ask for.
+
+| manual | worst error on a drawn wire | loudest pushed-in wire |
+| --- | --- | --- |
+| upper | 0.000053 dB | -114.90 dB |
+| lower | 0.000094 dB | -114.90 dB |
+
+That is eighty-one wires per manual, each arriving at the level its digit
+stands for to within a ten-thousandth of a decibel, and every wire the panel
+does not reach absent rather than quiet.
+
+This is a wiring check and not a calibration. The digits themselves are
+documented rather than measured - the service manual names the booklet they
+are printed in instead of reproducing it - so what can be verified here is
+that the table reaches the audio unchanged, which is exactly what it verifies.
+Measuring the digits would mean recording a console whose panel is known not
+to have been rewired since it left the factory, and the panel is the one part
+of the instrument the manual invites the owner to change.
+
 ## Preset and adjust keys
 
 `registration-response.csv` presses each of the modelled reverse-colour keys

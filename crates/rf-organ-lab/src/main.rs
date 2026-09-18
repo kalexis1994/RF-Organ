@@ -294,6 +294,10 @@ fn render_suite(destination: &Path, trims: captures::Trims) -> Result<(), Box<dy
         analysis.registration_response,
     )?;
     fs::write(
+        destination.join("preset-panel-response.csv"),
+        analysis.preset_panel_response,
+    )?;
+    fs::write(
         destination.join("scanner-sidebands.csv"),
         analysis.scanner_sidebands,
     )?;

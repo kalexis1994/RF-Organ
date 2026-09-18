@@ -5,7 +5,7 @@
 RF-Organ is a physically informed tonewheel-organ instrument for RackForge.
 It is written in Rust and licensed under GPL-2.0-or-later.
 
-The current `0.43.0` baseline establishes the real-time architecture:
+The current `0.44.0` baseline establishes the real-time architecture:
 
 - one continuously rotating bank of 91 shared tonewheels;
 - 60 Hz gear-ratio tuning instead of ideal equal temperament;
@@ -14,9 +14,9 @@ The current `0.43.0` baseline establishes the real-time architecture:
   and resistor-weighted 16' and 8' drawbar mixtures;
 - a key click that is the contact arrival itself, so turning it down slows
   the attack rather than muting a separate noise;
-- two sets of nine adjustable drawbars per manual, selected by the A# and B
-  adjust keys as on the console, with the cancel key leaving the busbars
-  connected to nothing at all;
+- the console's twelve reverse-colour keys per manual: cancel, the nine
+  preset-panel registrations, and the A# and B adjust keys that reach the two
+  sets of nine adjustable drawbars;
 - B-3-style drawbar wiring and foldback;
 - compartment leakage following the service manual's four-wheel compartments,
   and a once-per-revolution level change for wheel eccentricity;

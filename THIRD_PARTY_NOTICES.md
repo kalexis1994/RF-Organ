@@ -43,6 +43,34 @@ spacing - the second-order product sits about eleven decibels under the third
 at the baseline character - which is a specific claim a bench can contradict
 by measuring both products on a real transformer.
 
+## Preset panel registrations
+
+Version 0.44.0 fills the nine preset keys of each manual. The B-3/C-3 service
+manual describes what a preset key is - nine wires screwed to nine bars, where
+fastening one "is equivalent to setting a harmonic drawbar to the
+corresponding number" - and says the organ ships with "its presets set up as
+shown in the booklet, 'Creating Beautiful Tone Colors with the Harmonic
+Drawbars,' which may be obtained free on request". It does not reproduce the
+booklet. The card it does reproduce explains how to change the panel and
+offers `006523411` on the upper D# as a worked example, which is an example
+and not a factory setting.
+
+The eighteen registrations used here are the standard console ones, taken from
+two independent sources that agree digit for digit:
+
+- HammondWiki, "Standard Presets", https://www.dairiki.org/HammondWiki/StandardPresets,
+  which attributes them to the Hammond *Spinet Organ Playing Guide*.
+- Hammond Today, "Hammond Console Factory Presets",
+  https://www.hammondtoday.com/2016/02/29/hammond-console-factory-presets/,
+  which presents them as the factory presets of the B-3, C-3 and A-100 and
+  cites no source of its own.
+
+Neither is the booklet the service manual names, and neither is a measurement
+of a console's own panel - which, being screw terminals, need not still hold
+what the factory set. The digits are therefore documented, corroborated and
+second-hand, and are labelled as such. What the laboratory checks is not the
+digits but that each one reaches the audio as the level it stands for.
+
 ## Preset and adjust keys
 
 Version 0.43.0 takes the twelve reverse-colour keys at the left of each manual
@@ -53,12 +81,11 @@ completed"; the cancel key has no contacts; the adjust keys A# and B are wired
 to the two groups of nine drawbars, with A# on the left hand group of the
 pair; and only one of the twelve can be down at a time.
 
-What is modelled is the two adjust keys and the cancel key. The nine preset
-keys are wired to a panel where each harmonic is screwed to one of nine bars,
-which the same manual says is "equivalent to setting a harmonic drawbar to the
-corresponding number" - so they are nine more registrations and nothing else,
-and the registrations the factory shipped are in a booklet the manual names
-rather than reproduces. They are absent rather than guessed.
+All twelve keys are modelled. The nine between cancel and the adjust keys are
+wired to a panel where each harmonic is screwed to one of nine bars, which the
+same manual says is "equivalent to setting a harmonic drawbar to the
+corresponding number"; where the registrations on those bars came from is the
+section above.
 
 The percussion's dependence on the B key is quoted from the same manual. That
 the drawbar attenuation goes with it is an inference from the borrowing the

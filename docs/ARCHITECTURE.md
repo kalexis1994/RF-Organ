@@ -166,7 +166,7 @@ microphones, so moving them back zooms out instead of pushing them off the
 edge. The parameter table the surface validates against is the engine's, not a
 copy of it; a range that moves in the DSP moves there too.
 
-## Version 0.43.0 limitations
+## Version 0.44.0 limitations
 
 - The classic B-3 pedal contact and resistor-panel topology is present. The
   L20 pedal-filter coefficient and console matching-network constants remain
@@ -202,13 +202,20 @@ copy of it; a range that moves in the DSP moves there too.
   through the same key. The availability is stated; this consequence of it is
   an inference from the circuit the manual describes, and the laboratory
   reports it as an exact zero rather than as a small number.
-- The nine preset keys between cancel and the adjust keys are absent. They are
-  not a separate mechanism - each is nine wires screwed to nine bars, and
-  "this is equivalent to setting a harmonic drawbar to the corresponding
-  number" - so what is missing is only the registrations themselves, which the
-  service manual does not carry: it names the booklet they are printed in.
-  Nine registrations per manual is what it would take to add them, and
-  inventing them would be inventing the instrument's factory voice.
+- The nine preset keys carry the standard console registrations, one panel
+  per manual as on the instrument, where the panel "is divided into two sets
+  of nine bars, each connected to a separate matching transformer". The
+  registrations are documented rather than measured: the service manual names
+  the booklet they are printed in instead of reproducing it, and the two
+  sources used agree digit for digit, with one attributing them to a Hammond
+  playing guide. What the laboratory measures is the wiring rather than the
+  numbers - that every one of the eighty-one wires per manual arrives at the
+  level its printed digit stands for.
+- The panel is fixed. On the console it is not: "preset combinations may be
+  changed at will by removing the console back". Making it movable would mean
+  a hundred and sixty-two more values, which belong in a stored panel rather
+  than in automatable parameters, and that is a choice about what a plugin's
+  parameters are for rather than a claim about the instrument.
 - The key click is Hammond's own control and not an added noise: the contact
   gate ramps instead of stepping, so turning the click down slows the attack
   with it, which is what the XK-7 manual describes. Both ends are documented

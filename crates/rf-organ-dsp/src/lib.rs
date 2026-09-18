@@ -10,6 +10,7 @@ mod electronics;
 mod manual;
 mod pedal;
 mod percussion;
+mod preset;
 mod rotary;
 mod scanner;
 mod taper;
@@ -22,11 +23,14 @@ pub use electronics::{
     STAGE_CHARACTER_RANGE,
 };
 pub use manual::{
-    DRAWBAR_COUNT, DRAWBAR_SET_COUNT, LEAKAGE_BOOST_DEFAULT, MANUAL_FIRST_NOTE, MANUAL_KEY_COUNT,
-    Registration, compartment_companions, drawbar_wheel,
+    DRAWBAR_COUNT, DRAWBAR_LEVELS, DRAWBAR_SET_COUNT, LEAKAGE_BOOST_DEFAULT, MANUAL_FIRST_NOTE,
+    MANUAL_KEY_COUNT, Registration, compartment_companions, drawbar_wheel,
 };
 pub use pedal::{PEDAL_DRAWBAR_COUNT, PEDAL_FIRST_NOTE, PEDAL_KEY_COUNT};
 pub use percussion::{PercussionDecay, PercussionHarmonic, PercussionVolume};
+pub use preset::{
+    LOWER_PRESET_NAMES, LOWER_PRESETS, PRESET_COUNT, UPPER_PRESET_NAMES, UPPER_PRESETS,
+};
 pub use rotary::{
     DRUM_RADIUS_DEFAULT_M, DRUM_RADIUS_RANGE_M, HORN_RADIUS_DEFAULT_M, HORN_RADIUS_RANGE_M,
     LEVEL_RANGE_DB, LEVEL_SILENT_DB, MIC_DISTANCE_DEFAULT_M, MIC_DISTANCE_RANGE_M,
@@ -97,8 +101,11 @@ impl OrganEngine {
         }
         Ok(Self {
             tonewheels: TonewheelBank::new(sample_rate),
-            upper: Manual::new(sample_rate),
-            lower: Manual::new(sample_rate),
+            // The panel is "divided into two sets of nine bars, each
+            // connected to a separate matching transformer", so each manual
+            // gets its own half of it.
+            upper: Manual::new(sample_rate, &preset::UPPER_PRESETS),
+            lower: Manual::new(sample_rate, &preset::LOWER_PRESETS),
             pedals: Pedalboard::new(sample_rate),
             upper_transformer: MatchingTransformer::new(sample_rate),
             lower_pedal_transformer: MatchingTransformer::new(sample_rate),

@@ -3,11 +3,12 @@
 use crate::captures::{C_NOTE, CHARACTER, F_NOTE, Level, bus_frequency, note_frequency};
 use crate::signal::{decay_time, decibels, peak, rms, zero_crossing_frequency};
 use rf_organ_dsp::{
-    ConsoleElectronics, DRAWBAR_COUNT, LEVEL_SILENT_DB, MANUAL_FIRST_NOTE, MANUAL_KEY_COUNT,
-    MainsFrequency, MatchingTransformer, MicrophoneArray, MicrophonePair, MicrophoneType,
-    OrganEngine, OrganPart, PercussionDecay, PercussionHarmonic, PercussionVolume, Registration,
-    Rotary, RotaryGeometry, RotaryMode, RotaryPlacement, ScannerMode, ScannerVibrato, StopAngle,
-    TransformerUnit, compartment_companions, drawbar_wheel, gear_frequency,
+    ConsoleElectronics, DRAWBAR_COUNT, DRAWBAR_LEVELS, LEVEL_SILENT_DB, LOWER_PRESETS,
+    MANUAL_FIRST_NOTE, MANUAL_KEY_COUNT, MainsFrequency, MatchingTransformer, MicrophoneArray,
+    MicrophonePair, MicrophoneType, OrganEngine, OrganPart, PercussionDecay, PercussionHarmonic,
+    PercussionVolume, Registration, Rotary, RotaryGeometry, RotaryMode, RotaryPlacement,
+    ScannerMode, ScannerVibrato, StopAngle, TransformerUnit, UPPER_PRESETS, compartment_companions,
+    drawbar_wheel, gear_frequency,
 };
 use std::f64::consts::{PI, TAU};
 use std::fmt::Write as _;
@@ -22,6 +23,7 @@ pub struct Artifacts {
     pub keying_contacts: String,
     pub key_click_response: String,
     pub registration_response: String,
+    pub preset_panel_response: String,
     pub scanner_sidebands: String,
     pub scanner_line_response: String,
     pub scanner_line_cutoff: String,
@@ -86,6 +88,8 @@ fn analyze_inner() -> Result<Artifacts, String> {
     measurements.extend(click);
     let (registration, registration_response) = registration_probe()?;
     measurements.extend(registration);
+    let (panel, preset_panel_response) = preset_panel_probe()?;
+    measurements.extend(panel);
     let (scanner, scanner_sidebands, scanner_line_response) = scanner_probe();
     measurements.extend(scanner);
     let (cutoff, scanner_line_cutoff) = scanner_cutoff_probe();
@@ -107,6 +111,7 @@ fn analyze_inner() -> Result<Artifacts, String> {
         keying_contacts,
         key_click_response,
         registration_response,
+        preset_panel_response,
         scanner_sidebands,
         scanner_line_response,
         scanner_line_cutoff,
@@ -2542,6 +2547,114 @@ fn registration_probe() -> Result<(Vec<Measurement>, String), String> {
     Ok((measurements, csv))
 }
 
+/// Whether each preset key sounds the registration the panel is wired for.
+///
+/// A preset key is nine wires screwed to nine bars, and the service manual
+/// says fastening one "is equivalent to setting a harmonic drawbar to the
+/// corresponding number". So the claim this makes is arithmetic and can be
+/// checked: play a note under a preset key, read the level of each of the
+/// nine buses, and it should be the level that drawbar number stands for.
+///
+/// The reading is taken against the same note played with every drawbar out,
+/// which removes whatever each wheel's own level is from the answer. What is
+/// left is the ratio the drawbar numbers ask for, so this measures the wiring
+/// from the table to the audio rather than the table itself - the table is
+/// documented and is credited where the documents are.
+fn preset_panel_probe() -> Result<(Vec<Measurement>, String), String> {
+    const FRAMES: usize = SAMPLE_RATE / 4;
+
+    let key = usize::from(C_NOTE - MANUAL_FIRST_NOTE);
+    let mut buses = [0.0_f64; DRAWBAR_COUNT];
+    for (bus, frequency) in buses.iter_mut().enumerate() {
+        let wheel = drawbar_wheel(key, bus).ok_or("bus has no wheel")?;
+        *frequency = f64::from(gear_frequency(wheel).ok_or("wheel has no frequency")?);
+    }
+
+    let render = |part: OrganPart, registration: Registration| -> [f64; DRAWBAR_COUNT] {
+        let mut engine = clean_engine().expect("engine");
+        for bus in 0..DRAWBAR_COUNT {
+            assert!(engine.set_manual_drawbar(part, Registration::AdjustA, bus, 8));
+        }
+        assert!(engine.set_manual_registration(part, registration));
+        assert!(engine.note_on_part(part, C_NOTE, 1.0));
+        let mut samples = Vec::with_capacity(FRAMES);
+        for _ in 0..FRAMES {
+            samples.push(f64::from(engine.next_sample()[0]));
+        }
+        let settled = &samples[SAMPLE_RATE / 16..];
+        let mut levels = [0.0; DRAWBAR_COUNT];
+        for (level, frequency) in levels.iter_mut().zip(buses) {
+            *level = spectral_amplitude(settled, frequency);
+        }
+        levels
+    };
+
+    let mut csv = String::from("manual,key,bus,printed,expected_level,measured_level,error_db\n");
+    let mut measurements = Vec::new();
+    for (manual, part, panel, probe) in [
+        (
+            "upper",
+            OrganPart::Upper,
+            UPPER_PRESETS,
+            "preset-panel-upper",
+        ),
+        (
+            "lower",
+            OrganPart::Lower,
+            LOWER_PRESETS,
+            "preset-panel-lower",
+        ),
+    ] {
+        // Every drawbar out, which is the level a drawbar at 8 stands for.
+        let reference = render(part, Registration::AdjustA);
+        let mut worst = 0.0_f64;
+        let mut worst_silent = f64::NEG_INFINITY;
+        for (preset, positions) in panel.into_iter().enumerate() {
+            let registration = Registration::KEYBOARD
+                .into_iter()
+                .find(|key| key.preset() == Some(preset))
+                .ok_or("panel entry has no key")?;
+            let measured = render(part, registration);
+            let loudest = measured.iter().copied().fold(0.0_f64, f64::max);
+            for (bus, position) in positions.into_iter().enumerate() {
+                let expected = f64::from(DRAWBAR_LEVELS[position as usize]);
+                let actual = measured[bus] / reference[bus].max(1.0e-15);
+                // A drawbar pushed in is absent rather than quiet, so it is
+                // read against the loudest bus of the same registration
+                // instead of against a ratio that has no denominator.
+                let error = if position == 0 {
+                    let relative = decibels(measured[bus] / loudest.max(1.0e-15));
+                    worst_silent = worst_silent.max(relative);
+                    relative
+                } else {
+                    let error = decibels(actual / expected);
+                    worst = worst.max(error.abs());
+                    error
+                };
+                writeln!(
+                    &mut csv,
+                    "{manual},{},{bus},{position},{expected:.6},{actual:.6},{error:.6}",
+                    registration.label()
+                )
+                .expect("string write cannot fail");
+            }
+        }
+        measurements.push(Measurement {
+            probe,
+            metric: "worst-position-error",
+            value: worst,
+            unit: "dB",
+        });
+        measurements.push(Measurement {
+            probe,
+            metric: "loudest-pushed-in-drawbar",
+            value: worst_silent,
+            unit: "dB",
+        });
+    }
+    Ok((measurements, csv))
+}
+
 fn clean_engine() -> Result<OrganEngine, String> {
     let mut engine = OrganEngine::new(SAMPLE_RATE as f32).map_err(|error| error.0.to_owned())?;
     for part in [OrganPart::Upper, OrganPart::Lower] {
@@ -2965,6 +3078,37 @@ mod tests {
             "the percussion did nothing under its own key: {} dB",
             value("registration-percussion-adjust-b")
         );
+    }
+
+    /// Each preset key is nine wires on nine bars, and fastening one "is
+    /// equivalent to setting a harmonic drawbar to the corresponding number".
+    /// That is an arithmetic claim about every one of the eighty-one wires per
+    /// manual, so it is checked as one.
+    #[test]
+    fn every_wire_on_the_preset_panel_arrives_at_its_printed_number() {
+        let (measurements, csv) = with_analysis_stack(|| preset_panel_probe().unwrap());
+        let value = |probe: &str, metric: &str| {
+            measurements
+                .iter()
+                .find(|measurement| measurement.probe == probe && measurement.metric == metric)
+                .expect("probe")
+                .value
+        };
+        // Nine keys, nine drawbars, two manuals, and a header.
+        assert_eq!(csv.lines().count(), 9 * DRAWBAR_COUNT * 2 + 1);
+        for manual in ["preset-panel-upper", "preset-panel-lower"] {
+            assert!(
+                value(manual, "worst-position-error") < 0.01,
+                "{manual} bent a printed number by {} dB",
+                value(manual, "worst-position-error")
+            );
+            // A drawbar the panel does not reach is absent, not quiet.
+            assert!(
+                value(manual, "loudest-pushed-in-drawbar") < -80.0,
+                "{manual} sounded a wire that is not there: {} dB",
+                value(manual, "loudest-pushed-in-drawbar")
+            );
+        }
     }
 
     /// Hammond's own key click control runs from a note that "will sound with

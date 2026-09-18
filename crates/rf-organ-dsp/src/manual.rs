@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
+use crate::preset::PRESET_COUNT;
 use crate::tonewheel::TONEWHEEL_COUNT;
 
 pub const DRAWBAR_COUNT: usize = 9;
@@ -24,25 +25,61 @@ pub const DRAWBAR_SET_COUNT: usize = 2;
 /// The nine between them, C# to A, are wired to the preset panel, where each
 /// harmonic is screwed to one of nine bars and "this is equivalent to setting
 /// a harmonic drawbar to the corresponding number". They are therefore nine
-/// more registrations and nothing else - but what the factory put on them
-/// lives in a booklet the service manual only names, so they are absent here
-/// rather than invented.
+/// more registrations and nothing else, and [`crate::preset`] holds them.
+///
+/// The numbering below is the order these were modelled in and not the order
+/// they sit on the keyboard, so that the three that existed before the panel
+/// did keep the values already recorded against them. [`Self::KEYBOARD`] is
+/// the left-to-right order, which is what a player sees.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
 pub enum Registration {
     Cancel = 0,
     AdjustA = 1,
     AdjustB = 2,
+    PresetCSharp = 3,
+    PresetD = 4,
+    PresetDSharp = 5,
+    PresetE = 6,
+    PresetF = 7,
+    PresetFSharp = 8,
+    PresetG = 9,
+    PresetGSharp = 10,
+    PresetA = 11,
 }
 
 impl Registration {
-    pub const ALL: [Self; 3] = [Self::Cancel, Self::AdjustA, Self::AdjustB];
+    /// The twelve keys in the order they are laid out, from the cancel key at
+    /// the extreme left to the B adjust key at the extreme right.
+    pub const KEYBOARD: [Self; 12] = [
+        Self::Cancel,
+        Self::PresetCSharp,
+        Self::PresetD,
+        Self::PresetDSharp,
+        Self::PresetE,
+        Self::PresetF,
+        Self::PresetFSharp,
+        Self::PresetG,
+        Self::PresetGSharp,
+        Self::PresetA,
+        Self::AdjustA,
+        Self::AdjustB,
+    ];
 
     pub const fn from_index(index: u8) -> Option<Self> {
         match index {
             0 => Some(Self::Cancel),
             1 => Some(Self::AdjustA),
             2 => Some(Self::AdjustB),
+            3 => Some(Self::PresetCSharp),
+            4 => Some(Self::PresetD),
+            5 => Some(Self::PresetDSharp),
+            6 => Some(Self::PresetE),
+            7 => Some(Self::PresetF),
+            8 => Some(Self::PresetFSharp),
+            9 => Some(Self::PresetG),
+            10 => Some(Self::PresetGSharp),
+            11 => Some(Self::PresetA),
             _ => None,
         }
     }
@@ -51,21 +88,49 @@ impl Registration {
         self as u8
     }
 
+    /// The key's own name, which is the note it sits on.
     pub const fn label(self) -> &'static str {
         match self {
             Self::Cancel => "cancel",
-            Self::AdjustA => "adjust-a",
+            Self::AdjustA => "adjust-a-sharp",
             Self::AdjustB => "adjust-b",
+            Self::PresetCSharp => "preset-c-sharp",
+            Self::PresetD => "preset-d",
+            Self::PresetDSharp => "preset-d-sharp",
+            Self::PresetE => "preset-e",
+            Self::PresetF => "preset-f",
+            Self::PresetFSharp => "preset-f-sharp",
+            Self::PresetG => "preset-g",
+            Self::PresetGSharp => "preset-g-sharp",
+            Self::PresetA => "preset-a",
         }
     }
 
     /// Which group of drawbars this key is wired to, if it is wired to one.
-    /// The cancel key has no contacts at all.
+    /// The cancel key has no contacts at all, and a preset key is wired to
+    /// the panel rather than to a drawbar.
     pub const fn drawbars(self) -> Option<usize> {
         match self {
-            Self::Cancel => None,
             Self::AdjustA => Some(0),
             Self::AdjustB => Some(1),
+            _ => None,
+        }
+    }
+
+    /// Which of the panel's nine registrations this key carries, if it
+    /// carries one.
+    pub const fn preset(self) -> Option<usize> {
+        match self {
+            Self::PresetCSharp => Some(0),
+            Self::PresetD => Some(1),
+            Self::PresetDSharp => Some(2),
+            Self::PresetE => Some(3),
+            Self::PresetF => Some(4),
+            Self::PresetFSharp => Some(5),
+            Self::PresetG => Some(6),
+            Self::PresetGSharp => Some(7),
+            Self::PresetA => Some(8),
+            _ => None,
         }
     }
 }
@@ -111,7 +176,7 @@ pub const MANUAL_FIRST_NOTE: u8 = 36;
 pub const MANUAL_KEY_COUNT: usize = 61;
 const MANUAL_LAST_NOTE: u8 = MANUAL_FIRST_NOTE + MANUAL_KEY_COUNT as u8 - 1;
 const OFFSETS: [i16; DRAWBAR_COUNT] = [-12, 7, 0, 12, 19, 24, 28, 31, 36];
-const DRAWBAR_LEVELS: [f32; 9] = [0.0, 0.089, 0.126, 0.178, 0.251, 0.355, 0.501, 0.708, 1.0];
+pub const DRAWBAR_LEVELS: [f32; 9] = [0.0, 0.089, 0.126, 0.178, 0.251, 0.355, 0.501, 0.708, 1.0];
 
 /// B-3-style manual wiring. The returned index addresses the shared 91-wheel
 /// bank; unavailable pitches fold back by octaves.
@@ -256,6 +321,10 @@ pub struct Manual {
     /// "These keys have a locking and trip mechanism which allows only one
     /// key to be in operation at one time."
     registration: Registration,
+    /// This manual's half of the preset panel. The panel is "divided into two
+    /// sets of nine bars, each connected to a separate matching transformer",
+    /// so the swell and the great do not share one.
+    presets: &'static [[u8; DRAWBAR_COUNT]; PRESET_COUNT],
     /// What the busbars actually reach through the key that is down, which is
     /// nothing at all under the cancel key.
     levels: [f32; DRAWBAR_COUNT],
@@ -276,13 +345,14 @@ pub struct Manual {
 }
 
 impl Manual {
-    pub fn new(sample_rate: f32) -> Self {
+    pub fn new(sample_rate: f32, presets: &'static [[u8; DRAWBAR_COUNT]; PRESET_COUNT]) -> Self {
         let mut manual = Self {
             keys: [Key::EMPTY; MANUAL_KEY_COUNT],
             drawbars: [[8, 8, 8, 0, 0, 0, 0, 0, 0]; DRAWBAR_SET_COUNT],
             // The B key, because that is the one the percussion needs and so
             // the one a B-3 is played on.
             registration: Registration::AdjustB,
+            presets,
             levels: [0.0; DRAWBAR_COUNT],
             wheel_gains: [0.0; TONEWHEEL_COUNT],
             sample_rate,
@@ -564,13 +634,18 @@ impl Manual {
     /// What the key that is down connects the busbars to, and then the gains
     /// that follow from it.
     fn rebuild_levels(&mut self) {
-        match self.registration.drawbars() {
-            Some(set) => {
+        let positions = match (self.registration.drawbars(), self.registration.preset()) {
+            (Some(set), _) => Some(&self.drawbars[set]),
+            (_, Some(preset)) => Some(&self.presets[preset]),
+            // The cancel key, which has no contacts and so no circuit.
+            _ => None,
+        };
+        match positions {
+            Some(positions) => {
                 for bus in 0..DRAWBAR_COUNT {
-                    self.levels[bus] = DRAWBAR_LEVELS[self.drawbars[set][bus] as usize];
+                    self.levels[bus] = DRAWBAR_LEVELS[positions[bus] as usize];
                 }
             }
-            // No contacts, so no circuit.
             None => self.levels.fill(0.0),
         }
         self.rebuild_gains();
@@ -703,7 +778,7 @@ mod tests {
     /// on a 61-key manual is 549 contacts that cannot change.
     #[test]
     fn a_key_stops_being_scanned_once_its_contacts_settle() {
-        let mut manual = Manual::new(48_000.0);
+        let mut manual = Manual::new(48_000.0, &crate::preset::UPPER_PRESETS);
         assert!(manual.keys.iter().all(|key| !key.settling));
 
         assert!(manual.note_on(60, 1.0));
