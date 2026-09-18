@@ -267,6 +267,14 @@ impl OrganEngine {
             && self.output_transformer.set_asymmetry(amount)
     }
 
+    /// How abruptly the contacts arrive, which is the click and the attack
+    /// together.
+    pub fn set_key_click(&mut self, amount: f32) -> bool {
+        self.upper.set_key_click(amount)
+            && self.lower.set_key_click(amount)
+            && self.pedals.set_key_click(amount)
+    }
+
     pub fn set_contact_delay(&mut self, amount: f32) -> bool {
         self.upper.set_contact_delay(amount) && self.lower.set_contact_delay(amount)
     }

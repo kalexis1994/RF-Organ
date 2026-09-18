@@ -20,6 +20,7 @@ pub struct Artifacts {
     pub percussion_envelope: String,
     pub percussion_recovery: String,
     pub keying_contacts: String,
+    pub key_click_response: String,
     pub scanner_sidebands: String,
     pub scanner_line_response: String,
     pub scanner_line_cutoff: String,
@@ -80,6 +81,8 @@ fn analyze_inner() -> Result<Artifacts, String> {
     measurements.extend(percussion_touch_probe()?);
     let (keying, keying_contacts) = keying_probe()?;
     measurements.extend(keying);
+    let (click, key_click_response) = key_click_probe()?;
+    measurements.extend(click);
     let (scanner, scanner_sidebands, scanner_line_response) = scanner_probe();
     measurements.extend(scanner);
     let (cutoff, scanner_line_cutoff) = scanner_cutoff_probe();
@@ -99,6 +102,7 @@ fn analyze_inner() -> Result<Artifacts, String> {
         percussion_envelope,
         percussion_recovery,
         keying_contacts,
+        key_click_response,
         scanner_sidebands,
         scanner_line_response,
         scanner_line_cutoff,
@@ -2271,6 +2275,82 @@ fn percussion_touch_probe() -> Result<Vec<Measurement>, String> {
     Ok(measurements)
 }
 
+/// How much click a contact makes, against how abruptly it is asked to
+/// arrive.
+///
+/// Hammond's own control puts the click and the attack together: at zero "the
+/// note will sound with no click at the onset of the sound as with a
+/// traditional electronic instrument", and higher "will create a faster attack
+/// as well as introduce Key Click". A click is broadband, so it is measured
+/// where the tone is not: well above the wheel's own harmonics, during the
+/// first few milliseconds, against the steady level the note settles to.
+fn key_click_probe() -> Result<(Vec<Measurement>, String), String> {
+    const BUS: usize = 2;
+    const SILENCE: usize = SAMPLE_RATE / 200;
+    const ONSET: usize = SAMPLE_RATE / 100;
+
+    let mut csv = String::from(
+        "key_click,click_dbc,steady_dbfs
+",
+    );
+    let mut measurements = Vec::new();
+    for (name, amount) in [
+        ("off", 0.0_f32),
+        ("quarter", 0.25),
+        ("half", 0.5),
+        ("full", 1.0),
+    ] {
+        let mut engine = clean_engine()?;
+        assert!(engine.set_key_click(amount));
+        assert!(engine.set_contact_bounce(0.0));
+        assert!(engine.set_manual_drawbar(OrganPart::Upper, BUS, 8));
+        // Silence first. The arrival is a discontinuity and a discontinuity
+        // has to have something before it: keying on the first rendered sample
+        // puts the step outside the window and the measurement then finds
+        // nothing but the tone.
+        let mut samples = Vec::with_capacity(SAMPLE_RATE / 2);
+        for _ in 0..SILENCE {
+            samples.push(f64::from(engine.next_sample()[0]));
+        }
+        assert!(engine.note_on_part(OrganPart::Upper, C_NOTE, 1.0));
+        for _ in 0..SAMPLE_RATE / 2 {
+            samples.push(f64::from(engine.next_sample()[0]));
+        }
+        let steady = rms(&samples[SILENCE + SAMPLE_RATE / 4..]);
+        // A click is a step, and what tells a step from a tone is how far the
+        // signal moves between one sample and the next. A tone's own jump is
+        // bounded by its frequency; a contact arriving adds the whole of
+        // whatever the wheel was at. Measuring the jump rather than a band
+        // keeps the wheel's own harmonics out of the answer - the first
+        // attempt here read a band well above them and found the gentle
+        // arrival louder than the abrupt one, because a four millisecond ramp
+        // splatters a tone more than a step's energy up there amounts to.
+        let jump = |window: &[f64]| {
+            window
+                .windows(2)
+                .map(|pair| (pair[1] - pair[0]).abs())
+                .fold(0.0_f64, f64::max)
+        };
+        let click = jump(&samples[..SILENCE + ONSET]);
+        let quiet = jump(&samples[SILENCE + SAMPLE_RATE / 4..]);
+        let relative = decibels(click / quiet.max(1.0e-15));
+        writeln!(&mut csv, "{name},{relative:.6},{:.6}", decibels(steady))
+            .expect("string write cannot fail");
+        measurements.push(Measurement {
+            probe: match name {
+                "off" => "key-click-off",
+                "quarter" => "key-click-quarter",
+                "half" => "key-click-half",
+                _ => "key-click-full",
+            },
+            metric: "click-over-tone",
+            value: relative,
+            unit: "dB",
+        });
+    }
+    Ok((measurements, csv))
+}
+
 fn clean_engine() -> Result<OrganEngine, String> {
     let mut engine = OrganEngine::new(SAMPLE_RATE as f32).map_err(|error| error.0.to_owned())?;
     for part in [OrganPart::Upper, OrganPart::Lower] {
@@ -2432,6 +2512,12 @@ mod tests {
     /// go back to.
     #[test]
     fn the_leakage_rate_can_be_turned_off() {
+        // On the analysis stack like every other probe here: an engine holds a
+        // contact per key per spring and does not fit on a test thread's own.
+        with_analysis_stack(the_leakage_rate_can_be_turned_off_body);
+    }
+
+    fn the_leakage_rate_can_be_turned_off_body() {
         let level = |boost: f32, notes: &[u8]| {
             let mut engine = clean_engine().unwrap();
             assert!(engine.set_leakage(0.2));
@@ -2640,6 +2726,37 @@ mod tests {
         assert!(value("corner-gain") < 0.0);
     }
 
+    /// Hammond's own key click control runs from a note that "will sound with
+    /// no 'click' at the onset of the sound as with a traditional electronic
+    /// instrument" up to one where a higher value "will create a faster attack
+    /// as well as introduce Key Click". Those are the two ends of one thing -
+    /// the click and the attack are the same event, a contact either arriving
+    /// abruptly or not - so the measurement has to find them in that order.
+    #[test]
+    fn the_key_click_control_runs_from_no_click_to_a_click() {
+        let (measurements, _) = with_analysis_stack(|| key_click_probe().unwrap());
+        let value = |probe: &str| {
+            measurements
+                .iter()
+                .find(|measurement| measurement.probe == probe)
+                .expect("probe")
+                .value
+        };
+        let off = value("key-click-off");
+        let quarter = value("key-click-quarter");
+        let half = value("key-click-half");
+        let full = value("key-click-full");
+        // At zero the arrival is no louder than the tone's own motion, which
+        // is what "no click at the onset" has to mean when the click is
+        // measured against the tone that follows it.
+        assert!(off < 1.0, "the softest arrival still clicked: {off} dB");
+        // And it grows from there, in order, to something plainly audible.
+        assert!(
+            off < quarter && quarter < half && half < full,
+            "the click did not grow in order: {off} {quarter} {half} {full}"
+        );
+        assert!(full > 15.0, "the abrupt arrival barely clicked: {full} dB");
+    }
     /// Hammond's contact page carries a delay with a published ceiling of
     /// 725.6 ms, and its percussion page describes a key "pressed very slowly"
     /// leaving "only the end of the decay or no sound". Those two are the same

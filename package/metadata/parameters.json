@@ -805,6 +805,16 @@
       "kind": { "type": "float", "minimum": 0.0, "maximum": 1.0, "default": 0.1, "step": 0.001 },
       "flags": { "automatable": true, "advanced": true },
       "suggested_control": "knob"
+    },
+    {
+      "index": 74,
+      "id": "key-click",
+      "name": "Key Click",
+      "page": "generator",
+      "order": 15,
+      "kind": { "type": "float", "minimum": 0.0, "maximum": 1.0, "default": 1.0, "step": 0.001 },
+      "flags": { "automatable": true },
+      "suggested_control": "knob"
     }
   ],
   "semantic_controls": [

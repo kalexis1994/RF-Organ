@@ -2,6 +2,7 @@
 
 use core::f32::consts::TAU;
 
+use crate::manual::KEY_CLICK_SOFT_S;
 use crate::tonewheel::TONEWHEEL_COUNT;
 
 pub const PEDAL_DRAWBAR_COUNT: usize = 2;
@@ -27,6 +28,10 @@ const EIGHT_BUS_GAINS: [f32; PEDAL_BUS_COUNT] = [0.25, 1.0, 1.0, 0.0];
 struct Contact {
     wheel: u8,
     gate: f32,
+    /// How much of the way the gate travels per sample once the contact is
+    /// making, as on the manuals: one is the abrupt arrival a console gives
+    /// and anything less is the same contact closing more gently.
+    rise: f32,
     target: bool,
     delay: u32,
     bounce_left: u32,
@@ -39,6 +44,7 @@ impl Contact {
     const EMPTY: Self = Self {
         wheel: 0,
         gate: 0.0,
+        rise: 1.0,
         target: false,
         delay: 0,
         bounce_left: 0,
@@ -47,7 +53,16 @@ impl Contact {
         noise: 1,
     };
 
-    fn schedule(&mut self, target: bool, delay: u32, bounce: u32, period: u16, seed: u32) {
+    fn schedule(
+        &mut self,
+        target: bool,
+        delay: u32,
+        bounce: u32,
+        period: u16,
+        seed: u32,
+        rise: f32,
+    ) {
+        self.rise = rise;
         self.target = target;
         self.delay = delay;
         self.bounce_left = bounce;
@@ -68,7 +83,16 @@ impl Contact {
             return;
         }
         if self.bounce_left == 0 {
-            self.gate = f32::from(self.target);
+            // The click is the arrival, so how fast it arrives is the only
+            // thing there is to turn down.
+            let target = f32::from(self.target);
+            self.gate = if self.rise >= 1.0 {
+                target
+            } else if target > self.gate {
+                (self.gate + self.rise).min(target)
+            } else {
+                (self.gate - self.rise).max(target)
+            };
             return;
         }
         self.bounce_left -= 1;
@@ -125,6 +149,7 @@ pub struct Pedalboard {
     sample_rate: f32,
     contact_spread: f32,
     contact_bounce: f32,
+    key_click: f32,
     event_counter: u32,
     low_bus_state: f32,
     low_bus_step: f32,
@@ -138,6 +163,7 @@ impl Pedalboard {
             sample_rate,
             contact_spread: 0.55,
             contact_bounce: 0.45,
+            key_click: 1.0,
             event_counter: 0,
             low_bus_state: 0.0,
             // L20 removes high-frequency switching energy from the low pedal
@@ -181,6 +207,15 @@ impl Pedalboard {
         true
     }
 
+    /// How abruptly a pedal's contacts arrive, on the manuals' own control.
+    pub fn set_key_click(&mut self, amount: f32) -> bool {
+        if !unit(amount) {
+            return false;
+        }
+        self.key_click = amount;
+        true
+    }
+
     pub fn note_on(&mut self, note: u8, velocity: f32) -> bool {
         let Some(key) = key_index(note) else {
             return false;
@@ -219,6 +254,9 @@ impl Pedalboard {
         let bounce_samples =
             (self.contact_bounce * (0.0015 + 0.004 * velocity) * self.sample_rate) as u32;
         let period = (self.sample_rate / 2_600.0).max(1.0) as u16;
+        let softest = 1.0 / (KEY_CLICK_SOFT_S * self.sample_rate).max(1.0);
+        let click = self.key_click * self.key_click * self.key_click;
+        let rise = click.max(softest).min(1.0);
         for contact in 0..PEDAL_CONTACT_COUNT {
             let order = PEDAL_CONTACT_COUNT - 1 - contact;
             let nominal = spread_samples * order as u32 / (PEDAL_CONTACT_COUNT as u32 - 1);
@@ -234,6 +272,7 @@ impl Pedalboard {
                 bounce_samples,
                 period,
                 seed,
+                rise,
             );
         }
     }

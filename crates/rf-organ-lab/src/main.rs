@@ -286,6 +286,10 @@ fn render_suite(destination: &Path, trims: captures::Trims) -> Result<(), Box<dy
         analysis.keying_contacts,
     )?;
     fs::write(
+        destination.join("key-click-response.csv"),
+        analysis.key_click_response,
+    )?;
+    fs::write(
         destination.join("scanner-sidebands.csv"),
         analysis.scanner_sidebands,
     )?;

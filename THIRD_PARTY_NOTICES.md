@@ -43,6 +43,21 @@ spacing - the second-order product sits about eleven decibels under the third
 at the baseline character - which is a specific claim a bench can contradict
 by measuring both products on a real transformer.
 
+## Key click
+
+Version 0.42.0 takes the key click from the XK-7 manual's own control, which
+publishes both of its ends: at zero "the note will sound with no 'click' at
+the onset of the sound as with a traditional electronic instrument", and a
+higher value "will create a faster attack as well as introduce Key Click".
+Those two sentences are one mechanism said twice - the click and the attack
+are the same event, a contact either arriving abruptly or not - so the model
+turns the arrival into a ramp rather than adding a click on top of a tone.
+
+What is documented is the two ends and that they are the same control. How
+long the gentle end takes is not, and the ten milliseconds used here is
+provisional: it is past the point where a step stops being heard as a click,
+which is the property the sentence asks for, but it is not a measured figure.
+
 ## Contact delay
 
 Version 0.40.0 takes the contact delay from the XK-7 manual's own contact

@@ -166,7 +166,7 @@ microphones, so moving them back zooms out instead of pushing them off the
 edge. The parameter table the surface validates against is the engine's, not a
 copy of it; a range that moves in the DSP moves there too.
 
-## Version 0.41.0 limitations
+## Version 0.42.0 limitations
 
 - The classic B-3 pedal contact and resistor-panel topology is present. The
   L20 pedal-filter coefficient and console matching-network constants remain
@@ -185,6 +185,12 @@ copy of it; a range that moves in the DSP moves there too.
   percussion, and the percussion is now the way to measure it: a console
   recorded at several touches gives the spread directly, without the keyboard
   action study that sits behind a paywall.
+- The key click is Hammond's own control and not an added noise: the contact
+  gate ramps instead of stepping, so turning the click down slows the attack
+  with it, which is what the XK-7 manual describes. Both ends are documented
+  and the length of the gentle one, ten milliseconds, is not. The control is
+  cubed because the audible range is at the abrupt end; a console sits at the
+  abrupt end, so nothing already measured moves.
 - Contact timing is a provisional deterministic model. The published keyboard
   action study is behind a paywall, so the laboratory measures the spread and
   the click rather than claiming a fitted one. What a press spreads on its own

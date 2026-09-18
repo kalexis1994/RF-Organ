@@ -443,6 +443,38 @@ several touches, read the percussion peak against the briskest, and the delay
 that explains the curve is the delay. It costs a recording rather than access
 to the keyboard action study that sits behind a paywall.
 
+## Key click
+
+`key-click-response.csv` keys one note at four settings of the click control
+and reports the arrival against the tone that follows it. The model gives
+-0.88, -0.19, 5.68 and 20.99 dB, which is the curve the XK-7 manual describes:
+at zero the arrival is no louder than the tone's own motion, and at the top it
+is plainly a click.
+
+Two measurements were wrong before this one was right, and both were wrong in
+ways worth keeping written down.
+
+The first read spectral bands at 7, 9 and 11 kHz, on the reasoning that a step
+has energy up there and a ramp does not. It reported the gentle arrival as the
+louder one. That is not a bug in the model: a four millisecond ramp applied to
+a tone is an amplitude modulation, and modulating a tone splatters it further
+than the leftover energy of a step amounts to that far up. A band above the
+signal measures whatever is loudest in the band, which need not be the thing
+being asked about.
+
+The second measured the jump from one sample to the next, which is the right
+quantity - a tone's own jump is bounded by its frequency, and a contact
+arriving adds the whole of whatever the wheel was at - but keyed the note on
+the first rendered sample. A discontinuity needs something before it to be
+discontinuous with. The probe now renders five milliseconds of silence first,
+and the same estimator then reports the same event at both ends of the
+control.
+
+So what the table above is, is the largest sample-to-sample jump in the first
+ten milliseconds, against the largest jump in the settled tone a quarter of a
+second later. Both ends of the control are documented; the ten milliseconds
+the gentle end takes is not, and is provisional.
+
 ## Vibrato line protocol
 
 `scanner-line-cutoff.csv` reads the line's gain at four frequencies at each of

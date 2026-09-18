@@ -24,6 +24,20 @@ const LEAKAGE_PER_KEY: f32 = 0.35;
 /// spread above is what a press does; this is what the instrument is set to
 /// do on top of it, and at zero it does nothing at all.
 pub const CONTACT_DELAY_CEILING_S: f32 = 0.7256;
+
+/// How long a contact takes to make when it is asked to make gently.
+///
+/// Hammond's key click control says what the two ends of it are: at zero "the
+/// note will sound with no 'click' at the onset of the sound as with a
+/// traditional electronic instrument", and "a higher value will create a
+/// faster attack as well as introduce Key Click". The click and the attack are
+/// the same thing, which is a contact either arriving abruptly or not.
+///
+/// A console is at the abrupt end and that is where this starts, so nothing
+/// already recorded moves; the other end is ten milliseconds, which is well
+/// past the point where a step stops being heard as a click and is
+/// provisional.
+pub(crate) const KEY_CLICK_SOFT_S: f32 = 0.010;
 /// Where that rate control starts, which is also provisional.
 pub const LEAKAGE_BOOST_DEFAULT: f32 = 0.5;
 pub const MANUAL_FIRST_NOTE: u8 = 36;
@@ -52,6 +66,10 @@ pub fn drawbar_wheel(key: usize, bus: usize) -> Option<usize> {
 struct Contact {
     wheel: u8,
     gate: f32,
+    /// How much of the way the gate travels per sample once the contact is
+    /// making. One is the abrupt arrival a console gives and anything less is
+    /// the same contact closing more gently.
+    rise: f32,
     target: bool,
     delay: u32,
     bounce_left: u32,
@@ -64,6 +82,7 @@ impl Contact {
     const EMPTY: Self = Self {
         wheel: 0,
         gate: 0.0,
+        rise: 1.0,
         target: false,
         delay: 0,
         bounce_left: 0,
@@ -72,7 +91,16 @@ impl Contact {
         noise: 1,
     };
 
-    fn schedule(&mut self, target: bool, delay: u32, bounce: u32, period: u16, seed: u32) {
+    fn schedule(
+        &mut self,
+        target: bool,
+        delay: u32,
+        bounce: u32,
+        period: u16,
+        seed: u32,
+        rise: f32,
+    ) {
+        self.rise = rise;
         self.target = target;
         self.delay = delay;
         self.bounce_left = bounce;
@@ -84,7 +112,7 @@ impl Contact {
     /// A contact with nothing left to do: no delay to count down, no bounce
     /// left, and its gate already where the key put it. Ticking it again
     /// cannot change anything, which is what lets the scan skip whole keys.
-    const fn settled(&self) -> bool {
+    fn settled(&self) -> bool {
         self.delay == 0 && self.bounce_left == 0 && self.gate == if self.target { 1.0 } else { 0.0 }
     }
 
@@ -95,7 +123,16 @@ impl Contact {
         }
         let before = self.gate;
         if self.bounce_left == 0 {
-            self.gate = if self.target { 1.0 } else { 0.0 };
+            // The click is the arrival, so how fast it arrives is the only
+            // thing there is to turn down.
+            let target = if self.target { 1.0 } else { 0.0 };
+            self.gate = if self.rise >= 1.0 {
+                target
+            } else if target > self.gate {
+                (self.gate + self.rise).min(target)
+            } else {
+                (self.gate - self.rise).max(target)
+            };
         } else {
             self.bounce_left -= 1;
             if self.period_left == 0 {
@@ -156,6 +193,7 @@ pub struct Manual {
     /// Keys down right now, which is what the leakage grows with.
     held: u8,
     contact_delay: f32,
+    key_click: f32,
     /// Set for the one sample in which some key's first contact touched its
     /// busbar. The percussion supply is discharged by a contact, not by a
     /// decision, so this is what it waits for.
@@ -173,6 +211,7 @@ impl Manual {
             contact_spread: 0.55,
             contact_bounce: 0.45,
             contact_delay: 0.0,
+            key_click: 1.0,
             event_counter: 0,
             held: 0,
             took_first_contact: false,
@@ -261,6 +300,17 @@ impl Manual {
         let bounce_samples =
             (self.contact_bounce * (0.0015 + 0.004 * velocity) * self.sample_rate) as u32;
         let period = (self.sample_rate / 2_600.0).max(1.0) as u16;
+        // A console's contacts arrive abruptly. Turning the click down is
+        // turning that arrival into a ramp, which is the same control Hammond
+        // gives and the same sentence: the attack slows as the click goes.
+        // How much of the arrival lands in one sample is the click, so that
+        // is what the control sets. It is cubed because the ear is not linear
+        // about it: a ramp of two milliseconds already has no click left in
+        // it, so a control that spent half its travel getting there would be
+        // a switch with a long handle.
+        let softest = 1.0 / (KEY_CLICK_SOFT_S * self.sample_rate).max(1.0);
+        let click = self.key_click * self.key_click * self.key_click;
+        let rise = click.max(softest).min(1.0);
         for bus in 0..DRAWBAR_COUNT {
             // On a slow physical press the high contacts become audible first.
             let order = DRAWBAR_COUNT - 1 - bus;
@@ -277,6 +327,7 @@ impl Manual {
                 bounce_samples,
                 period,
                 seed,
+                rise,
             );
         }
     }
@@ -329,6 +380,16 @@ impl Manual {
     /// steeply is not, so the step per key is provisional.
     /// How much of the documented contact delay to add to every press, from
     /// none at zero to the published 725.6 ms at one.
+    /// How abruptly a contact arrives, from a ramp with no click at zero to
+    /// the arrival a console gives at one.
+    pub fn set_key_click(&mut self, amount: f32) -> bool {
+        if !unit(amount) {
+            return false;
+        }
+        self.key_click = amount;
+        true
+    }
+
     pub fn set_contact_delay(&mut self, amount: f32) -> bool {
         if !unit(amount) {
             return false;
