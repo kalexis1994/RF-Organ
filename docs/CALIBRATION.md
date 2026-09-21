@@ -4,11 +4,38 @@
 DSP used by the RackForge plugin. It is deliberately written in Rust and does
 not embed third-party analysis code.
 
+## What these captures can and cannot tell you
+
+They are rendered from the model, so they compare the model with itself.
+That makes them a regression suite: run them before and after a change and
+they report what moved, to the sample. It is what they are for and they are
+good at it.
+
+What they cannot do is tell you a number is wrong. Every figure below is
+whatever the constants produce, so a constant that does not match the
+instrument produces a capture that does not match the instrument, and the
+comparison still passes.
+
+Two of those were found by reading rather than by rendering, and both had
+been through the whole suite:
+
+- the horn turned at the drum's chorale speed, because the 40 rpm in
+  Hammond's worked example of a ramp on a digital cabinet was read as the
+  horn's slow speed. A measured 147 turns it at 48. Seventeen tests in
+  `rotary.rs` and none could see it, because none looked outside;
+- `note_off` scheduled the press's contact machinery backwards, giving every
+  release a burst of chatter neither open reference produces.
+
+So when a line here says the laboratory measures something, read it as: the
+laboratory reports what the model does. Validating that against the
+instrument needs a capture of one, and where such a figure exists it is
+cited at the constant rather than here.
+
+The suite contains:
+
 ```text
 cargo run --release -p rf-organ-lab -- render artifacts/calibration
 ```
-
-The suite contains:
 
 - the 91 physical generator frequencies as CSV;
 - the generator's taper and eccentricity, measured key by key;

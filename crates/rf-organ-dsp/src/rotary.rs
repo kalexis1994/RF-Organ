@@ -3,11 +3,27 @@ use core::f32::consts::TAU;
 
 const DELAY_CAPACITY: usize = 8192;
 
-/// Rotor speeds, as the cabinet's own specification gives them. Hammond's
-/// documented ranges for a digital rotating cabinet are 20 to 120 rpm slow
-/// and 200 to 500 rpm fast, and its worked example of a transition is 40 to
-/// 400 rpm.
-const HORN_SLOW_RPM: f32 = 40.0;
+/// Rotor speeds, as the physical cabinet turns rather than as a digital one
+/// is configured.
+///
+/// These came from Hammond's ranges for its digital rotating cabinet -- 20
+/// to 120 rpm slow, 200 to 500 fast, with 40 to 400 as a worked example of a
+/// transition -- and the worked example was read as the horn's two speeds.
+/// It is not. It is an illustration of a ramp, and taking it literally put
+/// the horn's chorale at 40 rpm.
+///
+/// A 147 measured at the middle pulley turns its horn at 400 rpm on tremolo
+/// and 48 on chorale, and its drum at about 342 and 40. A 122XB measures
+/// 405/46 and 395/38. Cabinets vary, and the three speeds that were already
+/// here sit inside that variation; the horn's chorale did not, and every
+/// source puts it between 46 and 50.
+///
+/// What it cost was not a fifth of a revolution. On a real cabinet the
+/// chorale IS the beat between two rotors turning at different rates, and
+/// at 40 against 40 there is no beat to hear -- the two turn in step and the
+/// slow speed comes out simpler and more periodic than the cabinet's.
+/// `the_two_rotors_do_not_turn_together_on_chorale` is what holds that now.
+const HORN_SLOW_RPM: f32 = 48.0;
 const HORN_FAST_RPM: f32 = 400.0;
 const DRUM_SLOW_RPM: f32 = 40.0;
 const DRUM_FAST_RPM: f32 = 340.0;
@@ -1224,6 +1240,51 @@ fn one_pole(frequency: f32, sample_rate: f32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The four speeds, against what a cabinet is measured to turn at.
+    ///
+    /// Nothing here compared them with anything outside the model, which is
+    /// how the horn's chorale sat at 40 rpm: `the_supply_sets_the_speeds`
+    /// pins the relation to the mains and
+    /// `transition_times_stay_inside_the_documented_range` pins the ramps,
+    /// and a wrong absolute passes both.
+    ///
+    /// The bounds are the spread across published measurements rather than
+    /// one cabinet's figure, because cabinets do vary: a 147 at the middle
+    /// pulley gives 400/48 for the horn and 342/40 for the drum, a 122XB
+    /// gives 405/46 and 395/38.
+    #[test]
+    fn the_rotor_speeds_are_the_ones_a_cabinet_is_measured_to_turn_at() {
+        // Through `black_box`, or the comparisons fold away at compile time
+        // and the assertions stop being assertions.
+        for (name, rpm, low, high) in [
+            ("horn chorale", HORN_SLOW_RPM, 46.0, 50.0),
+            ("horn tremolo", HORN_FAST_RPM, 395.0, 410.0),
+            ("drum chorale", DRUM_SLOW_RPM, 38.0, 42.0),
+            ("drum tremolo", DRUM_FAST_RPM, 335.0, 400.0),
+        ] {
+            let rpm = core::hint::black_box(rpm);
+            assert!((low..=high).contains(&rpm), "{name} at {rpm} rpm");
+        }
+    }
+
+    /// The horn outruns the drum at both speeds, which is where the chorale
+    /// gets its beat.
+    ///
+    /// This is the part that was lost, and it is worth its own assertion
+    /// because the range above would accept two rotors that happened to
+    /// land on the same number.
+    #[test]
+    fn the_two_rotors_do_not_turn_together_on_chorale() {
+        for (name, horn, drum) in [
+            ("chorale", HORN_SLOW_RPM, DRUM_SLOW_RPM),
+            ("tremolo", HORN_FAST_RPM, DRUM_FAST_RPM),
+        ] {
+            let horn = core::hint::black_box(horn);
+            let drum = core::hint::black_box(drum);
+            assert!(horn > drum * 1.1, "{name}: horn {horn} against drum {drum}");
+        }
+    }
 
     /// Runs the cabinet up to a mode, stops it, and reports where each rotor
     /// came to rest and how long the stop took.
