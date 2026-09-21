@@ -209,7 +209,15 @@ microphones, so moving them back zooms out instead of pushing them off the
 edge. The parameter table the surface validates against is the engine's, not a
 copy of it; a range that moves in the DSP moves there too.
 
-## Version 0.48.0 limitations
+## Version 0.49.0 limitations
+
+- The contact bounce decays at setBfree's restitution of 0.5, and the rate
+  both models share, 1302 Hz of bounces, is that project's number rather
+  than one measured here. Where either came from is the keyboard-action
+  study behind a paywall; what is established is that a bounce must lose
+  energy, not by how much.
+- The horn and drum speeds are the spread of published measurements across
+  cabinets rather than one cabinet's. `rotary.rs` carries which.
 
 - The classic B-3 pedal contact and resistor-panel topology is present. The
   L20 pedal-filter coefficient and console matching-network constants remain
