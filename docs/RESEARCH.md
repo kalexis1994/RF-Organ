@@ -57,3 +57,27 @@
 
 Implementation provenance belongs in `THIRD_PARTY_NOTICES.md`. A paper or
 project appearing here does not imply that its source code is incorporated.
+
+### What they settled about the release
+
+Listing a reference is not the same as saying what was read out of it, and
+until the key-off transient was questioned nothing here said. Both of these
+were read, and no code was taken from either.
+
+- Upstream setBfree ships `envAttackModel = ENV_CLICK` against
+  `envReleaseModel = ENV_LINEAR`: an attack that clicks and a release that
+  does not. A clicking release exists and is not the default, and when it is
+  chosen its level is half the attack's, `envReleaseClickLevel` 0.25 against
+  `envAttackClickLevel` 0.50. The burst itself runs between 8 and 40 samples
+  at 22050, which is 0.36 ms to 1.81 ms, and that range is the same for both.
+- The `dynamic-envelopes` branch is Giulio Moro's, the first author of the
+  JASA keyboard-action measurements above, so it is the closest thing to an
+  implementation of them. Its `BouncingEnvelope` is a restitution model --
+  coefficient 0.5, bounce frequency 1302 Hz, amplitude from velocity -- and
+  it is built only when an oscillator is added. On the release path it sets
+  `osp->be = NULL` and hands the oscillator an ordinary `releaseEnv`.
+
+So both treat a key coming up as a different event from a key going down,
+and neither bounces on the way out. `RELEASE_SPREAD_S` and
+`RELEASE_CLICK_SHARE` in `manual.rs` are where that lands here; the tests
+beside them name it.

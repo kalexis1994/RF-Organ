@@ -170,6 +170,31 @@ pub const CONTACT_DELAY_CEILING_S: f32 = 0.7256;
 /// past the point where a step stops being heard as a click and is
 /// provisional.
 pub(crate) const KEY_CLICK_SOFT_S: f32 = 0.010;
+/// How far apart a key's contacts break when it is let go.
+///
+/// This was the press's own formula run backwards, with a floor of 0.25 on
+/// the release velocity because almost no controller sends one. The floor
+/// decided everything: it put every release, however the key was actually
+/// lifted, at 6.4 ms of stagger, against 0.4 ms for a briskly played press.
+/// Sixteen times wider, and not from any measurement -- from a default.
+///
+/// setBfree's click burst covers the whole transient and runs between
+/// 0.36 ms and 1.81 ms, the same range for a release as for an attack; what
+/// it varies between the two is the level, not the length. This takes the
+/// top of that range, so the shipped spread of 0.55 gives a shade under a
+/// millisecond, and the control still reaches the reference's ceiling at
+/// its own.
+pub(crate) const RELEASE_SPREAD_S: f32 = 0.0018;
+/// How much of the attack's arrival a release gets.
+///
+/// setBfree gives the release a click of its own and sets it at half the
+/// attack's: `envReleaseClickLevel` 0.25 against `envAttackClickLevel` 0.50.
+/// Its click is a depth of modulation and this one is a rate of arrival, so
+/// the ratio is transplanted rather than the quantity -- a release arrives
+/// at half the speed the same key would arrive at going down, which is the
+/// nearest thing this model has to the same sentence.
+pub(crate) const RELEASE_CLICK_SHARE: f32 = 0.5;
+
 /// Where that rate control starts, which is also provisional.
 pub const LEAKAGE_BOOST_DEFAULT: f32 = 0.5;
 pub const MANUAL_FIRST_NOTE: u8 = 36;
@@ -449,7 +474,11 @@ impl Manual {
         }
         self.keys[key].active = false;
         self.held = self.held.saturating_sub(1);
-        self.schedule_key(key, false, velocity.max(0.25));
+        // A release reads nothing off this any more: its window is its own
+        // and it does not bounce, so there is nothing for a velocity to
+        // scale. The floor of 0.25 that used to sit here was the whole
+        // reason every release staggered over 6.4 ms.
+        self.schedule_key(key, false, velocity);
         true
     }
 
@@ -460,11 +489,22 @@ impl Manual {
         // on top. Hammond's delay is per contact and not scaled by how the key
         // was played; this keeps that, and spends it across the same order the
         // contacts already close in.
-        let spread_seconds = self.contact_spread * (0.0004 + 0.008 * (1.0 - velocity))
-            + self.contact_delay * CONTACT_DELAY_CEILING_S;
+        //
+        // A key coming up is not a key going down played backwards, and until
+        // now this treated it as one. See `RELEASE_SPREAD_S`.
+        let spread_seconds = if target {
+            self.contact_spread * (0.0004 + 0.008 * (1.0 - velocity))
+        } else {
+            self.contact_spread * RELEASE_SPREAD_S
+        } + self.contact_delay * CONTACT_DELAY_CEILING_S;
         let spread_samples = (spread_seconds * self.sample_rate) as u32;
-        let bounce_samples =
-            (self.contact_bounce * (0.0015 + 0.004 * velocity) * self.sample_rate) as u32;
+        // Bounce is the contact arriving and rebounding off the busbar. A
+        // contact that is leaving has nothing to rebound from.
+        let bounce_samples = if target {
+            (self.contact_bounce * (0.0015 + 0.004 * velocity) * self.sample_rate) as u32
+        } else {
+            0
+        };
         let period = (self.sample_rate / 2_600.0).max(1.0) as u16;
         // A console's contacts arrive abruptly. Turning the click down is
         // turning that arrival into a ramp, which is the same control Hammond
@@ -476,6 +516,13 @@ impl Manual {
         // a switch with a long handle.
         let softest = 1.0 / (KEY_CLICK_SOFT_S * self.sample_rate).max(1.0);
         let click = self.key_click * self.key_click * self.key_click;
+        // A release arrives at a share of the speed a press does. See
+        // `RELEASE_CLICK_SHARE`.
+        let click = if target {
+            click
+        } else {
+            click * RELEASE_CLICK_SHARE
+        };
         let rise = click.max(softest).min(1.0);
         for bus in 0..DRAWBAR_COUNT {
             // On a slow physical press the high contacts become audible first.
@@ -766,6 +813,166 @@ mod tests {
     extern crate std;
 
     use super::*;
+
+    /// Walks one key's contacts and reports, for the press or the release,
+    /// how many samples passed before the last of them stopped moving and
+    /// whether any of them ever reversed on its way there.
+    fn settle(manual: &mut Manual, key: usize) -> (usize, bool) {
+        let mut last_movement = 0;
+        let mut reversed = false;
+        let mut previous = [0.0_f32; DRAWBAR_COUNT];
+        for (slot, contact) in manual.keys[key].contacts.iter().enumerate() {
+            previous[slot] = contact.gate;
+        }
+        let mut direction = [0.0_f32; DRAWBAR_COUNT];
+        for sample in 0..9_600 {
+            manual.tick_contacts();
+            for (slot, contact) in manual.keys[key].contacts.iter().enumerate() {
+                let step = contact.gate - previous[slot];
+                if step != 0.0 {
+                    last_movement = sample;
+                    if direction[slot] != 0.0
+                        && step.is_sign_negative() != direction[slot].is_sign_negative()
+                    {
+                        reversed = true;
+                    }
+                    direction[slot] = step;
+                }
+                previous[slot] = contact.gate;
+            }
+        }
+        (last_movement, reversed)
+    }
+
+    /// A contact that is leaving has nothing to rebound from.
+    ///
+    /// Bounce is the moving contact striking the busbar and coming back off
+    /// it, which is an arrival. Until this was separated, `note_off` ran the
+    /// press's whole schedule backwards and gave every release the same
+    /// burst of chatter -- nine contacts each slamming between open and
+    /// closed on the way out.
+    ///
+    /// Neither open implementation the project reads does that.
+    /// `giuliomoro/setBfree`, the branch written by the author of the JASA
+    /// keyboard-action measurements, drives its bouncing envelope from the
+    /// attack alone and sets the pointer to null on the release path.
+    /// Upstream setBfree ships `envReleaseModel = ENV_LINEAR`: no release
+    /// click at all, with a clicking release available and not chosen.
+    #[test]
+    fn a_key_coming_up_does_not_chatter() {
+        let mut manual = Manual::new(48_000.0, &crate::preset::UPPER_PRESETS);
+        let key = usize::from(60 - MANUAL_FIRST_NOTE);
+
+        assert!(manual.note_on(60, 1.0));
+        let (_, pressing_reversed) = settle(&mut manual, key);
+        assert!(
+            pressing_reversed,
+            "the press should still bounce; that is the click"
+        );
+
+        assert!(manual.note_off(60, 1.0));
+        let (_, releasing_reversed) = settle(&mut manual, key);
+        assert!(!releasing_reversed, "a release must not chatter");
+    }
+
+    /// The release breaks its contacts over its own window, not the press's
+    /// run backwards.
+    ///
+    /// What it used to do was run the press's formula with a release
+    /// velocity, floored at 0.25 because almost no controller sends one.
+    /// The floor decided it: every release, however the key was lifted, got
+    /// 6.4 ms of stagger against 0.4 ms for a brisk press. Sixteen times
+    /// wider, out of a default rather than a measurement.
+    ///
+    /// setBfree's click burst covers the whole transient and runs between
+    /// 0.36 ms and 1.81 ms, the same range for a release as for an attack.
+    /// At the shipped spread this lands a shade under a millisecond, inside
+    /// that window, and the bound here is the window's own top.
+    #[test]
+    fn a_release_breaks_inside_the_window_the_references_use() {
+        let mut manual = Manual::new(48_000.0, &crate::preset::UPPER_PRESETS);
+        let key = usize::from(60 - MANUAL_FIRST_NOTE);
+
+        assert!(manual.note_on(60, 1.0));
+        let _ = settle(&mut manual, key);
+        // Zero, which is what almost every controller sends and what used
+        // to hit the floor of 0.25 that decided the whole window.
+        assert!(manual.note_off(60, 0.0));
+        let (last_movement, _) = settle(&mut manual, key);
+
+        let milliseconds = last_movement as f32 * 1000.0 / 48_000.0;
+        assert!(
+            milliseconds <= 1.81,
+            "the release took {milliseconds} ms, past setBfree's longest burst"
+        );
+        assert!(
+            milliseconds > 0.0,
+            "the release became instantaneous, which is not the repair"
+        );
+
+        // And it no longer follows the press: a key pressed at the very
+        // velocity the release used to claim -- the floor of 0.25 -- still
+        // staggers several times wider than the release does.
+        let mut slow = Manual::new(48_000.0, &crate::preset::UPPER_PRESETS);
+        assert!(slow.note_on(60, 0.25));
+        let (pressed_slowly, _) = settle(&mut slow, key);
+        assert!(
+            pressed_slowly as f32 > last_movement as f32 * 3.0,
+            "press {pressed_slowly} against release {last_movement}: the two are still tied"
+        );
+    }
+
+    /// A release arrives at a share of the speed a press does.
+    ///
+    /// setBfree gives the release a click of its own at half the attack's:
+    /// `envReleaseClickLevel` 0.25 against `envAttackClickLevel` 0.50. Its
+    /// click is a depth of modulation and this one is a rate of arrival, so
+    /// what carries over is the ratio, not the quantity.
+    #[test]
+    fn a_release_arrives_at_a_share_of_the_speed_a_press_does() {
+        let mut manual = Manual::new(48_000.0, &crate::preset::UPPER_PRESETS);
+        let key = usize::from(60 - MANUAL_FIRST_NOTE);
+
+        assert!(manual.note_on(60, 1.0));
+        let pressing = manual.keys[key].contacts[0].rise;
+        let _ = settle(&mut manual, key);
+        assert!(manual.note_off(60, 1.0));
+        let releasing = manual.keys[key].contacts[0].rise;
+
+        // Spelled out rather than taken from the constant: a test that
+        // reads the number it is checking cannot fail when it moves.
+        assert!(
+            (releasing - pressing * 0.5).abs() <= 1.0e-6,
+            "press arrives at {pressing}, release at {releasing}, which is not half"
+        );
+    }
+
+    /// All-notes-off is not a key coming up, and does not sound like one.
+    ///
+    /// `Manual::reset` clears the gates and the contact state by hand. That
+    /// is right for a panic message, which is not a gesture anybody made,
+    /// but it means the two ways a note can stop do not sound alike: this
+    /// one has no transient at all. Stated here so that it stays a decision
+    /// rather than becoming a surprise.
+    #[test]
+    fn all_notes_off_cuts_without_touching_a_contact() {
+        let mut manual = Manual::new(48_000.0, &crate::preset::UPPER_PRESETS);
+        let key = usize::from(60 - MANUAL_FIRST_NOTE);
+
+        assert!(manual.note_on(60, 1.0));
+        let _ = settle(&mut manual, key);
+        manual.reset();
+
+        assert!(!manual.keys[key].settling);
+        assert!(
+            manual.keys[key]
+                .contacts
+                .iter()
+                .all(|contact| contact.gate == 0.0),
+        );
+        let (last_movement, _) = settle(&mut manual, key);
+        assert_eq!(last_movement, 0, "reset left something still moving");
+    }
 
     #[test]
     fn foldback_matches_the_b3_manual_rules() {
