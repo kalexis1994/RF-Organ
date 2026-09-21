@@ -170,6 +170,29 @@ pub const CONTACT_DELAY_CEILING_S: f32 = 0.7256;
 /// past the point where a step stops being heard as a click and is
 /// provisional.
 pub(crate) const KEY_CLICK_SOFT_S: f32 = 0.010;
+/// How often a bouncing contact is asked again which side it is on.
+///
+/// This was a bare 2600 with nothing beside it, and it is worth a sentence
+/// because it is not a redraw rate anywhere else: setBfree carries the same
+/// quantity as 1302 Hz, which is how often a contact completes a bounce.
+/// One bounce is two of these -- away and back -- so 2600 is 1302 written
+/// as a half period, and the two models agree on the number even though
+/// nothing here said so.
+const BOUNCE_REDRAW_HZ: f32 = 2_600.0;
+/// How much of its travel a contact keeps across one bounce.
+///
+/// A contact that strikes a busbar loses energy to it, so each bounce
+/// carries it less far and it spends more of each one touching. Before
+/// this the chatter was uniform: a contact was exactly as agitated at the
+/// end of its bounce as at the start, and then a counter reached zero and
+/// it stopped dead. Nothing that bounces does that.
+///
+/// The value is setBfree's, whose restitution model came from the author of
+/// the keyboard-action measurements. What it produces here is the same
+/// progressive settling: the odds of finding the contact away from where
+/// the key is taking it start at certainty and halve every redraw, so it
+/// closes gradually rather than all at once when the budget runs out.
+const BOUNCE_RESTITUTION: f32 = 0.5;
 /// How far apart a key's contacts break when it is let go.
 ///
 /// This was the press's own formula run backwards, with a floor of 0.25 on
@@ -233,6 +256,9 @@ struct Contact {
     period: u16,
     period_left: u16,
     noise: u32,
+    /// How far this contact still travels between touches, as a share of
+    /// its first bounce. See `BOUNCE_RESTITUTION`.
+    bounce_travel: f32,
 }
 
 impl Contact {
@@ -246,6 +272,7 @@ impl Contact {
         period: 1,
         period_left: 0,
         noise: 1,
+        bounce_travel: 1.0,
     };
 
     fn schedule(
@@ -264,6 +291,7 @@ impl Contact {
         self.period = period.max(1);
         self.period_left = 0;
         self.noise = seed.max(1);
+        self.bounce_travel = 1.0;
     }
 
     /// A contact with nothing left to do: no delay to count down, no bounce
@@ -296,9 +324,20 @@ impl Contact {
                 self.noise ^= self.noise << 13;
                 self.noise ^= self.noise >> 17;
                 self.noise ^= self.noise << 5;
-                let settled = self.noise & 3 == 0;
-                let closed = if settled { self.target } else { !self.target };
+                // How likely the contact is to be found away from where the
+                // key is taking it, which is how far it still travels. At
+                // the first touch that is a certainty; by the seventh it is
+                // one chance in a hundred, and the contact has closed
+                // without anything having to declare it closed.
+                let draw = (self.noise >> 8) as f32 / (1_u32 << 24) as f32;
+                let travelling = draw < self.bounce_travel;
+                let closed = if travelling {
+                    !self.target
+                } else {
+                    self.target
+                };
                 self.gate = if closed { 1.0 } else { 0.0 };
+                self.bounce_travel *= BOUNCE_RESTITUTION;
                 self.period_left = self.period;
             } else {
                 self.period_left -= 1;
@@ -505,7 +544,7 @@ impl Manual {
         } else {
             0
         };
-        let period = (self.sample_rate / 2_600.0).max(1.0) as u16;
+        let period = (self.sample_rate / BOUNCE_REDRAW_HZ).max(1.0) as u16;
         // A console's contacts arrive abruptly. Turning the click down is
         // turning that arrival into a ramp, which is the same control Hammond
         // gives and the same sentence: the attack slows as the click goes.
@@ -813,6 +852,52 @@ mod tests {
     extern crate std;
 
     use super::*;
+
+    /// A bouncing contact runs out of bounce before its budget does.
+    ///
+    /// It used to chatter at one rate for as long as the budget lasted and
+    /// then stop dead, which is not what anything that bounces does: a
+    /// contact gives energy to the busbar it strikes, so each touch carries
+    /// it less far and it spends more of each one closed. It should arrive
+    /// on its own, not because a counter reached zero.
+    ///
+    /// Measured across all nine contacts, because one of them only gets
+    /// half a dozen redraws and a single reversal either way says nothing --
+    /// which is what a first version of this test asserted, and it passed
+    /// with the restitution removed.
+    ///
+    /// The budget at the shipped settings is 119 samples, and the last
+    /// contact starts about 10 after the first, so a bounce that outlasts
+    /// its energy ends around 129. With the restitution the last reversal
+    /// lands at 68; without it, at 128. Two milliseconds sits between them
+    /// with room on both sides.
+    #[test]
+    fn a_bouncing_contact_runs_out_of_bounce() {
+        let mut manual = Manual::new(48_000.0, &crate::preset::UPPER_PRESETS);
+        let key = usize::from(60 - MANUAL_FIRST_NOTE);
+        assert!(manual.note_on(60, 1.0));
+
+        const WINDOW: usize = 480;
+        let mut previous = [0.0_f32; DRAWBAR_COUNT];
+        let mut reversals = 0usize;
+        let mut last = 0usize;
+        for sample in 0..WINDOW {
+            manual.tick_contacts();
+            for (slot, contact) in manual.keys[key].contacts.iter().enumerate() {
+                if contact.gate != previous[slot] {
+                    reversals += 1;
+                    last = sample;
+                }
+                previous[slot] = contact.gate;
+            }
+        }
+
+        assert!(reversals > 5, "the press barely bounced: {reversals}");
+        assert!(
+            last < 96,
+            "still bouncing at {last} samples, so the budget stopped it rather than the contact settling"
+        );
+    }
 
     /// Walks one key's contacts and reports, for the press or the release,
     /// how many samples passed before the last of them stopped moving and
