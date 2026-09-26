@@ -124,8 +124,7 @@ pub const CONTROL_IDS: [&str; PARAMETERS] = [
 
 /// Elements the cabinet view writes to, which are not parameters and are
 /// reached by name just the same.
-pub const VIEW_IDS: [&str; 12] = [
-    "programs",
+pub const VIEW_IDS: [&str; 11] = [
     "status",
     "rotary-view",
     "mic-readout",
@@ -140,27 +139,20 @@ pub const VIEW_IDS: [&str; 12] = [
 ];
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct Sound {
-    pub id: String,
-    pub name: String,
-}
-
-#[derive(Clone, Debug, PartialEq)]
 enum Operation {
     Fetch,
     Set(usize, f64),
-    Select(String),
 }
 
 pub struct Client {
     pub values: [f64; PARAMETERS],
-    pub sounds: Vec<Sound>,
+    /// The host's program. RackForge's program selector chooses it; the
+    /// surface only follows, re-reading the controls when it changes.
     pub selected: String,
     pub status: String,
     pub loaded: bool,
     queued: [Option<f64>; PARAMETERS],
     pending: Option<(String, Operation, f64)>,
-    selection: Option<String>,
     refresh: bool,
     serial: u64,
 }
@@ -169,13 +161,11 @@ impl Default for Client {
     fn default() -> Self {
         Self {
             values: DEFAULTS,
-            sounds: Vec::new(),
             selected: String::new(),
             status: "Connecting to RackForge…".into(),
             loaded: false,
             queued: [None; PARAMETERS],
             pending: None,
-            selection: None,
             refresh: false,
             serial: 0,
         }
@@ -227,17 +217,6 @@ pub fn host_lighting(context: &Value) -> Option<&'static str> {
 
 impl Client {
     pub fn context(&mut self, instance: &Value) {
-        self.sounds = instance["sounds"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter_map(|sound| {
-                Some(Sound {
-                    id: sound["id"].as_str()?.to_owned(),
-                    name: sound["name"].as_str()?.to_owned(),
-                })
-            })
-            .collect();
         let selected = instance["selected_sound_id"].as_str().unwrap_or("");
         if selected != self.selected {
             self.selected = selected.to_owned();
@@ -248,17 +227,8 @@ impl Client {
     }
 
     pub fn queue(&mut self, index: usize, value: f64) {
-        if self.loaded && self.selection.is_none() && valid(index, value) {
+        if self.loaded && valid(index, value) {
             self.queued[index] = Some(value);
-        }
-    }
-
-    pub fn select(&mut self, id: &str) {
-        if self.loaded && self.sounds.iter().any(|sound| sound.id == id) {
-            self.queued.fill(None);
-            self.selection = Some(id.to_owned());
-            self.loaded = false;
-            self.status = "Loading program…".into();
         }
     }
 
@@ -277,7 +247,6 @@ impl Client {
             .is_some_and(|(_, _, sent)| now - sent > 5_000.0)
         {
             self.pending = None;
-            self.selection = None;
             self.queued.fill(None);
             self.loaded = false;
             self.refresh = true;
@@ -286,9 +255,7 @@ impl Client {
         if self.pending.is_some() {
             return None;
         }
-        let operation = if let Some(id) = self.selection.take() {
-            Operation::Select(id)
-        } else if self.refresh {
+        let operation = if self.refresh {
             self.refresh = false;
             Operation::Fetch
         } else if let Some(index) = self.queued.iter().position(Option::is_some) {
@@ -306,7 +273,6 @@ impl Client {
                 "plugin.set_parameter",
                 json!({"parameter_index": index, "value": value}),
             ),
-            Operation::Select(id) => ("plugin.select_sound", json!({"sound_id": id})),
         };
         self.pending = Some((request_id.clone(), operation, now));
         Some(json!({
@@ -334,10 +300,6 @@ impl Client {
             return;
         }
         match operation {
-            Operation::Select(_) => {
-                self.loaded = false;
-                self.refresh = true;
-            }
             Operation::Set(index, _) => {
                 if let Some(value) = message["result"]["value"]
                     .as_f64()
@@ -432,24 +394,30 @@ mod tests {
         assert_eq!(client.next(2.0, false).unwrap()["params"]["value"], 3.0);
     }
 
+    /// RackForge's program selector changes the program; the surface drops
+    /// what it had queued for the old one and reads the new one's controls.
     #[test]
-    fn context_catalog_allows_program_selection() {
+    fn a_program_chosen_by_the_host_reloads_the_controls() {
         let mut client = Client::default();
-        client.context(&json!({
-            "selected_sound_id": "straight-888",
-            "sounds": [
-                {"id": "straight-888", "name": "Straight 888"},
-                {"id": "chorale-888", "name": "Chorale 888"}
-            ]
-        }));
-        assert_eq!(client.selected, "straight-888");
-        assert_eq!(client.sounds.len(), 2);
+        client.context(&json!({"selected_sound_id": "straight-888"}));
         connect(&mut client);
-        client.select("chorale-888");
+        client.queue(2, 6.0);
+        client.context(&json!({"selected_sound_id": "chorale-888"}));
+        assert_eq!(client.selected, "chorale-888");
+        assert!(!client.loaded);
         assert_eq!(
             client.next(1.0, false).unwrap()["method"],
-            "plugin.select_sound"
+            "plugin.parameters"
         );
+    }
+
+    /// The program is RackForge's selector's to show; the page keeps no
+    /// control of its own that could disagree with it.
+    #[test]
+    fn packaged_surface_carries_the_rackforge_program_selector() {
+        let html = include_str!("../../../package/web/play.html");
+        assert_eq!(html.matches("<rf-program-select").count(), 1);
+        assert!(!html.contains("id=\"programs\""));
     }
 
     #[test]
