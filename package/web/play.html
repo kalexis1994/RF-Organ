@@ -9,8 +9,9 @@
   <body>
     <main>
       <header>
-        <div class="wordmark"><p class="eyebrow">RACKFORGE ELECTROMECHANICAL</p><h1>RF<span>–</span>ORGAN</h1></div>
-        <label class="program">Program<select id="programs" disabled></select></label>
+        <div class="wordmark"><p class="eyebrow">RACKFORGE INSTRUMENTS</p><h1>RF<span>–</span>ORGAN</h1></div>
+        <!-- RackForge supplies this element and the programs it lists. -->
+        <div class="program"><span class="caption">Program</span><rf-program-select id="program-selector" placeholder="Search programs"></rf-program-select></div>
         <p id="status" role="status">Connecting to RackForge…</p>
       </header>
 
