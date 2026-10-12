@@ -56,7 +56,15 @@ const fn gearing(index: usize) -> Option<(u16, u16, u16)> {
 /// slightly louder and softer at that rate. The depth of it differs from
 /// organ to organ; this default is provisional and the laboratory measures
 /// the sidebands it produces.
-const ECCENTRICITY_DEPTH: f32 = 0.015;
+pub(crate) const ECCENTRICITY_DEPTH: f32 = 0.015;
+
+/// How far the lowest wheels stray from a sine, as the share of third and
+/// fifth harmonic in their profile: the bottom octave carries both, the
+/// octave above it a smaller third only, and every wheel above that is a
+/// sine. Provisional pending wheel recordings.
+pub(crate) const LOW_OCTAVE_THIRD: f32 = 0.12;
+pub(crate) const SECOND_OCTAVE_THIRD: f32 = 0.045;
+pub(crate) const LOW_OCTAVE_FIFTH: f32 = 0.035;
 
 /// The speed of the one shaft everything hangs off.
 ///
@@ -65,8 +73,8 @@ const ECCENTRICITY_DEPTH: f32 = 0.015;
 /// 1500 rpm on fifty. The wheels are geared to it so that the organ plays at
 /// pitch either way, which is why the supply moves what follows and not the
 /// tuning.
-const SHAFT_RPM_SIXTY: f32 = 1200.0;
-const SHAFT_RPM_FIFTY: f32 = 1500.0;
+pub(crate) const SHAFT_RPM_SIXTY: f32 = 1200.0;
+pub(crate) const SHAFT_RPM_FIFTY: f32 = 1500.0;
 
 /// How steady that shaft is not.
 ///
@@ -85,19 +93,19 @@ const SHAFT_RPM_FIFTY: f32 = 1500.0;
 /// flutter at the speed above. How far it strays in each, and at what rate it
 /// swings, are not numbers Hammond publishes, so they are provisional and the
 /// laboratory reports the pitch deviation they come to.
-const WOW_RATE_HZ: f32 = 2.7;
-const WOW_DEPTH: f32 = 6.0e-4;
-const FLUTTER_DEPTH: f32 = 4.0e-4;
+pub(crate) const WOW_RATE_HZ: f32 = 2.7;
+pub(crate) const WOW_DEPTH: f32 = 6.0e-4;
+pub(crate) const FLUTTER_DEPTH: f32 = 4.0e-4;
 
 /// The coil springs between each bakelite gear and its assembly, as one
 /// resonance. Every assembly is built the same way, so they are modelled as
 /// one filter rather than 48 identical ones; what the springs do to the shaft
 /// before it reaches the wheels is a low pass with a rise at its corner, and
 /// where that corner sits is provisional.
-const COUPLING_HZ: f32 = 34.0;
+pub(crate) const COUPLING_HZ: f32 = 34.0;
 /// Samples between readings of the drive's speed.
 const RETIME_INTERVAL: u32 = 64;
-const COUPLING_DAMPING: f32 = 0.6;
+pub(crate) const COUPLING_DAMPING: f32 = 0.6;
 
 /// The drive shaft, and the springs between it and the wheels.
 #[derive(Clone, Copy)]
@@ -229,12 +237,16 @@ impl Tonewheel {
         let squared = sine * sine;
         let fifth = sine * (16.0 * squared * squared - 20.0 * squared + 5.0);
         let third_gain = if index < 24 && self.frequency * 3.0 < sample_rate * 0.48 {
-            if index < 12 { 0.12 } else { 0.045 }
+            if index < 12 {
+                LOW_OCTAVE_THIRD
+            } else {
+                SECOND_OCTAVE_THIRD
+            }
         } else {
             0.0
         };
         let fifth_gain = if index < 12 && self.frequency * 5.0 < sample_rate * 0.48 {
-            0.035
+            LOW_OCTAVE_FIFTH
         } else {
             0.0
         };

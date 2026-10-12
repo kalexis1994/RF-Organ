@@ -2,7 +2,10 @@
 
 use core::f32::consts::TAU;
 
-use crate::manual::KEY_CLICK_SOFT_S;
+use crate::manual::{
+    BOUNCE_GENTLE_S, BOUNCE_HARD_S, BOUNCE_REDRAW_HZ, KEY_CLICK_SOFT_S, PRESS_SPREAD_BRISK_S,
+    PRESS_SPREAD_GENTLE_S,
+};
 use crate::tonewheel::TONEWHEEL_COUNT;
 
 pub const PEDAL_DRAWBAR_COUNT: usize = 2;
@@ -11,6 +14,10 @@ pub const PEDAL_KEY_COUNT: usize = 25;
 const PEDAL_LAST_NOTE: u8 = PEDAL_FIRST_NOTE + PEDAL_KEY_COUNT as u8 - 1;
 const PEDAL_CONTACT_COUNT: usize = 8;
 const PEDAL_BUS_COUNT: usize = 4;
+/// The release velocity a pedal key is treated as having when the controller
+/// sends a softer one, which almost none send at all. The manuals no longer
+/// read a release this way; the pedals still do. Provisional.
+pub(crate) const RELEASE_VELOCITY_FLOOR: f32 = 0.25;
 const DRAWBAR_LEVELS: [f32; 9] = [0.0, 0.089, 0.126, 0.178, 0.251, 0.355, 0.501, 0.708, 1.0];
 
 // Physical spring order from the late 25-note console pedal switch: 10th,
@@ -242,18 +249,20 @@ impl Pedalboard {
             return true;
         }
         self.keys[key].active = false;
-        self.schedule_key(key, false, velocity.max(0.25));
+        self.schedule_key(key, false, velocity.max(RELEASE_VELOCITY_FLOOR));
         true
     }
 
     fn schedule_key(&mut self, key: usize, target: bool, velocity: f32) {
         self.event_counter = self.event_counter.wrapping_add(1);
         self.keys[key].settling = true;
-        let spread_seconds = self.contact_spread * (0.0004 + 0.008 * (1.0 - velocity));
+        let spread_seconds =
+            self.contact_spread * (PRESS_SPREAD_BRISK_S + PRESS_SPREAD_GENTLE_S * (1.0 - velocity));
         let spread_samples = (spread_seconds * self.sample_rate) as u32;
-        let bounce_samples =
-            (self.contact_bounce * (0.0015 + 0.004 * velocity) * self.sample_rate) as u32;
-        let period = (self.sample_rate / 2_600.0).max(1.0) as u16;
+        let bounce_samples = (self.contact_bounce
+            * (BOUNCE_GENTLE_S + BOUNCE_HARD_S * velocity)
+            * self.sample_rate) as u32;
+        let period = (self.sample_rate / BOUNCE_REDRAW_HZ).max(1.0) as u16;
         let softest = 1.0 / (KEY_CLICK_SOFT_S * self.sample_rate).max(1.0);
         let click = self.key_click * self.key_click * self.key_click;
         let rise = click.max(softest).min(1.0);

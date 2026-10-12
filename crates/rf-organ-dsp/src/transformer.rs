@@ -14,7 +14,16 @@ pub const ASYMMETRY_DEFAULT: f32 = 0.10;
 
 /// How much of the bend the lean may take before the weak half of the curve
 /// would stop bending at all. See `process`.
-const LEAN_CEILING: f32 = 0.9;
+pub(crate) const LEAN_CEILING: f32 = 0.9;
+/// The reduced core: how fast its magnetic memory follows the signal, how far
+/// the drive control pushes the signal into it and the memory biases it, and
+/// how the curve's bend grows with the memory control. All provisional; the
+/// laboratory fits drive and memory per unit from intermodulation captures.
+pub(crate) const MEMORY_HZ: f32 = 900.0;
+pub(crate) const DRIVE_GAIN: f32 = 5.0;
+pub(crate) const MEMORY_BIAS: f32 = 0.8;
+pub(crate) const BEND_FLOOR: f32 = 0.55;
+pub(crate) const BEND_SPAN: f32 = 0.35;
 
 /// Reduced magnetic model shared by the AO-28 T1/T2 input matching
 /// transformers and the T3 output transformer. Each instance owns its own
@@ -70,10 +79,10 @@ impl MatchingTransformer {
         // Provisional reduced model: a slow magnetic state biases a smooth
         // saturation. It is shared by all notes and therefore also produces
         // the expected inter-note interaction.
-        let memory_rate = (900.0 / self.sample_rate).clamp(0.001, 0.1);
+        let memory_rate = (MEMORY_HZ / self.sample_rate).clamp(0.001, 0.1);
         self.magnetization += memory_rate * (input - self.magnetization);
-        let driven =
-            input * (1.0 + 5.0 * self.drive) + self.magnetization * (0.8 * self.hysteresis);
+        let driven = input * (1.0 + DRIVE_GAIN * self.drive)
+            + self.magnetization * (MEMORY_BIAS * self.hysteresis);
         // A core does not sit at the middle of its own curve: it keeps some of
         // the magnetisation it has been given, and the two halves of a wave
         // then saturate differently. The lean is a property of the core rather
@@ -83,7 +92,7 @@ impl MatchingTransformer {
         // hundredths of a decibel and was no model at all. How far a real core
         // leans is provisional; that an odd curve has no even harmonics to
         // give is not.
-        let bend = 0.55 + 0.35 * self.hysteresis;
+        let bend = BEND_FLOOR + BEND_SPAN * self.hysteresis;
         // The lean is a perturbation on the bend and may not cancel it. Left
         // unbounded it could: `asymmetry` reaches one from the host, and
         // there the weak half's curve came out at exactly zero, its divisor

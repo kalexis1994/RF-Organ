@@ -138,7 +138,7 @@ impl Registration {
 /// How much louder the leakage gets for each extra key held, at the top of
 /// the rate control. Provisional: Hammond publishes that the rate exists and
 /// is adjustable, not what it is.
-const LEAKAGE_PER_KEY: f32 = 0.35;
+pub(crate) const LEAKAGE_PER_KEY: f32 = 0.35;
 
 /// How far apart a key's contacts may be asked to arrive, beyond the spread a
 /// press of its own gives them.
@@ -178,7 +178,7 @@ pub(crate) const KEY_CLICK_SOFT_S: f32 = 0.010;
 /// One bounce is two of these -- away and back -- so 2600 is 1302 written
 /// as a half period, and the two models agree on the number even though
 /// nothing here said so.
-const BOUNCE_REDRAW_HZ: f32 = 2_600.0;
+pub(crate) const BOUNCE_REDRAW_HZ: f32 = 2_600.0;
 /// How much of its travel a contact keeps across one bounce.
 ///
 /// A contact that strikes a busbar loses energy to it, so each bounce
@@ -192,7 +192,19 @@ const BOUNCE_REDRAW_HZ: f32 = 2_600.0;
 /// progressive settling: the odds of finding the contact away from where
 /// the key is taking it start at certainty and halve every redraw, so it
 /// closes gradually rather than all at once when the budget runs out.
-const BOUNCE_RESTITUTION: f32 = 0.5;
+pub(crate) const BOUNCE_RESTITUTION: f32 = 0.5;
+
+/// How far apart a press spreads a key's contacts: the briskest press spreads
+/// them by the first figure, the gentlest by the first plus the second, at the
+/// top of the spread control. Provisional: the keyboard-action study that
+/// measured this is behind a paywall.
+pub(crate) const PRESS_SPREAD_BRISK_S: f32 = 0.0004;
+pub(crate) const PRESS_SPREAD_GENTLE_S: f32 = 0.008;
+/// How long an arriving contact bounces, at the top of the bounce control:
+/// the first figure for the gentlest press, plus the second for the hardest.
+/// Provisional for the same reason.
+pub(crate) const BOUNCE_GENTLE_S: f32 = 0.0015;
+pub(crate) const BOUNCE_HARD_S: f32 = 0.004;
 /// How far apart a key's contacts break when it is let go.
 ///
 /// This was the press's own formula run backwards, with a floor of 0.25 on
@@ -532,7 +544,7 @@ impl Manual {
         // A key coming up is not a key going down played backwards, and until
         // now this treated it as one. See `RELEASE_SPREAD_S`.
         let spread_seconds = if target {
-            self.contact_spread * (0.0004 + 0.008 * (1.0 - velocity))
+            self.contact_spread * (PRESS_SPREAD_BRISK_S + PRESS_SPREAD_GENTLE_S * (1.0 - velocity))
         } else {
             self.contact_spread * RELEASE_SPREAD_S
         } + self.contact_delay * CONTACT_DELAY_CEILING_S;
@@ -540,7 +552,8 @@ impl Manual {
         // Bounce is the contact arriving and rebounding off the busbar. A
         // contact that is leaving has nothing to rebound from.
         let bounce_samples = if target {
-            (self.contact_bounce * (0.0015 + 0.004 * velocity) * self.sample_rate) as u32
+            (self.contact_bounce * (BOUNCE_GENTLE_S + BOUNCE_HARD_S * velocity) * self.sample_rate)
+                as u32
         } else {
             0
         };

@@ -11,6 +11,7 @@ mod manual;
 mod pedal;
 mod percussion;
 mod preset;
+pub mod provenance;
 mod rotary;
 mod scanner;
 mod taper;
@@ -54,6 +55,9 @@ use tonewheel::TonewheelBank;
 
 pub const SAMPLE_RATE_MIN: f32 = 32_000.0;
 pub const SAMPLE_RATE_MAX: f32 = 192_000.0;
+/// How much of a neighbouring wheel reaches the busbar at the top of the
+/// leakage control. Provisional: Hammond describes leakage, not its level.
+pub(crate) const LEAKAGE_CEILING: f32 = 0.12;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ModelError(pub &'static str);
@@ -348,7 +352,7 @@ impl OrganEngine {
         if !unit(value) {
             return false;
         }
-        self.leakage = value * 0.12;
+        self.leakage = value * LEAKAGE_CEILING;
         true
     }
 

@@ -23,28 +23,28 @@ const DELAY_CAPACITY: usize = 8192;
 /// at 40 against 40 there is no beat to hear -- the two turn in step and the
 /// slow speed comes out simpler and more periodic than the cabinet's.
 /// `the_two_rotors_do_not_turn_together_on_chorale` is what holds that now.
-const HORN_SLOW_RPM: f32 = 48.0;
-const HORN_FAST_RPM: f32 = 400.0;
-const DRUM_SLOW_RPM: f32 = 40.0;
-const DRUM_FAST_RPM: f32 = 340.0;
+pub(crate) const HORN_SLOW_RPM: f32 = 48.0;
+pub(crate) const HORN_FAST_RPM: f32 = 400.0;
+pub(crate) const DRUM_SLOW_RPM: f32 = 40.0;
+pub(crate) const DRUM_FAST_RPM: f32 = 340.0;
 /// Transition times in seconds at the middle of the acceleration control. A
 /// rotor and its belt cannot move faster than Hammond's documented floor of
 /// 0.8 s for the horn and 1.0 s for the drum, and the heavy drum takes several
 /// times longer than the horn. The values themselves are provisional; the
 /// laboratory measures what they produce.
-const HORN_RISE_SECONDS: f32 = 1.0;
-const HORN_FALL_SECONDS: f32 = 1.2;
-const HORN_BRAKE_SECONDS: f32 = 1.0;
-const DRUM_RISE_SECONDS: f32 = 2.6;
-const DRUM_FALL_SECONDS: f32 = 3.6;
-const DRUM_BRAKE_SECONDS: f32 = 2.4;
+pub(crate) const HORN_RISE_SECONDS: f32 = 1.0;
+pub(crate) const HORN_FALL_SECONDS: f32 = 1.2;
+pub(crate) const HORN_BRAKE_SECONDS: f32 = 1.0;
+pub(crate) const DRUM_RISE_SECONDS: f32 = 2.6;
+pub(crate) const DRUM_FALL_SECONDS: f32 = 3.6;
+pub(crate) const DRUM_BRAKE_SECONDS: f32 = 2.4;
 /// Documented floors and ceiling for those times.
-const HORN_TIME_FLOOR: f32 = 0.8;
-const DRUM_TIME_FLOOR: f32 = 1.0;
-const TIME_CEILING: f32 = 12.5;
+pub(crate) const HORN_TIME_FLOOR: f32 = 0.8;
+pub(crate) const DRUM_TIME_FLOOR: f32 = 1.0;
+pub(crate) const TIME_CEILING: f32 = 12.5;
 /// A mode switch reaches the motor through a relay and a clutch, so the rotor
 /// does not begin to change speed at once. Hammond exposes this as 0 to 1 s.
-const MODE_DELAY_SECONDS: f32 = 0.04;
+pub(crate) const MODE_DELAY_SECONDS: f32 = 0.04;
 
 const fn rpm_to_hz(rpm: f32) -> f32 {
     rpm / 60.0
@@ -52,7 +52,7 @@ const fn rpm_to_hz(rpm: f32) -> f32 {
 
 /// Below this the rotor is treated as already at rest, and a stop has nothing
 /// left to aim.
-const RESTING_HZ: f32 = 1.0e-4;
+pub(crate) const RESTING_HZ: f32 = 1.0e-4;
 
 /// The supply the cabinet's motors are running from.
 ///
@@ -98,7 +98,7 @@ impl MainsFrequency {
 }
 
 /// The supply the quoted speeds belong to.
-const RATED_MAINS_HZ: f32 = 60.0;
+pub(crate) const RATED_MAINS_HZ: f32 = 60.0;
 
 /// What the cabinet's microphones are.
 ///
@@ -130,12 +130,12 @@ impl MicrophoneType {
 
 /// The presence a dynamic capsule adds and the top it gives up, both
 /// provisional.
-const DYNAMIC_PRESENCE_HZ: f32 = 3_000.0;
-const DYNAMIC_PRESENCE_LIFT: f32 = 0.4;
-const DYNAMIC_TOP_HZ: f32 = 11_000.0;
+pub(crate) const DYNAMIC_PRESENCE_HZ: f32 = 3_000.0;
+pub(crate) const DYNAMIC_PRESENCE_LIFT: f32 = 0.4;
+pub(crate) const DYNAMIC_TOP_HZ: f32 = 11_000.0;
 /// The most bass a capsule may gain by being close, which stands in for the
 /// roll-off every real capsule has under it.
-const PROXIMITY_MAX_LIFT: f32 = 0.8;
+pub(crate) const PROXIMITY_MAX_LIFT: f32 = 0.8;
 
 /// How loud each of the three microphone channels may be.
 ///
@@ -150,8 +150,65 @@ pub const SUB_LEVEL_DEFAULT_DB: f32 = -9.0;
 /// The woofer's sound reaches the drum's pair of microphones and, less of it,
 /// the horn's. Hammond says which one hears it and which one barely does, not
 /// by how much, so the ratio is provisional.
-const SUB_INTO_DRUM: f32 = 1.0;
-const SUB_INTO_HORN: f32 = 0.25;
+pub(crate) const SUB_INTO_DRUM: f32 = 1.0;
+pub(crate) const SUB_INTO_HORN: f32 = 0.25;
+
+/// Where the cabinet's crossover splits the signal between the horn and the
+/// drum. The figure is the one quoted for the cabinet; the slope here is a
+/// single pole, which is this model's reduction rather than the network's.
+pub(crate) const CROSSOVER_HZ: f32 = 800.0;
+
+/// The horn's directivity, as a shelf that turns with it: below the corner
+/// its output varies between the body's two levels as the mouth turns away
+/// and back, above it between the top's. All six numbers are provisional,
+/// standing in for responses measured around a cabinet at many angles.
+pub(crate) const HORN_SHELF_HZ: f32 = 2_200.0;
+pub(crate) const HORN_BODY_AWAY: f32 = 0.55;
+pub(crate) const HORN_BODY_FACING: f32 = 0.35;
+pub(crate) const HORN_TOP_AWAY: f32 = 0.20;
+pub(crate) const HORN_TOP_FACING: f32 = 0.80;
+/// How much more a microphone hears of the drum when its port faces it.
+/// Provisional, as the horn's are.
+pub(crate) const DRUM_AWAY: f32 = 0.66;
+pub(crate) const DRUM_FACING: f32 = 0.34;
+
+/// One early reflection inside the cabinet: its level, and how long it takes
+/// to reach the left and the right microphone.
+#[derive(Clone, Copy)]
+struct Reflection {
+    gain: f32,
+    left_s: f32,
+    right_s: f32,
+}
+
+/// Three early reflections, the first two taken from the near and the far
+/// channel and the third, inverted, from the near one again; and how loud the
+/// set is at the top of the reflections control. Provisional: they give the
+/// cabinet a body, and no cabinet's reflections have been measured for them.
+const REFLECTIONS: [Reflection; 3] = [
+    Reflection {
+        gain: 0.42,
+        left_s: 0.0037,
+        right_s: 0.0041,
+    },
+    Reflection {
+        gain: 0.28,
+        left_s: 0.0063,
+        right_s: 0.0069,
+    },
+    Reflection {
+        gain: 0.18,
+        left_s: 0.0109,
+        right_s: 0.0117,
+    },
+];
+pub(crate) const REFLECTION_LEVEL: f32 = 0.65;
+
+/// How the acceleration control scales the six transition times: by this
+/// much at its brisk end, and by that plus the span, squared along the
+/// control, at its sluggish end. The middle lands near the times above.
+pub(crate) const ACCELERATION_BRISKEST: f32 = 0.55;
+pub(crate) const ACCELERATION_SPAN: f32 = 1.8;
 
 /// Decibels to a gain, with the bottom of the range meaning silence.
 fn from_decibels(decibels: f32) -> f32 {
@@ -253,7 +310,7 @@ pub const HORN_RADIUS_DEFAULT_M: f32 = 0.18;
 pub const DRUM_RADIUS_DEFAULT_M: f32 = 0.12;
 pub const HORN_RADIUS_RANGE_M: (f32, f32) = (0.05, 0.40);
 pub const DRUM_RADIUS_RANGE_M: (f32, f32) = (0.05, 0.30);
-const SOUND_SPEED_M_PER_S: f32 = 343.0;
+pub(crate) const SOUND_SPEED_M_PER_S: f32 = 343.0;
 /// Microphone placement, in the units and ranges Hammond documents: up to
 /// 170 cm in front of the cabinet, up to 40 cm between the pair, and up to
 /// 50 cm of offset between the centre of the pair and the rotor's pivot. The
@@ -269,7 +326,7 @@ pub const CABINET_HALF_M: f32 = 0.36;
 /// Shortest path a rotor's mouth can be from a microphone, squared. The
 /// microphones cannot be put inside the cabinet, so no path is ever this
 /// short; it only keeps the arithmetic away from zero.
-const NEAREST_SQUARED_M2: f32 = 4.0e-4;
+pub(crate) const NEAREST_SQUARED_M2: f32 = 4.0e-4;
 
 /// Reciprocal square root, from the usual bit-pattern seed refined by three
 /// Newton steps.
@@ -798,7 +855,7 @@ pub struct Rotary {
 
 impl Rotary {
     pub fn new(sample_rate: f32) -> Self {
-        let x = TAU * 800.0 / sample_rate;
+        let x = TAU * CROSSOVER_HZ / sample_rate;
         let mut cabinet = Self {
             sample_rate,
             mode: RotaryMode::Off,
@@ -936,7 +993,7 @@ impl Rotary {
             return false;
         }
         // The middle of the control is where the documented times sit.
-        let scale = 0.55 + 1.8 * value * value;
+        let scale = ACCELERATION_BRISKEST + ACCELERATION_SPAN * value * value;
         let horn = |seconds: f32| (seconds * scale).clamp(HORN_TIME_FLOOR, TIME_CEILING);
         let drum = |seconds: f32| (seconds * scale).clamp(DRUM_TIME_FLOOR, TIME_CEILING);
         self.horn.rise_seconds = horn(HORN_RISE_SECONDS);
@@ -1093,15 +1150,17 @@ impl Rotary {
         let drum_left = self.drum_delay.read(drum_path_left.delay_samples) * drum_path_left.gain;
         let drum_right = self.drum_delay.read(drum_path_right.delay_samples) * drum_path_right.gain;
 
-        let horn_filter = one_pole(2_200.0, self.sample_rate);
+        let horn_filter = one_pole(HORN_SHELF_HZ, self.sample_rate);
         self.horn_tone_left += horn_filter * (raw_horn_left - self.horn_tone_left);
         self.horn_tone_right += horn_filter * (raw_horn_right - self.horn_tone_right);
         let horn_high_left = raw_horn_left - self.horn_tone_left;
         let horn_high_right = raw_horn_right - self.horn_tone_right;
-        let horn_left = self.horn_tone_left * (0.55 + 0.35 * horn_facing_left)
-            + horn_high_left * (0.20 + 0.80 * horn_facing_left);
-        let horn_right = self.horn_tone_right * (0.55 + 0.35 * horn_facing_right)
-            + horn_high_right * (0.20 + 0.80 * horn_facing_right);
+        let horn_left = self.horn_tone_left
+            * (HORN_BODY_AWAY + HORN_BODY_FACING * horn_facing_left)
+            + horn_high_left * (HORN_TOP_AWAY + HORN_TOP_FACING * horn_facing_left);
+        let horn_right = self.horn_tone_right
+            * (HORN_BODY_AWAY + HORN_BODY_FACING * horn_facing_right)
+            + horn_high_right * (HORN_TOP_AWAY + HORN_TOP_FACING * horn_facing_right);
 
         // Each pair gains its own bass for being where it is.
         let lift = self.proximity_lift;
@@ -1113,11 +1172,15 @@ impl Rotary {
         let [horn_corner, drum_corner] = self.proximity_coefficient;
         let horn_left = near(0, horn_corner, horn_left);
         let horn_right = near(1, horn_corner, horn_right);
-        let drum_left = near(2, drum_corner, drum_left * (0.66 + 0.34 * drum_facing_left));
+        let drum_left = near(
+            2,
+            drum_corner,
+            drum_left * (DRUM_AWAY + DRUM_FACING * drum_facing_left),
+        );
         let drum_right = near(
             3,
             drum_corner,
-            drum_right * (0.66 + 0.34 * drum_facing_right),
+            drum_right * (DRUM_AWAY + DRUM_FACING * drum_facing_right),
         );
 
         let (horn_gain, drum_gain) = (self.horn_gain, self.drum_gain);
@@ -1160,14 +1223,16 @@ impl Rotary {
 
         self.cabinet_left.push(wet_left);
         self.cabinet_right.push(wet_right);
-        let reflection_left = 0.42 * self.cabinet_left.read(self.sample_rate * 0.0037)
-            + 0.28 * self.cabinet_right.read(self.sample_rate * 0.0063)
-            - 0.18 * self.cabinet_left.read(self.sample_rate * 0.0109);
-        let reflection_right = 0.42 * self.cabinet_right.read(self.sample_rate * 0.0041)
-            + 0.28 * self.cabinet_left.read(self.sample_rate * 0.0069)
-            - 0.18 * self.cabinet_right.read(self.sample_rate * 0.0117);
-        wet_left += 0.65 * self.reflections * reflection_left;
-        wet_right += 0.65 * self.reflections * reflection_right;
+        let [first, second, third] = REFLECTIONS;
+        let reflection_left = first.gain * self.cabinet_left.read(self.sample_rate * first.left_s)
+            + second.gain * self.cabinet_right.read(self.sample_rate * second.left_s)
+            - third.gain * self.cabinet_left.read(self.sample_rate * third.left_s);
+        let reflection_right = first.gain
+            * self.cabinet_right.read(self.sample_rate * first.right_s)
+            + second.gain * self.cabinet_left.read(self.sample_rate * second.right_s)
+            - third.gain * self.cabinet_right.read(self.sample_rate * third.right_s);
+        wet_left += REFLECTION_LEVEL * self.reflections * reflection_left;
+        wet_right += REFLECTION_LEVEL * self.reflections * reflection_right;
         let wet = if self.mode == RotaryMode::Off {
             0.0
         } else {

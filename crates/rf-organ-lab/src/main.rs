@@ -4,6 +4,7 @@ mod analysis;
 mod captures;
 mod compare;
 mod invariance;
+mod provenance;
 mod signal;
 mod wav;
 
@@ -63,6 +64,18 @@ fn run() -> Result<(), Box<dyn Error>> {
                 &PathBuf::from(destination),
             )
         }
+        Some("provenance") => {
+            let destination = arguments.next().ok_or("provenance requires OUTPUT_FILE")?;
+            if arguments.next().is_some() {
+                return Err(usage().into());
+            }
+            fs::write(&destination, provenance::markdown())?;
+            println!(
+                "RF_ORGAN_LAB_PROVENANCE path={}",
+                PathBuf::from(destination).display()
+            );
+            Ok(())
+        }
         Some("sweep") => {
             let destination = arguments.next().ok_or("sweep requires OUTPUT_DIRECTORY")?;
             if arguments.next().is_some() {
@@ -117,7 +130,8 @@ fn sweep_suite(destination: &Path) -> Result<(), Box<dyn Error>> {
 }
 
 const fn usage() -> &'static str {
-    "usage:\n  rf-organ-lab render OUTPUT_DIRECTORY [--transformer-drive-trims T1,T2,T3]\n  rf-organ-lab compare MODEL_DIRECTORY REFERENCE_DIRECTORY OUTPUT_DIRECTORY\n  rf-organ-lab sweep OUTPUT_DIRECTORY"
+    "usage:\n  rf-organ-lab render OUTPUT_DIRECTORY [--transformer-drive-trims T1,T2,T3]\n  rf-organ-lab compare MODEL_DIRECTORY REFERENCE_DIRECTORY OUTPUT_DIRECTORY\n  rf-organ-lab sweep OUTPUT_DIRECTORY
+  rf-organ-lab provenance OUTPUT_FILE"
 }
 
 /// Parses the optional per-transformer drive trims. They exist so that a

@@ -2,12 +2,22 @@
 
 use core::f32::consts::TAU;
 
-const EXPRESSION_SECTION_CAPACITANCE_PF: f32 = 60.0;
-const EXPRESSION_GRID_RESISTANCE_OHM: f32 = 15_000_000.0;
-const EXPRESSION_LOW_HZ: f32 =
+pub(crate) const EXPRESSION_SECTION_CAPACITANCE_PF: f32 = 60.0;
+pub(crate) const EXPRESSION_GRID_RESISTANCE_OHM: f32 = 15_000_000.0;
+pub(crate) const EXPRESSION_LOW_HZ: f32 =
     1.0 / (TAU * EXPRESSION_GRID_RESISTANCE_OHM * EXPRESSION_SECTION_CAPACITANCE_PF * 1.0e-12);
-const EXPRESSION_HIGH_HZ: f32 = 4_000.0;
-const TONE_CONTROL_HZ: f32 = 200.0;
+pub(crate) const EXPRESSION_HIGH_HZ: f32 = 4_000.0;
+/// How much of the pedal's attenuation the low and the high band are spared
+/// at full expression character, against the middle band's. Provisional: the
+/// transfer between the moving and fixed plates is a calibration target.
+pub(crate) const EXPRESSION_LOW_SHARE: f32 = 0.72;
+pub(crate) const EXPRESSION_HIGH_SHARE: f32 = 0.48;
+/// How long the swell takes to follow the pedal, as a one-pole time constant.
+/// Provisional: it stands for the pedal's mechanical travel.
+pub(crate) const EXPRESSION_SLEW_S: f32 = 0.008;
+pub(crate) const TONE_CONTROL_HZ: f32 = 200.0;
+/// Corner of the bass trim's shelf. Provisional.
+pub(crate) const BASS_SHELF_HZ: f32 = 310.0;
 /// How asymmetric each single-ended stage is. The stages differ in operating
 /// point, so they differ here; all three values are provisional and the
 /// laboratory reports the harmonic structure they produce.
@@ -18,9 +28,15 @@ const TONE_CONTROL_HZ: f32 = 200.0;
 /// them. Telling them apart needs an injection at each stage, and until there
 /// is one the ratios between these three stay where they are and only their
 /// common size moves.
-const V4A_ASYMMETRY: f32 = 0.45;
-const V4B_ASYMMETRY: f32 = 0.30;
-const V3B_ASYMMETRY: f32 = 0.22;
+pub(crate) const V4A_ASYMMETRY: f32 = 0.45;
+pub(crate) const V4B_ASYMMETRY: f32 = 0.30;
+pub(crate) const V3B_ASYMMETRY: f32 = 0.22;
+/// How the drive control divides between the three stages. Provisional, for
+/// the same reason the asymmetries are: from outside the preamplifier only the
+/// chain is visible.
+pub(crate) const V4A_DRIVE_SHARE: f32 = 0.45;
+pub(crate) const V4B_DRIVE_SHARE: f32 = 0.35;
+pub(crate) const V3B_DRIVE_SHARE: f32 = 0.20;
 /// The range that character may take, with one meaning the values above.
 pub const STAGE_CHARACTER_RANGE: (f32, f32) = (0.0, 3.0);
 pub const STAGE_CHARACTER_DEFAULT: f32 = 1.0;
@@ -76,9 +92,9 @@ impl ConsoleStage {
 
     const fn drive_share(self) -> f32 {
         match self {
-            Self::V4A => 0.45,
-            Self::V4B => 0.35,
-            Self::V3B => 0.20,
+            Self::V4A => V4A_DRIVE_SHARE,
+            Self::V4B => V4B_DRIVE_SHARE,
+            Self::V3B => V3B_DRIVE_SHARE,
         }
     }
 }
@@ -200,10 +216,10 @@ impl ConsoleElectronics {
     }
 
     pub fn process(&mut self, input: f32, expression: f32) -> f32 {
-        let expression_rate = 1.0 / (0.008 * self.sample_rate).max(1.0);
+        let expression_rate = 1.0 / (EXPRESSION_SLEW_S * self.sample_rate).max(1.0);
         self.expression_state += expression_rate * (expression - self.expression_state);
 
-        let bass_coefficient = one_pole(310.0, self.sample_rate);
+        let bass_coefficient = one_pole(BASS_SHELF_HZ, self.sample_rate);
         self.bass_state += bass_coefficient * (input - self.bass_state);
         let bass_gain = trim_gain(self.bass_trim);
         let equalized = input + (bass_gain - 1.0) * self.bass_state;
@@ -231,8 +247,8 @@ impl ConsoleElectronics {
         let mid_gain =
             linear_gain * (1.0 - self.expression_character * (1.0 - self.expression_state));
         let compensation = linear_gain - mid_gain;
-        let low_gain = mid_gain + 0.72 * compensation;
-        let high_gain = mid_gain + 0.48 * compensation;
+        let low_gain = mid_gain + EXPRESSION_LOW_SHARE * compensation;
+        let high_gain = mid_gain + EXPRESSION_HIGH_SHARE * compensation;
         let expressed = low * low_gain + mid * mid_gain + high * high_gain;
 
         // V4B follows the passive expression network. The AO-28 tone control
