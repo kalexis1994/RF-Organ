@@ -49,7 +49,8 @@ The current `0.50.0` baseline establishes the real-time architecture:
   of real consoles - Hammond's own tables among them - and checked against
   readings that were not used to derive them;
 - the woofer's own unmodulated bass, which reaches the microphones without
-  passing through a rotor, and a choice of capsule;
+  passing through a rotor, and a choice of capsule for each pair of
+  microphones, which start where a studio would put them;
 - an integrated rotary speaker with counter-rotating horn and drum at their
   specified speeds, separate rise, fall and brake times per rotor, spectral
   directivity, microphone geometry and early cabinet reflections;

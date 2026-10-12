@@ -1193,6 +1193,22 @@ pub const CONSTANTS: &[Constant] = &[
         "A default inside Hammond's documented placement range.",
     ),
     c(
+        "rotary::HORN_MIC_DISTANCE_DEFAULT_M",
+        f(rotary::HORN_MIC_DISTANCE_DEFAULT_M),
+        "m",
+        Provisional,
+        Sourced(0.12, 1.7),
+        "A studio's close pair at the horn's two louvred sides; the distance is an engineer's choice inside Hammond's range.",
+    ),
+    c(
+        "rotary::DRUM_MIC_SPACING_DEFAULT_M",
+        f(rotary::DRUM_MIC_SPACING_DEFAULT_M),
+        "m",
+        Provisional,
+        Sourced(0.0, 0.4),
+        "A single microphone close on the drum, as studios usually mike it: a pair with no spacing.",
+    ),
+    c(
         "rotary::MIC_SPACING_DEFAULT_M",
         f(rotary::MIC_SPACING_DEFAULT_M),
         "m",

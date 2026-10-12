@@ -25,8 +25,8 @@ survey should look, not where the truth is.
 | measured | 4 |
 | derived | 5 |
 | borrowed | 4 |
-| provisional | 88 |
-| **total** | **131** |
+| provisional | 90 |
+| **total** | **133** |
 
 ## `tonewheel`
 
@@ -211,6 +211,8 @@ survey should look, not where the truth is.
 | `MIC_SPACING_MAX_M` | 0.4 | m | documented | exact | Hammond: up to 40 cm between a pair. |
 | `MIC_OFFSET_MAX_M` | 0.5 | m | documented | exact | Hammond: up to 50 cm between a pair's centre and the rotor's pivot. |
 | `MIC_DISTANCE_DEFAULT_M` | 0.35 | m | provisional | 0.12 to 1.7 (sourced) | A default inside Hammond's documented placement range. |
+| `HORN_MIC_DISTANCE_DEFAULT_M` | 0.15 | m | provisional | 0.12 to 1.7 (sourced) | A studio's close pair at the horn's two louvred sides; the distance is an engineer's choice inside Hammond's range. |
+| `DRUM_MIC_SPACING_DEFAULT_M` | 0 | m | provisional | 0 to 0.4 (sourced) | A single microphone close on the drum, as studios usually mike it: a pair with no spacing. |
 | `MIC_SPACING_DEFAULT_M` | 0.3 | m | provisional | 0 to 0.4 (sourced) | As the distance's default. |
 | `MIC_PATTERN_DEFAULT` | 0.5 | control | provisional | 0 to 1 (assumed) | A cardioid, from omnidirectional at zero to figure of eight at one. |
 

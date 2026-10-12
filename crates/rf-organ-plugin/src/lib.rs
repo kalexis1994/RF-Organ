@@ -9,14 +9,15 @@ use rackforge_plugin_sdk::{
     export_processor,
 };
 use rf_organ_dsp::{
-    LEVEL_SILENT_DB, MIC_DISTANCE_RANGE_M, MIC_SPACING_MAX_M, OrganEngine, OrganPart, RotaryMode,
+    LEVEL_SILENT_DB, MIC_DISTANCE_DEFAULT_M, MIC_DISTANCE_RANGE_M, MIC_SPACING_DEFAULT_M,
+    MIC_SPACING_MAX_M, OrganEngine, OrganPart, RotaryMode,
 };
 use settings::ROTARY_MODE;
 pub use settings::{PARAMETER_COUNT, Settings, presets};
 
 pub const MAX_FRAMES: u32 = 4096;
 pub const MAX_EVENTS: usize = 256;
-pub const STATE_VERSION: u32 = 22;
+pub const STATE_VERSION: u32 = 23;
 pub const STATE_BYTES: usize = state_bytes(PARAMETER_COUNT);
 
 /// Every state this plugin has written, as its version and how many
@@ -45,6 +46,7 @@ const STATE_LAYOUTS: [(u32, usize); STATE_VERSION as usize] = [
     (19, 74),
     (20, 75),
     (21, 95),
+    (22, 96),
     (STATE_VERSION, PARAMETER_COUNT),
 ];
 
@@ -275,6 +277,22 @@ impl Processor for RfOrganProcessor {
             return false;
         };
         let mut settings = Settings::default();
+        // Up to version twenty-two the defaults stood a spaced pair in front
+        // of each rotor. A state is read over the placement it was saved
+        // against, so that what it is too old to carry does not move to the
+        // studio placement that is the default now.
+        if version <= 22 {
+            for (index, earlier) in [
+                (41, f64::from(MIC_DISTANCE_DEFAULT_M)),
+                (62, f64::from(MIC_SPACING_DEFAULT_M)),
+                (64, 0.0),
+            ] {
+                let Some(updated) = settings.with_parameter(index, earlier) else {
+                    return false;
+                };
+                settings = updated;
+            }
+        }
         // Up to version ten the horn and the drum shared one bipolar balance
         // between them. They have a volume each now, as Hammond documents
         // them, so the old control has to be split rather than read.
@@ -328,6 +346,17 @@ impl Processor for RfOrganProcessor {
                 continue;
             };
             let Some(updated) = settings.with_parameter(index, value) else {
+                return false;
+            };
+            settings = updated;
+        }
+        // Up to version twenty-two every microphone was one capsule, so the
+        // drum's pair takes the capsule the state had.
+        if version <= 22 {
+            let shared_capsule = settings.parameter(59).expect("fixed parameter schema");
+            let Some(updated) =
+                settings.with_parameter(settings::DRUM_MICROPHONE_TYPE, shared_capsule)
+            else {
                 return false;
             };
             settings = updated;
@@ -474,6 +503,7 @@ export_processor!(RfOrganProcessor,
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rf_organ_dsp::MicrophoneType;
 
     /// The size of the state `version` wrote, as a constant a test can size
     /// an array with.
@@ -583,30 +613,37 @@ mod tests {
         let source = RfOrganProcessor::default();
         let mut current = [0_u8; STATE_BYTES];
         assert_eq!(source.save_state(&mut current), Some(STATE_BYTES));
+        let saved_against = Settings {
+            rotary_horn_mic_distance: f64::from(MIC_DISTANCE_DEFAULT_M),
+            rotary_horn_mic_sides: false,
+            rotary_drum_mic_spacing: f64::from(MIC_SPACING_DEFAULT_M),
+            rotary_drum_microphone_type: Settings::default().rotary_microphone_type,
+            ..Settings::default()
+        };
         let mut legacy = [0_u8; written_bytes(1)];
         legacy.copy_from_slice(&current[..written_bytes(1)]);
         legacy[4..8].copy_from_slice(&1_u32.to_le_bytes());
         let mut restored = RfOrganProcessor::default();
         assert!(restored.load_state(&legacy));
-        assert_eq!(restored.settings, Settings::default());
+        assert_eq!(restored.settings, saved_against);
 
         let mut version_two = [0_u8; written_bytes(2)];
         version_two.copy_from_slice(&current[..written_bytes(2)]);
         version_two[4..8].copy_from_slice(&2_u32.to_le_bytes());
         assert!(restored.load_state(&version_two));
-        assert_eq!(restored.settings, Settings::default());
+        assert_eq!(restored.settings, saved_against);
 
         let mut version_three = [0_u8; written_bytes(3)];
         version_three.copy_from_slice(&current[..written_bytes(3)]);
         version_three[4..8].copy_from_slice(&3_u32.to_le_bytes());
         assert!(restored.load_state(&version_three));
-        assert_eq!(restored.settings, Settings::default());
+        assert_eq!(restored.settings, saved_against);
 
         let mut version_four = [0_u8; written_bytes(4)];
         version_four.copy_from_slice(&current[..written_bytes(4)]);
         version_four[4..8].copy_from_slice(&4_u32.to_le_bytes());
         assert!(restored.load_state(&version_four));
-        assert_eq!(restored.settings, Settings::default());
+        assert_eq!(restored.settings, saved_against);
 
         // Every version up to six placed the microphones with two numbers
         // from zero to one, which this version reads as metres, so those
@@ -626,7 +663,7 @@ mod tests {
             rotary_horn_mic_spacing: spacing,
             rotary_drum_mic_distance: distance,
             rotary_drum_mic_spacing: spacing,
-            ..Settings::default()
+            ..saved_against
         };
 
         let mut version_five = [0_u8; written_bytes(5)];
@@ -716,6 +753,60 @@ mod tests {
         assert_eq!(
             restored.settings.rotary_drive,
             f64::from(rf_organ_dsp::AMP_DRIVE_DEFAULT)
+        );
+    }
+
+    /// Before version twenty-three one capsule stood for every microphone,
+    /// so the drum's pair takes whatever that capsule was.
+    #[test]
+    fn a_shared_capsule_becomes_both_pairs() {
+        let mut source = RfOrganProcessor::default();
+        assert!(source.set_parameter(59, f64::from(MicrophoneType::Dynamic as u8)));
+        assert!(source.set_parameter(
+            settings::DRUM_MICROPHONE_TYPE,
+            f64::from(MicrophoneType::Condenser as u8)
+        ));
+        let mut current = [0_u8; STATE_BYTES];
+        assert_eq!(source.save_state(&mut current), Some(STATE_BYTES));
+        let mut older = [0_u8; written_bytes(22)];
+        older.copy_from_slice(&current[..written_bytes(22)]);
+        older[4..8].copy_from_slice(&22_u32.to_le_bytes());
+        let mut restored = RfOrganProcessor::default();
+        assert!(restored.load_state(&older));
+        assert_eq!(
+            restored.settings.rotary_microphone_type,
+            MicrophoneType::Dynamic
+        );
+        assert_eq!(
+            restored.settings.rotary_drum_microphone_type,
+            MicrophoneType::Dynamic
+        );
+    }
+
+    /// A state too old to carry where the microphones stood comes back with
+    /// them where they stood when it was saved - a spaced pair in front of
+    /// each rotor - and not at the studio placement that is the default now.
+    #[test]
+    fn an_old_state_keeps_the_placement_it_was_saved_against() {
+        let source = RfOrganProcessor::default();
+        let mut current = [0_u8; STATE_BYTES];
+        assert_eq!(source.save_state(&mut current), Some(STATE_BYTES));
+        // Version twelve carried both distances and the drum's spacing, but
+        // not whether the horn's pair stood at the sides.
+        let mut older = [0_u8; written_bytes(12)];
+        older.copy_from_slice(&current[..written_bytes(12)]);
+        older[4..8].copy_from_slice(&12_u32.to_le_bytes());
+        let mut restored = RfOrganProcessor::default();
+        assert!(restored.load_state(&older));
+        assert!(!restored.settings.rotary_horn_mic_sides);
+        // What the old state did carry is its own.
+        assert_eq!(
+            restored.settings.rotary_horn_mic_distance,
+            source.settings.rotary_horn_mic_distance
+        );
+        assert_eq!(
+            restored.settings.rotary_drum_mic_spacing,
+            source.settings.rotary_drum_mic_spacing
         );
     }
 

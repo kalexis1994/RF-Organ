@@ -1,16 +1,17 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 use rf_organ_dsp::{
-    AMP_DRIVE_DEFAULT, ConsoleStage, DRAWBAR_COUNT, DRUM_RADIUS_DEFAULT_M, DRUM_RADIUS_RANGE_M,
-    HORN_RADIUS_DEFAULT_M, HORN_RADIUS_RANGE_M, LEAKAGE_BOOST_DEFAULT, LEVEL_RANGE_DB,
-    LEVEL_SILENT_DB, MIC_DISTANCE_DEFAULT_M, MIC_DISTANCE_RANGE_M, MIC_OFFSET_MAX_M,
-    MIC_PATTERN_DEFAULT, MIC_SPACING_DEFAULT_M, MIC_SPACING_MAX_M, MainsFrequency, MicrophoneArray,
-    MicrophonePair, MicrophoneType, OrganEngine, OrganPart, PEDAL_DRAWBAR_COUNT, PercussionDecay,
-    PercussionHarmonic, PercussionVolume, Registration, RotaryMode, STAGE_CHARACTER_DEFAULT,
-    STAGE_CHARACTER_RANGE, SUB_LEVEL_DEFAULT_DB, ScannerMode, StopAngle,
-    TRANSFORMER_ASYMMETRY_DEFAULT, TransformerUnit,
+    AMP_DRIVE_DEFAULT, ConsoleStage, DRAWBAR_COUNT, DRUM_MIC_SPACING_DEFAULT_M,
+    DRUM_RADIUS_DEFAULT_M, DRUM_RADIUS_RANGE_M, HORN_MIC_DISTANCE_DEFAULT_M,
+    HORN_MIC_SIDES_DEFAULT, HORN_RADIUS_DEFAULT_M, HORN_RADIUS_RANGE_M, LEAKAGE_BOOST_DEFAULT,
+    LEVEL_RANGE_DB, LEVEL_SILENT_DB, MIC_DISTANCE_DEFAULT_M, MIC_DISTANCE_RANGE_M,
+    MIC_OFFSET_MAX_M, MIC_PATTERN_DEFAULT, MIC_SPACING_DEFAULT_M, MIC_SPACING_MAX_M,
+    MainsFrequency, MicrophoneArray, MicrophonePair, MicrophoneType, OrganEngine, OrganPart,
+    PEDAL_DRAWBAR_COUNT, PercussionDecay, PercussionHarmonic, PercussionVolume, Registration,
+    RotaryMode, STAGE_CHARACTER_DEFAULT, STAGE_CHARACTER_RANGE, SUB_LEVEL_DEFAULT_DB, ScannerMode,
+    StopAngle, TRANSFORMER_ASYMMETRY_DEFAULT, TransformerUnit,
 };
 
-pub const PARAMETER_COUNT: usize = 96;
+pub const PARAMETER_COUNT: usize = 97;
 /// Per-stage offsets from the shared console character, ordered V4A, V4B, V3B.
 pub const CONSOLE_STAGE_TRIM_FIRST: u32 = 69;
 /// Bipolar per-transformer calibration trims, ordered T1, T2, T3.
@@ -32,6 +33,8 @@ pub const REGISTRATION: u32 = 93;
 pub const LOWER_REGISTRATION: u32 = 94;
 /// How hard the console drives the rotary cabinet's amplifier.
 pub const ROTARY_DRIVE: u32 = 95;
+/// The drum's pair's capsule; parameter 59 is the horn's.
+pub const DRUM_MICROPHONE_TYPE: u32 = 96;
 pub const PEDAL_DRAWBAR_LAST: u32 = PEDAL_DRAWBAR_FIRST + PEDAL_DRAWBAR_COUNT as u32 - 1;
 pub const ROTARY_MODE: u32 = 16;
 
@@ -124,6 +127,8 @@ pub struct Settings {
     /// How hard the console drives the cabinet's amplifier: at the middle an
     /// 888 chord at full expression reaches the edge of breakup.
     pub rotary_drive: f64,
+    /// The drum's pair's capsule; `rotary_microphone_type` is the horn's.
+    pub rotary_drum_microphone_type: MicrophoneType,
 }
 
 impl Default for Settings {
@@ -164,12 +169,12 @@ impl Default for Settings {
             console_bass: 0.0,
             console_treble: 0.0,
             expression_character: 0.55,
-            rotary_horn_mic_distance: MIC_DISTANCE_DEFAULT_M as f64,
+            rotary_horn_mic_distance: HORN_MIC_DISTANCE_DEFAULT_M as f64,
             rotary_horn_mic_spacing: MIC_SPACING_DEFAULT_M as f64,
             rotary_horn_mic_offset: 0.0,
-            rotary_horn_mic_sides: false,
+            rotary_horn_mic_sides: HORN_MIC_SIDES_DEFAULT,
             rotary_drum_mic_distance: MIC_DISTANCE_DEFAULT_M as f64,
-            rotary_drum_mic_spacing: MIC_SPACING_DEFAULT_M as f64,
+            rotary_drum_mic_spacing: DRUM_MIC_SPACING_DEFAULT_M as f64,
             rotary_drum_mic_offset: 0.0,
             rotary_drum_mic_sides: false,
             rotary_mic_pattern: MIC_PATTERN_DEFAULT as f64,
@@ -185,6 +190,7 @@ impl Default for Settings {
             rotary_drum_level: 0.0,
             transformer_trims: [[0.0; 2]; 3],
             rotary_drive: AMP_DRIVE_DEFAULT as f64,
+            rotary_drum_microphone_type: MicrophoneType::Dynamic,
         }
     }
 }
@@ -323,6 +329,7 @@ impl Settings {
             REGISTRATION => f64::from(self.registration.index()),
             LOWER_REGISTRATION => f64::from(self.lower_registration.index()),
             ROTARY_DRIVE => self.rotary_drive,
+            DRUM_MICROPHONE_TYPE => f64::from(self.rotary_drum_microphone_type as u8),
             52 => self.rotary_mic_pattern,
             53 => self.rotary_horn_radius,
             54 => self.rotary_drum_radius,
@@ -391,6 +398,9 @@ impl Settings {
             42 => self.rotary_horn_mic_spacing = value,
             43 => self.rotary_reflections = value,
             ROTARY_DRIVE => self.rotary_drive = value,
+            DRUM_MICROPHONE_TYPE if value.fract() == 0.0 => {
+                self.rotary_drum_microphone_type = MicrophoneType::from_index(value as u8)?;
+            }
             44 => self.rotary_horn_level = value,
             45..=50 => {
                 let trim = (index - TRANSFORMER_TRIM_FIRST) as usize;
@@ -608,7 +618,10 @@ impl Settings {
             }
             Group::Mains => engine.set_mains(self.rotary_mains),
             Group::MicrophoneType => {
-                engine.set_rotary_microphone_type(self.rotary_microphone_type);
+                engine.set_rotary_microphone_types(
+                    self.rotary_microphone_type,
+                    self.rotary_drum_microphone_type,
+                );
             }
             Group::Scanner => {
                 engine.set_scanner_mode(self.scanner_mode);
@@ -728,7 +741,7 @@ impl Group {
             53 | 54 => Self::RotaryRadii,
             55 | 56 => Self::RotaryStopAngles,
             57 => Self::Mains,
-            59 => Self::MicrophoneType,
+            59 | DRUM_MICROPHONE_TYPE => Self::MicrophoneType,
             19 | 35 | 36 => Self::Scanner,
             20..=23 => Self::Percussion,
             ROTARY_DRIVE => Self::RotaryDrive,

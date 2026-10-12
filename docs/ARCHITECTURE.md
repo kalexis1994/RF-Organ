@@ -385,7 +385,16 @@ copy of it; a range that moves in the DSP moves there too.
   bounded rather than chosen - the bound stands in for the roll-off a real
   capsule has underneath it. The presence and the top that tell a dynamic
   capsule from a condenser are provisional, because no capsule is named
-  anywhere we can cite.
+  anywhere we can cite. Each pair has its own capsule, and the presence and
+  the top are applied to that pair before the pairs are summed.
+- The array starts where a cabinet is usually miked in a studio: a condenser
+  pair on the horn at the cabinet's two sides, 15 cm out from its flanks, and
+  a single dynamic microphone on the drum close to the front - a pair with no
+  spacing is one microphone. That shape is common practice; the numbers are
+  an engineer's choice and are provisional. Until state version 23 the
+  default was a spaced pair in front of each rotor with one shared capsule,
+  and an older state is read over that placement, so nothing already saved
+  moves.
 - The rotors are belted to alternating-current motors, so the supply sets
   every speed they reach: on 50 Hz the cabinet turns at five sixths of its
   rated speeds and reaches them sooner, because the belt ramps at the rate it

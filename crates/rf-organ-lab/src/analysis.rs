@@ -1628,7 +1628,21 @@ fn rotary_doppler_probe() -> (Vec<Measurement>, String) {
             (LEVEL_SILENT_DB, 0.0)
         };
         assert!(rotary.set_levels(horn_db, drum_db, LEVEL_SILENT_DB));
-        assert!(rotary.set_microphones(MicrophoneArray::default()));
+        // A spaced pair in front of each rotor, whatever the default
+        // placement is: the geometry has to have two paths to predict a
+        // spread between, and a studio's single drum microphone has one.
+        let spaced = rf_organ_dsp::MicrophonePair {
+            distance_m: rf_organ_dsp::MIC_DISTANCE_DEFAULT_M,
+            spacing_m: rf_organ_dsp::MIC_SPACING_DEFAULT_M,
+            offset_m: 0.0,
+            at_the_sides: false,
+        };
+        assert!(rotary.set_microphones(rf_organ_dsp::MicrophoneArray {
+            horn: spaced,
+            drum: spaced,
+            pattern: rf_organ_dsp::MIC_PATTERN_DEFAULT,
+        }));
+        rotary.set_microphone_type(rf_organ_dsp::MicrophoneType::Condenser);
         rotary.set_mode(RotaryMode::Tremolo);
 
         let omega = TAU * carrier / SAMPLE_RATE as f64;

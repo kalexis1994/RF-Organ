@@ -8,14 +8,14 @@ use rf_organ_dsp::{
 use serde_json::{Value, json};
 
 pub const PROTOCOL: &str = "rackforge.plugin.web@1";
-pub const PARAMETERS: usize = 96;
+pub const PARAMETERS: usize = 97;
 pub const DEFAULTS: [f64; PARAMETERS] = [
     0.72, 1.0, 8.0, 8.0, 8.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.55, 0.45, 0.2, 0.38, 0.32, 0.0, 0.82,
     0.5, 0.0, 0.0, 1.0, 1.0, 1.0, 8.0, 8.0, 8.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 8.0, 0.0, 1.0, 0.0,
-    0.32, 0.0, 0.0, 0.55, 0.35, 0.3, 0.22, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.5, 0.18, 0.12,
-    0.0, 0.0, 1.0, -9.0, 1.0, 0.0, 0.35, 0.3, 0.0, 0.0, 0.0, 1.0, 0.5, 1.0, 0.0, 0.0, 0.0, 0.0,
+    0.32, 0.0, 0.0, 0.55, 0.15, 0.3, 0.22, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.5, 0.18, 0.12,
+    0.0, 0.0, 1.0, -9.0, 1.0, 0.0, 0.35, 0.0, 0.0, 1.0, 0.0, 1.0, 0.5, 1.0, 0.0, 0.0, 0.0, 0.0,
     0.1, 1.0, 8.0, 8.0, 8.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 8.0, 8.0, 8.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0, 2.0, 2.0, 0.5,
+    0.0, 2.0, 2.0, 0.5, 0.0,
 ];
 
 /// The element each parameter is bound to, in parameter order.
@@ -121,6 +121,7 @@ pub const CONTROL_IDS: [&str; PARAMETERS] = [
     "registration",
     "lower-registration",
     "amp-drive",
+    "drum-mic-type",
 ];
 
 /// Elements the cabinet view writes to, which are not parameters and are
@@ -202,7 +203,7 @@ pub fn valid(index: usize, value: f64) -> bool {
             55..=56 => StopAngle::from_degrees(value as f32).is_some(),
             68 => engine_range(STAGE_CHARACTER_RANGE).contains(&value),
             57 => value.fract() == 0.0 && MainsFrequency::from_index(value as u8).is_some(),
-            59 => value.fract() == 0.0 && MicrophoneType::from_index(value as u8).is_some(),
+            59 | 96 => value.fract() == 0.0 && MicrophoneType::from_index(value as u8).is_some(),
             93..=94 => value.fract() == 0.0 && Registration::from_index(value as u8).is_some(),
             _ => false,
         }

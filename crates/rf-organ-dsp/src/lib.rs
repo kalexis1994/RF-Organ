@@ -35,11 +35,13 @@ pub use preset::{
     LOWER_PRESET_NAMES, LOWER_PRESETS, PRESET_COUNT, UPPER_PRESET_NAMES, UPPER_PRESETS,
 };
 pub use rotary::{
-    DRUM_RADIUS_DEFAULT_M, DRUM_RADIUS_RANGE_M, HORN_RADIUS_DEFAULT_M, HORN_RADIUS_RANGE_M,
-    LEVEL_RANGE_DB, LEVEL_SILENT_DB, MIC_DISTANCE_DEFAULT_M, MIC_DISTANCE_RANGE_M,
-    MIC_OFFSET_MAX_M, MIC_PATTERN_DEFAULT, MIC_SPACING_DEFAULT_M, MIC_SPACING_MAX_M,
-    MainsFrequency, MicrophoneArray, MicrophonePair, MicrophoneType, Rotary, RotaryDiagnostics,
-    RotaryGeometry, RotaryMode, RotaryPlacement, SUB_LEVEL_DEFAULT_DB, StopAngle,
+    DRUM_MIC_SPACING_DEFAULT_M, DRUM_RADIUS_DEFAULT_M, DRUM_RADIUS_RANGE_M,
+    HORN_MIC_DISTANCE_DEFAULT_M, HORN_MIC_SIDES_DEFAULT, HORN_RADIUS_DEFAULT_M,
+    HORN_RADIUS_RANGE_M, LEVEL_RANGE_DB, LEVEL_SILENT_DB, MIC_DISTANCE_DEFAULT_M,
+    MIC_DISTANCE_RANGE_M, MIC_OFFSET_MAX_M, MIC_PATTERN_DEFAULT, MIC_SPACING_DEFAULT_M,
+    MIC_SPACING_MAX_M, MainsFrequency, MicrophoneArray, MicrophonePair, MicrophoneType, Rotary,
+    RotaryDiagnostics, RotaryGeometry, RotaryMode, RotaryPlacement, SUB_LEVEL_DEFAULT_DB,
+    StopAngle,
 };
 pub use scanner::{ScannerMode, ScannerVibrato};
 pub use taper::{KEY_TAPER, TAPER};
@@ -508,6 +510,11 @@ impl OrganEngine {
         self.rotary.set_mains(mains);
         self.tonewheels
             .set_shaft_rpm_for_fifty(mains == MainsFrequency::Fifty);
+    }
+
+    /// Which capsule the horn's pair is, and which the drum's.
+    pub fn set_rotary_microphone_types(&mut self, horn: MicrophoneType, drum: MicrophoneType) {
+        self.rotary.set_microphone_types(horn, drum);
     }
 
     pub fn set_rotary_microphone_type(&mut self, capsule: MicrophoneType) {

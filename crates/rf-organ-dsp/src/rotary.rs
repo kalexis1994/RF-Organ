@@ -526,12 +526,27 @@ impl Default for MicrophonePair {
 pub const MIC_DISTANCE_DEFAULT_M: f32 = 0.35;
 pub const MIC_SPACING_DEFAULT_M: f32 = 0.3;
 pub const MIC_PATTERN_DEFAULT: f32 = 0.5;
+/// How a cabinet is usually miked in a studio, which is where the array
+/// starts: a pair on the horn at the cabinet's two sides, a hand's width out
+/// from its flanks, and a single microphone on the drum close to the front
+/// louvres - a pair with no spacing is one microphone. Provisional in the
+/// numbers, which are an engineer's choice, and documented in the shape.
+pub const HORN_MIC_DISTANCE_DEFAULT_M: f32 = 0.15;
+pub const HORN_MIC_SIDES_DEFAULT: bool = true;
+pub const DRUM_MIC_SPACING_DEFAULT_M: f32 = 0.0;
 
 impl Default for MicrophoneArray {
     fn default() -> Self {
         Self {
-            horn: MicrophonePair::default(),
-            drum: MicrophonePair::default(),
+            horn: MicrophonePair {
+                distance_m: HORN_MIC_DISTANCE_DEFAULT_M,
+                at_the_sides: HORN_MIC_SIDES_DEFAULT,
+                ..MicrophonePair::default()
+            },
+            drum: MicrophonePair {
+                spacing_m: DRUM_MIC_SPACING_DEFAULT_M,
+                ..MicrophonePair::default()
+            },
             pattern: MIC_PATTERN_DEFAULT,
         }
     }
@@ -847,7 +862,9 @@ pub struct Rotary {
     horn_gain: f32,
     drum_gain: f32,
     mains: MainsFrequency,
-    capsule: MicrophoneType,
+    /// The horn's pair's capsule and the drum's: a studio puts a
+    /// condenser on the one and a dynamic on the other as often as not.
+    capsules: [MicrophoneType; 2],
     array: MicrophoneArray,
     sub_gain: f32,
     /// Where the woofer's own sound reaches each of the four microphones. It
@@ -865,8 +882,8 @@ pub struct Rotary {
     proximity_lift: f32,
     presence_coefficient: f32,
     top_coefficient: f32,
-    presence: [f32; 2],
-    top: [f32; 2],
+    presence: [f32; 4],
+    top: [f32; 4],
     /// Drawn on only when a rotor is asked to stop at a random angle, so a
     /// render with fixed angles stays bit-identical run to run.
     entropy: u32,
@@ -941,7 +958,7 @@ impl Rotary {
             horn_gain: 1.0,
             drum_gain: 1.0,
             mains: MainsFrequency::Sixty,
-            capsule: MicrophoneType::Condenser,
+            capsules: [MicrophoneType::Condenser, MicrophoneType::Dynamic],
             array: MicrophoneArray::default(),
             sub_gain: from_decibels(SUB_LEVEL_DEFAULT_DB),
             sub_paths: [(1.0, 1.0); 4],
@@ -950,8 +967,8 @@ impl Rotary {
             proximity_lift: 0.0,
             presence_coefficient: one_pole(model[Knob::DynamicPresenceHz], sample_rate),
             top_coefficient: one_pole(model[Knob::DynamicTopHz], sample_rate),
-            presence: [0.0; 2],
-            top: [0.0; 2],
+            presence: [0.0; 4],
+            top: [0.0; 4],
             entropy: 0x9e37_79b9,
             shaping: Shaping {
                 acceleration: (
@@ -977,9 +994,14 @@ impl Rotary {
         self.amp.set_drive(value)
     }
 
-    /// Which capsule the pair is.
+    /// Which capsule every microphone is.
     pub fn set_microphone_type(&mut self, capsule: MicrophoneType) {
-        self.capsule = capsule;
+        self.capsules = [capsule; 2];
+    }
+
+    /// Which capsule the horn's pair is, and which the drum's.
+    pub fn set_microphone_types(&mut self, horn: MicrophoneType, drum: MicrophoneType) {
+        self.capsules = [horn, drum];
     }
 
     /// Which supply the cabinet's motors are running from. Changing it while
@@ -1252,6 +1274,23 @@ impl Rotary {
             drum_right * (drum_away + drum_facing * drum_facing_right),
         );
 
+        // What each pair's capsule makes of what reached it: a dynamic one
+        // adds its presence and gives up its top, a condenser leaves both.
+        let presence_lift = self.shaping.presence_lift;
+        let mut pairs = [horn_left, horn_right, drum_left, drum_right];
+        for (slot, value) in pairs.iter_mut().enumerate() {
+            if self.capsules[slot / 2] != MicrophoneType::Dynamic {
+                continue;
+            }
+            let presence = &mut self.presence[slot];
+            *presence += self.presence_coefficient * (*value - *presence);
+            let voiced = *value + presence_lift * (*value - *presence);
+            let top = &mut self.top[slot];
+            *top += self.top_coefficient * (voiced - *top);
+            *value = *top;
+        }
+        let [horn_left, horn_right, drum_left, drum_right] = pairs;
+
         let (horn_gain, drum_gain) = (self.horn_gain, self.drum_gain);
         let mut wet_left = horn_gain * horn_left + drum_gain * drum_left;
         let mut wet_right = horn_gain * horn_right + drum_gain * drum_right;
@@ -1279,19 +1318,6 @@ impl Rotary {
 
         // What the capsule's own character makes of all that. The bass a
         // capsule gains by being close is already in, pair by pair.
-        let presence_lift = self.shaping.presence_lift;
-        if self.capsule == MicrophoneType::Dynamic {
-            for (channel, value) in [&mut wet_left, &mut wet_right].into_iter().enumerate() {
-                let presence = &mut self.presence[channel];
-                *presence += self.presence_coefficient * (*value - *presence);
-                let mut voiced = *value + presence_lift * (*value - *presence);
-                let top = &mut self.top[channel];
-                *top += self.top_coefficient * (voiced - *top);
-                voiced = *top;
-                *value = voiced;
-            }
-        }
-
         self.cabinet_left.push(wet_left);
         self.cabinet_right.push(wet_right);
         let [first, second, third] = REFLECTIONS;
@@ -1353,8 +1379,8 @@ impl Rotary {
         self.horn_tone_left = 0.0;
         self.horn_tone_right = 0.0;
         self.proximity = [0.0; 4];
-        self.presence = [0.0; 2];
-        self.top = [0.0; 2];
+        self.presence = [0.0; 4];
+        self.top = [0.0; 4];
     }
 }
 
