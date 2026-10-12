@@ -299,6 +299,17 @@ copy of it; a range that moves in the DSP moves there too.
   emits is the table. Fitting the model against itself returns unity exactly,
   which is what keeps the console's own frequency response out of a table that
   is supposed to describe 91 wheels.
+- Published readings of real consoles were tried and do not yet fill it. Read
+  straight off a busbar (Hammond's Table V and six consoles), the wheels fall
+  7.5 dB at wheel 44, where the generator's filters begin; read through the
+  keys (Hammond's second chart and six consoles), they do not, because the key
+  tapering wires compensate it. The engine has no key tapering, and turning a
+  wire's ohms into gain does not survive cross-validation on these readings,
+  so neither set can be taken alone. `rf-organ-lab wheel-levels` reports the
+  distance: 8.5 dB rms from the busbar readings and 4.5 dB from the key
+  readings with the taper flat. What the readings did settle is the wiring:
+  every one of the 549 manual contacts reaches the wheel five measured
+  manuals wire it to, foldback included, and a test holds it.
 - Leakage grows faster than what is played, at a rate that is a control of
   its own, which is how Hammond describes it. Measured against the notes that
   caused it, the leakage climbs 7.2 dB between one note and eight; with the

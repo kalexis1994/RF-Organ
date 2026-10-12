@@ -156,6 +156,17 @@ measurement would be worth the most:
 cargo run --release -p rf-organ-lab -- sensitivity artifacts/sensitivity
 ```
 
+`wheel-levels` measures how the engine's wheels stand against each other and
+reports the distance from two sets of published console readings - each wheel
+straight off a busbar, and each through a key - reduced from Kon Zissis's
+tonewheel generator data by `tools/kon-wheel-levels.py`. The same data checks
+the manuals' wiring: every contact has to reach the wheel five measured
+manuals wire it to.
+
+```text
+cargo run --release -p rf-organ-lab -- wheel-levels artifacts/wheel-levels
+```
+
 The output includes scalar measurements, expression, tone-control and
 transformer-intermodulation response, percussion envelopes, scanner sidebands,
 isolated pedal spectra and key-off response, and rotary acceleration/braking

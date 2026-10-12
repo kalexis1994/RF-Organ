@@ -269,6 +269,28 @@ So `crates/rf-organ-dsp/src/taper.rs` holds 91 unity entries and says why, and
 console. A real generator is not flat here; RF-Organ is, and says so rather
 than inventing a curve that would sound like a measurement.
 
+## Kon Zissis's tonewheel generator data
+
+`crates/rf-organ-lab/data/busbar-levels.csv`, `manual-levels.csv` and
+`key-tapering.csv` are reduced by `tools/kon-wheel-levels.py` from the
+spreadsheet Kon Zissis compiled and published at
+https://hammond-leslie.info/KonsTGandTaperingData/ (KonsData-20171011.xls,
+site by Jeff Dairiki). Kon credits about fifty people for sending their
+organs' readings and twelve for letting him measure theirs; the readings
+taken here are listed by organ at the top of each file. The page states no
+licence. What is carried here is not the spreadsheet but statistics of it -
+per-wheel medians and ranges, and per-contact median resistances - with the
+source named, and the script that derives them reads the published file
+rather than shipping it.
+
+Two of the curves are Hammond's own, as transcribed in that workbook: the
+B-3 service manual's Table V of generator output voltages, and the chart
+"Approximate output voltage readings of organ generator frequencies 1 to 91"
+for consoles with manual tapering.
+
+The readings are used to check the engine, not to set it: see
+`crates/rf-organ-dsp/src/taper.rs` for why the taper is still flat.
+
 ## Leakage rate documentation
 
 Version 0.34.0 takes the growth of the leakage from the XK-7 manual, which

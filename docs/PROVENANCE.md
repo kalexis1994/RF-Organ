@@ -186,7 +186,7 @@ survey should look, not where the truth is.
 | Table | Basis | Rests on |
 |---|---|---|
 | `tonewheel::GEAR_RATIOS_60_HZ` | documented | The generator's gear train, translated from setBfree's 60 Hz table. |
-| `taper::TAPER` | provisional | Every wheel at unity until a generator is measured. |
+| `taper::TAPER` | provisional | Every wheel at unity: published busbar and key readings disagree once key tapering is left out, and the lab reports the distance to both. |
 | `preset::UPPER_PRESETS` | documented | The upper preset panel's registrations, quoted digit for digit. |
 | `preset::LOWER_PRESETS` | documented | The lower preset panel's registrations, quoted digit for digit. |
 | `vibrato_line::CAPACITANCE_F` | documented | Component values of the line's shunt capacitors. |

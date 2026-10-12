@@ -1028,7 +1028,7 @@ pub const TABLES: &[Table] = &[
     Table {
         name: "taper::TAPER",
         basis: Provisional,
-        note: "Every wheel at unity until a generator is measured.",
+        note: "Every wheel at unity: published busbar and key readings disagree once key tapering is left out, and the lab reports the distance to both.",
     },
     Table {
         name: "preset::UPPER_PRESETS",

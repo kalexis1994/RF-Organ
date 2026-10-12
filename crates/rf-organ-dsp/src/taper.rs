@@ -22,6 +22,20 @@
 //! Until that happens, `docs/ARCHITECTURE.md` says the taper is flat, and the
 //! laboratory's own taper report shows a flat curve, which is what a reader
 //! should see: nothing here is pretending to have been measured.
+//!
+//! Published readings exist and were tried. Kon Zissis's compilation has each
+//! wheel read straight off a busbar - Hammond's Table V and six consoles,
+//! which agree with one another - and each wheel read through one key and
+//! drawbar, Hammond's second chart and six more. The busbar readings fall
+//! 7.5 dB between wheels 43 and 44, where the generator's filters begin, and
+//! carry the bottom octave far above the next; the readings through the keys
+//! show neither, because the key tapering wires compensate both. A table built
+//! from the busbar readings alone would put both artefacts into every note,
+//! and one built from the key readings would put the tapering of the one path
+//! each wheel was read on into all the others. Joining them needs the gain a
+//! tapering wire of so many ohms gives, and fitted to these readings that
+//! conversion does not survive leaving one console out. So the table stays
+//! flat, and `rf-organ-lab wheel-levels` reports how far it is from both.
 
 use crate::tonewheel::TONEWHEEL_COUNT;
 

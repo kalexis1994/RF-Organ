@@ -8,6 +8,7 @@ mod provenance;
 mod sensitivity;
 mod signal;
 mod wav;
+mod wheel_levels;
 
 use captures::{PHRASE_SECONDS as SECONDS, SAMPLE_RATE, TRANSFORMER_CAPTURES};
 use rf_organ_dsp::{
@@ -77,6 +78,15 @@ fn run() -> Result<(), Box<dyn Error>> {
             );
             Ok(())
         }
+        Some("wheel-levels") => {
+            let destination = arguments
+                .next()
+                .ok_or("wheel-levels requires OUTPUT_DIRECTORY")?;
+            if arguments.next().is_some() {
+                return Err(usage().into());
+            }
+            wheel_levels_suite(&PathBuf::from(destination))
+        }
         Some("sensitivity") => {
             let destination = arguments
                 .next()
@@ -139,6 +149,30 @@ fn sweep_suite(destination: &Path) -> Result<(), Box<dyn Error>> {
     }
 }
 
+/// Measures the engine's wheels against the published busbar and manual
+/// readings and reports how far it is from each.
+fn wheel_levels_suite(destination: &Path) -> Result<(), Box<dyn Error>> {
+    fs::create_dir_all(destination)?;
+    let engine = wheel_levels::engine_levels()?;
+    let busbar = wheel_levels::distance(&engine, &wheel_levels::busbar()?);
+    let manual = wheel_levels::distance(&engine, &wheel_levels::manual()?);
+    fs::write(
+        destination.join("wheel-levels.csv"),
+        wheel_levels::report(&busbar, &manual),
+    )?;
+    println!(
+        "RF_ORGAN_LAB_WHEEL_LEVELS path={} busbar_rms_db={:.2} busbar_inside={}/{} manual_rms_db={:.2} manual_inside={}/{}",
+        destination.display(),
+        busbar.rms_db,
+        busbar.inside,
+        busbar.wheels,
+        manual.rms_db,
+        manual.inside,
+        manual.wheels
+    );
+    Ok(())
+}
+
 /// Moves each unmeasured constant to both ends of its span and reports how
 /// far the calibration phrases move, most first.
 fn sensitivity_suite(destination: &Path) -> Result<(), Box<dyn Error>> {
@@ -176,7 +210,7 @@ fn sensitivity_suite(destination: &Path) -> Result<(), Box<dyn Error>> {
 
 const fn usage() -> &'static str {
     "usage:\n  rf-organ-lab render OUTPUT_DIRECTORY [--transformer-drive-trims T1,T2,T3]\n  rf-organ-lab compare MODEL_DIRECTORY REFERENCE_DIRECTORY OUTPUT_DIRECTORY\n  rf-organ-lab sweep OUTPUT_DIRECTORY
-  rf-organ-lab provenance OUTPUT_FILE\n  rf-organ-lab sensitivity OUTPUT_DIRECTORY"
+  rf-organ-lab provenance OUTPUT_FILE\n  rf-organ-lab sensitivity OUTPUT_DIRECTORY\n  rf-organ-lab wheel-levels OUTPUT_DIRECTORY"
 }
 
 /// Parses the optional per-transformer drive trims. They exist so that a
