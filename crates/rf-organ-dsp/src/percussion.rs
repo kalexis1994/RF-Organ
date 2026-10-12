@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+use crate::model::{Knob, Model};
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[repr(u8)]
 pub enum PercussionHarmonic {
@@ -89,10 +91,21 @@ pub struct Percussion {
     envelope: f32,
     /// How much of the percussion supply is available, 0 to 1.
     charge: f32,
+    attack_s: f32,
+    recovery_s: f32,
+    soft_level: f32,
+    normal_level: f32,
+    slow_t60_s: f32,
+    fast_t60_s: f32,
 }
 
 impl Percussion {
-    pub const fn new(sample_rate: f32) -> Self {
+    #[cfg(test)]
+    pub fn new(sample_rate: f32) -> Self {
+        Self::with_model(sample_rate, &Model::BASELINE)
+    }
+
+    pub fn with_model(sample_rate: f32, model: &Model) -> Self {
         Self {
             sample_rate,
             enabled: false,
@@ -103,6 +116,12 @@ impl Percussion {
             attack: 0.0,
             envelope: 0.0,
             charge: 1.0,
+            attack_s: model[Knob::PercussionAttackS],
+            recovery_s: model[Knob::PercussionRecoveryS],
+            soft_level: model[Knob::PercussionSoftLevel],
+            normal_level: model[Knob::PercussionNormalLevel],
+            slow_t60_s: model[Knob::PercussionSlowT60S],
+            fast_t60_s: model[Knob::PercussionFastT60S],
         }
     }
 
@@ -150,8 +169,8 @@ impl Percussion {
     pub fn trigger(&mut self) {
         if self.enabled {
             let level = match self.volume {
-                PercussionVolume::Soft => SOFT_LEVEL,
-                PercussionVolume::Normal => NORMAL_LEVEL,
+                PercussionVolume::Soft => self.soft_level,
+                PercussionVolume::Normal => self.normal_level,
             };
             self.peak = level * self.charge;
             self.charge = 0.0;
@@ -164,16 +183,16 @@ impl Percussion {
     /// only recovers once they are all up.
     pub fn process(&mut self, harmonic_signal: f32, keys_held: bool) -> f32 {
         let output = harmonic_signal * self.peak * self.attack * self.envelope;
-        let attack_rate = (1.0 / (ATTACK_SECONDS * self.sample_rate)).min(1.0);
+        let attack_rate = (1.0 / (self.attack_s * self.sample_rate)).min(1.0);
         self.attack += attack_rate * (1.0 - self.attack);
         let t60 = match self.decay {
-            PercussionDecay::Slow => SLOW_T60_S,
-            PercussionDecay::Fast => FAST_T60_S,
+            PercussionDecay::Slow => self.slow_t60_s,
+            PercussionDecay::Fast => self.fast_t60_s,
         };
         let decrement = (6.907_755 / (t60 * self.sample_rate)).min(1.0);
         self.envelope *= 1.0 - decrement;
         if !keys_held {
-            let recovery = (1.0 / (RECOVERY_SECONDS * self.sample_rate)).min(1.0);
+            let recovery = (1.0 / (self.recovery_s * self.sample_rate)).min(1.0);
             self.charge += recovery * (1.0 - self.charge);
         }
         output

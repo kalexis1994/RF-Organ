@@ -462,7 +462,13 @@ pub struct VibratoLine {
 }
 
 impl VibratoLine {
+    #[cfg(test)]
     pub fn new(sample_rate: f32) -> Self {
+        Self::with_rotor(sample_rate, ROTOR_HZ)
+    }
+
+    /// A line scanned at this many revolutions a second.
+    pub fn with_rotor(sample_rate: f32, rotor_hz: f32) -> Self {
         let rate = f64::from(sample_rate);
         Self {
             vibrato: Ladder::build(rate, true),
@@ -470,7 +476,7 @@ impl VibratoLine {
             state: [0.0; STATES],
             previous_input: 0.0,
             phase: 0.0,
-            phase_step: ROTOR_HZ / sample_rate,
+            phase_step: rotor_hz / sample_rate,
         }
     }
 

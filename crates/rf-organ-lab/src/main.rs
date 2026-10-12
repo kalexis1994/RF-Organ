@@ -5,13 +5,14 @@ mod captures;
 mod compare;
 mod invariance;
 mod provenance;
+mod sensitivity;
 mod signal;
 mod wav;
 
 use captures::{PHRASE_SECONDS as SECONDS, SAMPLE_RATE, TRANSFORMER_CAPTURES};
 use rf_organ_dsp::{
-    OrganEngine, OrganPart, PercussionDecay, PercussionHarmonic, PercussionVolume, Registration,
-    Rotary, RotaryMode, ScannerMode, TONEWHEEL_COUNT, gear_frequency,
+    Model, OrganEngine, OrganPart, PercussionDecay, PercussionHarmonic, PercussionVolume,
+    Registration, Rotary, RotaryMode, ScannerMode, TONEWHEEL_COUNT, gear_frequency,
 };
 use std::env;
 use std::error::Error;
@@ -76,6 +77,15 @@ fn run() -> Result<(), Box<dyn Error>> {
             );
             Ok(())
         }
+        Some("sensitivity") => {
+            let destination = arguments
+                .next()
+                .ok_or("sensitivity requires OUTPUT_DIRECTORY")?;
+            if arguments.next().is_some() {
+                return Err(usage().into());
+            }
+            sensitivity_suite(&PathBuf::from(destination))
+        }
         Some("sweep") => {
             let destination = arguments.next().ok_or("sweep requires OUTPUT_DIRECTORY")?;
             if arguments.next().is_some() {
@@ -129,9 +139,44 @@ fn sweep_suite(destination: &Path) -> Result<(), Box<dyn Error>> {
     }
 }
 
+/// Moves each unmeasured constant to both ends of its span and reports how
+/// far the calibration phrases move, most first.
+fn sensitivity_suite(destination: &Path) -> Result<(), Box<dyn Error>> {
+    fs::create_dir_all(destination)?;
+    let rows = sensitivity::survey()?;
+    fs::write(
+        destination.join("sensitivity.csv"),
+        sensitivity::report(&rows),
+    )?;
+    for row in rows.iter().take(20) {
+        let worst = if row.at_low.decibels >= row.at_high.decibels {
+            ("low", row.low, row.at_low)
+        } else {
+            ("high", row.high, row.at_high)
+        };
+        println!(
+            "{:>6.2} dB  {:<34} {:<11} {} {} -> {} ({} {})",
+            row.worst(),
+            row.knob.name(),
+            row.basis.name(),
+            worst.0,
+            row.baseline,
+            worst.1,
+            worst.2.scenario,
+            worst.2.metric
+        );
+    }
+    println!(
+        "RF_ORGAN_LAB_SENSITIVITY path={} knobs={}",
+        destination.display(),
+        rows.len()
+    );
+    Ok(())
+}
+
 const fn usage() -> &'static str {
     "usage:\n  rf-organ-lab render OUTPUT_DIRECTORY [--transformer-drive-trims T1,T2,T3]\n  rf-organ-lab compare MODEL_DIRECTORY REFERENCE_DIRECTORY OUTPUT_DIRECTORY\n  rf-organ-lab sweep OUTPUT_DIRECTORY
-  rf-organ-lab provenance OUTPUT_FILE"
+  rf-organ-lab provenance OUTPUT_FILE\n  rf-organ-lab sensitivity OUTPUT_DIRECTORY"
 }
 
 /// Parses the optional per-transformer drive trims. They exist so that a
@@ -422,7 +467,13 @@ impl Scenario {
 }
 
 fn render_phrase(scenario: Scenario) -> Result<Vec<f32>, Box<dyn Error>> {
-    let mut engine = OrganEngine::new(SAMPLE_RATE as f32).map_err(|error| error.0)?;
+    render_phrase_with(scenario, &Model::BASELINE)
+}
+
+/// A phrase played on an engine built from `model` rather than the shipped
+/// constants.
+fn render_phrase_with(scenario: Scenario, model: &Model) -> Result<Vec<f32>, Box<dyn Error>> {
+    let mut engine = OrganEngine::with_model(SAMPLE_RATE as f32, model).map_err(|error| error.0)?;
     configure(&mut engine, scenario);
     let frames = SAMPLE_RATE as usize * SECONDS;
     let mut output = Vec::with_capacity(frames * 2);

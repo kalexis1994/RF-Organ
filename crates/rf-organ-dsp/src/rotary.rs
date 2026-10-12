@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 use core::f32::consts::TAU;
 
+use crate::model::{Knob, Model};
+
 const DELAY_CAPACITY: usize = 8192;
 
 /// Rotor speeds, as the physical cabinet turns rather than as a digital one
@@ -651,6 +653,11 @@ struct Rotor {
     rise_seconds: f32,
     fall_seconds: f32,
     brake_seconds: f32,
+    /// The three times at the middle of the acceleration control, which it
+    /// scales from.
+    base_seconds: [f32; 3],
+    /// How long the relay and the clutch take before the speed moves.
+    mode_delay_seconds: f32,
     direction: f32,
 }
 
@@ -659,9 +666,8 @@ impl Rotor {
         direction: f32,
         slow_rpm: f32,
         fast_rpm: f32,
-        rise: f32,
-        fall: f32,
-        brake: f32,
+        [rise, fall, brake]: [f32; 3],
+        mode_delay_seconds: f32,
     ) -> Self {
         Self {
             sine: 0.0,
@@ -679,6 +685,8 @@ impl Rotor {
             rise_seconds: rise,
             fall_seconds: fall,
             brake_seconds: brake,
+            base_seconds: [rise, fall, brake],
+            mode_delay_seconds,
             direction,
         }
     }
@@ -701,7 +709,7 @@ impl Rotor {
         };
         self.target_hz = target_hz;
         self.rate_hz_per_second = span / seconds.max(0.05);
-        self.delay_frames = (MODE_DELAY_SECONDS * sample_rate) as u32;
+        self.delay_frames = (self.mode_delay_seconds * sample_rate) as u32;
         self.brake = if target_hz <= 0.0 {
             let target = match (self.stop_angle, self.brake) {
                 (StopAngle::Fixed(turns), _) => turns,
@@ -851,11 +859,31 @@ pub struct Rotary {
     /// Drawn on only when a rotor is asked to stop at a random angle, so a
     /// render with fixed angles stays bit-identical run to run.
     entropy: u32,
+    /// The cabinet's unmeasured shaping, as the model it was built with has
+    /// it: see the constants of the same names.
+    shaping: Shaping,
+}
+
+#[derive(Clone, Copy)]
+struct Shaping {
+    acceleration: (f32, f32),
+    horn_shelf_hz: f32,
+    horn_body: (f32, f32),
+    horn_top: (f32, f32),
+    drum: (f32, f32),
+    reflection_level: f32,
+    sub_into_horn: f32,
+    presence_lift: f32,
+    proximity_max_lift: f32,
 }
 
 impl Rotary {
     pub fn new(sample_rate: f32) -> Self {
-        let x = TAU * CROSSOVER_HZ / sample_rate;
+        Self::with_model(sample_rate, &Model::BASELINE)
+    }
+
+    pub fn with_model(sample_rate: f32, model: &Model) -> Self {
+        let x = TAU * model[Knob::CrossoverHz] / sample_rate;
         let mut cabinet = Self {
             sample_rate,
             mode: RotaryMode::Off,
@@ -867,19 +895,25 @@ impl Rotary {
             // opposite directions.
             horn: Rotor::new(
                 1.0,
-                HORN_SLOW_RPM,
-                HORN_FAST_RPM,
-                HORN_RISE_SECONDS,
-                HORN_FALL_SECONDS,
-                HORN_BRAKE_SECONDS,
+                model[Knob::HornSlowRpm],
+                model[Knob::HornFastRpm],
+                [
+                    model[Knob::HornRiseS],
+                    model[Knob::HornFallS],
+                    model[Knob::HornBrakeS],
+                ],
+                model[Knob::ModeDelayS],
             ),
             drum: Rotor::new(
                 -1.0,
-                DRUM_SLOW_RPM,
-                DRUM_FAST_RPM,
-                DRUM_RISE_SECONDS,
-                DRUM_FALL_SECONDS,
-                DRUM_BRAKE_SECONDS,
+                model[Knob::DrumSlowRpm],
+                model[Knob::DrumFastRpm],
+                [
+                    model[Knob::DrumRiseS],
+                    model[Knob::DrumFallS],
+                    model[Knob::DrumBrakeS],
+                ],
+                model[Knob::ModeDelayS],
             ),
             horn_delay: DelayLine::new(),
             drum_delay: DelayLine::new(),
@@ -902,11 +936,25 @@ impl Rotary {
             proximity: [0.0; 4],
             proximity_coefficient: [0.0; 2],
             proximity_lift: 0.0,
-            presence_coefficient: one_pole(DYNAMIC_PRESENCE_HZ, sample_rate),
-            top_coefficient: one_pole(DYNAMIC_TOP_HZ, sample_rate),
+            presence_coefficient: one_pole(model[Knob::DynamicPresenceHz], sample_rate),
+            top_coefficient: one_pole(model[Knob::DynamicTopHz], sample_rate),
             presence: [0.0; 2],
             top: [0.0; 2],
             entropy: 0x9e37_79b9,
+            shaping: Shaping {
+                acceleration: (
+                    model[Knob::AccelerationBriskest],
+                    model[Knob::AccelerationSpan],
+                ),
+                horn_shelf_hz: model[Knob::HornShelfHz],
+                horn_body: (model[Knob::HornBodyAway], model[Knob::HornBodyFacing]),
+                horn_top: (model[Knob::HornTopAway], model[Knob::HornTopFacing]),
+                drum: (model[Knob::DrumAway], model[Knob::DrumFacing]),
+                reflection_level: model[Knob::ReflectionLevel],
+                sub_into_horn: model[Knob::SubIntoHorn],
+                presence_lift: model[Knob::DynamicPresenceLift],
+                proximity_max_lift: model[Knob::ProximityMaxLift],
+            },
         };
         cabinet.settle_fixed_paths();
         cabinet
@@ -993,15 +1041,18 @@ impl Rotary {
             return false;
         }
         // The middle of the control is where the documented times sit.
-        let scale = ACCELERATION_BRISKEST + ACCELERATION_SPAN * value * value;
+        let (briskest, span) = self.shaping.acceleration;
+        let scale = briskest + span * value * value;
         let horn = |seconds: f32| (seconds * scale).clamp(HORN_TIME_FLOOR, TIME_CEILING);
         let drum = |seconds: f32| (seconds * scale).clamp(DRUM_TIME_FLOOR, TIME_CEILING);
-        self.horn.rise_seconds = horn(HORN_RISE_SECONDS);
-        self.horn.fall_seconds = horn(HORN_FALL_SECONDS);
-        self.horn.brake_seconds = horn(HORN_BRAKE_SECONDS);
-        self.drum.rise_seconds = drum(DRUM_RISE_SECONDS);
-        self.drum.fall_seconds = drum(DRUM_FALL_SECONDS);
-        self.drum.brake_seconds = drum(DRUM_BRAKE_SECONDS);
+        let [horn_rise, horn_fall, horn_brake] = self.horn.base_seconds;
+        let [drum_rise, drum_fall, drum_brake] = self.drum.base_seconds;
+        self.horn.rise_seconds = horn(horn_rise);
+        self.horn.fall_seconds = horn(horn_fall);
+        self.horn.brake_seconds = horn(horn_brake);
+        self.drum.rise_seconds = drum(drum_rise);
+        self.drum.fall_seconds = drum(drum_fall);
+        self.drum.brake_seconds = drum(drum_brake);
         // Keep whatever move is under way consistent with the new times.
         let (horn_target, drum_target) = (self.horn.target_hz, self.drum.target_hz);
         let (horn_delay, drum_delay) = (self.horn.delay_frames, self.drum.delay_frames);
@@ -1078,7 +1129,7 @@ impl Rotary {
             let x = TAU * corner / self.sample_rate;
             *slot = x / (1.0 + x);
         }
-        self.proximity_lift = PROXIMITY_MAX_LIFT * self.pattern;
+        self.proximity_lift = self.shaping.proximity_max_lift * self.pattern;
     }
 
     /// The radius each rotor's mouth turns at, in metres. This is the one
@@ -1150,17 +1201,18 @@ impl Rotary {
         let drum_left = self.drum_delay.read(drum_path_left.delay_samples) * drum_path_left.gain;
         let drum_right = self.drum_delay.read(drum_path_right.delay_samples) * drum_path_right.gain;
 
-        let horn_filter = one_pole(HORN_SHELF_HZ, self.sample_rate);
+        let horn_filter = one_pole(self.shaping.horn_shelf_hz, self.sample_rate);
+        let (body_away, body_facing) = self.shaping.horn_body;
+        let (top_away, top_facing) = self.shaping.horn_top;
+        let (drum_away, drum_facing) = self.shaping.drum;
         self.horn_tone_left += horn_filter * (raw_horn_left - self.horn_tone_left);
         self.horn_tone_right += horn_filter * (raw_horn_right - self.horn_tone_right);
         let horn_high_left = raw_horn_left - self.horn_tone_left;
         let horn_high_right = raw_horn_right - self.horn_tone_right;
-        let horn_left = self.horn_tone_left
-            * (HORN_BODY_AWAY + HORN_BODY_FACING * horn_facing_left)
-            + horn_high_left * (HORN_TOP_AWAY + HORN_TOP_FACING * horn_facing_left);
-        let horn_right = self.horn_tone_right
-            * (HORN_BODY_AWAY + HORN_BODY_FACING * horn_facing_right)
-            + horn_high_right * (HORN_TOP_AWAY + HORN_TOP_FACING * horn_facing_right);
+        let horn_left = self.horn_tone_left * (body_away + body_facing * horn_facing_left)
+            + horn_high_left * (top_away + top_facing * horn_facing_left);
+        let horn_right = self.horn_tone_right * (body_away + body_facing * horn_facing_right)
+            + horn_high_right * (top_away + top_facing * horn_facing_right);
 
         // Each pair gains its own bass for being where it is.
         let lift = self.proximity_lift;
@@ -1175,12 +1227,12 @@ impl Rotary {
         let drum_left = near(
             2,
             drum_corner,
-            drum_left * (DRUM_AWAY + DRUM_FACING * drum_facing_left),
+            drum_left * (drum_away + drum_facing * drum_facing_left),
         );
         let drum_right = near(
             3,
             drum_corner,
-            drum_right * (DRUM_AWAY + DRUM_FACING * drum_facing_right),
+            drum_right * (drum_away + drum_facing * drum_facing_right),
         );
 
         let (horn_gain, drum_gain) = (self.horn_gain, self.drum_gain);
@@ -1191,9 +1243,10 @@ impl Rotary {
         // The woofer's own sound never enters a rotor. It leaves the cabinet
         // unmodulated and arrives at the microphones that happen to be there,
         // mostly at the drum's pair and a little at the horn's.
+        let sub_into_horn = self.shaping.sub_into_horn;
         if self.sub_gain > 0.0 {
             let pickup = |paths: [(f32, f32); 4], line: &DelayLine| {
-                let horn = SUB_INTO_HORN;
+                let horn = sub_into_horn;
                 let drum = SUB_INTO_DRUM;
                 (
                     drum * line.read(paths[2].0) * paths[2].1
@@ -1209,11 +1262,12 @@ impl Rotary {
 
         // What the capsule's own character makes of all that. The bass a
         // capsule gains by being close is already in, pair by pair.
+        let presence_lift = self.shaping.presence_lift;
         if self.capsule == MicrophoneType::Dynamic {
             for (channel, value) in [&mut wet_left, &mut wet_right].into_iter().enumerate() {
                 let presence = &mut self.presence[channel];
                 *presence += self.presence_coefficient * (*value - *presence);
-                let mut voiced = *value + DYNAMIC_PRESENCE_LIFT * (*value - *presence);
+                let mut voiced = *value + presence_lift * (*value - *presence);
                 let top = &mut self.top[channel];
                 *top += self.top_coefficient * (voiced - *top);
                 voiced = *top;
@@ -1231,8 +1285,8 @@ impl Rotary {
             * self.cabinet_right.read(self.sample_rate * first.right_s)
             + second.gain * self.cabinet_left.read(self.sample_rate * second.right_s)
             - third.gain * self.cabinet_right.read(self.sample_rate * third.right_s);
-        wet_left += REFLECTION_LEVEL * self.reflections * reflection_left;
-        wet_right += REFLECTION_LEVEL * self.reflections * reflection_right;
+        wet_left += self.shaping.reflection_level * self.reflections * reflection_left;
+        wet_right += self.shaping.reflection_level * self.reflections * reflection_right;
         let wet = if self.mode == RotaryMode::Off {
             0.0
         } else {

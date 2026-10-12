@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 use core::f32::consts::{PI, TAU};
 
+use crate::model::{Knob, Model};
+
 pub const TONEWHEEL_COUNT: usize = 91;
 
 // Translated from the 60 Hz generator table in setBfree, which in turn models
@@ -119,10 +121,14 @@ struct Driveshaft {
     band: f32,
     coupling_f: f32,
     depth: f32,
+    wow_rate_hz: f32,
+    wow_depth: f32,
+    flutter_depth: f32,
+    coupling_damping: f32,
 }
 
 impl Driveshaft {
-    fn new(sample_rate: f32) -> Self {
+    fn new(sample_rate: f32, model: &Model) -> Self {
         let mut shaft = Self {
             wow: (0.0, 1.0),
             wow_step: (0.0, 1.0),
@@ -130,15 +136,19 @@ impl Driveshaft {
             flutter_step: (0.0, 1.0),
             low: 0.0,
             band: 0.0,
-            coupling_f: 2.0 * (PI * COUPLING_HZ / sample_rate).min(0.4),
+            coupling_f: 2.0 * (PI * model[Knob::CouplingHz] / sample_rate).min(0.4),
             depth: 1.0,
+            wow_rate_hz: model[Knob::WowRateHz],
+            wow_depth: model[Knob::WowDepth],
+            flutter_depth: model[Knob::FlutterDepth],
+            coupling_damping: model[Knob::CouplingDamping],
         };
         shaft.retune(sample_rate, SHAFT_RPM_SIXTY);
         shaft
     }
 
     fn retune(&mut self, sample_rate: f32, shaft_rpm: f32) {
-        self.wow_step = sin_cos_pair(TAU * WOW_RATE_HZ / sample_rate);
+        self.wow_step = sin_cos_pair(TAU * self.wow_rate_hz / sample_rate);
         self.flutter_step = sin_cos_pair(TAU * (shaft_rpm / 60.0) / sample_rate);
     }
 
@@ -147,11 +157,11 @@ impl Driveshaft {
     fn tick(&mut self) -> f32 {
         advance(&mut self.wow, self.wow_step);
         advance(&mut self.flutter, self.flutter_step);
-        let drive = WOW_DEPTH * self.wow.0 + FLUTTER_DEPTH * self.flutter.0;
+        let drive = self.wow_depth * self.wow.0 + self.flutter_depth * self.flutter.0;
         // One state-variable step: the springs pass the slow part and ring a
         // little where they resonate.
         self.low += self.coupling_f * self.band;
-        let high = drive - self.low - COUPLING_DAMPING * self.band;
+        let high = drive - self.low - self.coupling_damping * self.band;
         self.band += self.coupling_f * high;
         self.depth * self.low
     }
@@ -224,7 +234,7 @@ impl Tonewheel {
         self.rotation_cosine = cosine * correction;
     }
 
-    fn tick(&mut self, sample_rate: f32, index: usize, eccentricity: f32) -> f32 {
+    fn tick(&mut self, sample_rate: f32, index: usize, eccentricity: f32, profile: Profile) -> f32 {
         let sine = self.sine * self.rotation_cosine + self.cosine * self.rotation_sine;
         let cosine = self.cosine * self.rotation_cosine - self.sine * self.rotation_sine;
         let correction = 1.5 - 0.5 * (sine * sine + cosine * cosine);
@@ -238,15 +248,15 @@ impl Tonewheel {
         let fifth = sine * (16.0 * squared * squared - 20.0 * squared + 5.0);
         let third_gain = if index < 24 && self.frequency * 3.0 < sample_rate * 0.48 {
             if index < 12 {
-                LOW_OCTAVE_THIRD
+                profile.low_octave_third
             } else {
-                SECOND_OCTAVE_THIRD
+                profile.second_octave_third
             }
         } else {
             0.0
         };
         let fifth_gain = if index < 12 && self.frequency * 5.0 < sample_rate * 0.48 {
-            LOW_OCTAVE_FIFTH
+            profile.low_octave_fifth
         } else {
             0.0
         };
@@ -266,17 +276,31 @@ impl Tonewheel {
     }
 }
 
+/// How far the low wheels stray from a sine.
+#[derive(Clone, Copy)]
+struct Profile {
+    low_octave_third: f32,
+    second_octave_third: f32,
+    low_octave_fifth: f32,
+}
+
 pub struct TonewheelBank {
     wheels: [Tonewheel; TONEWHEEL_COUNT],
     samples: [f32; TONEWHEEL_COUNT],
     sample_rate: f32,
     eccentricity: f32,
+    profile: Profile,
     shaft: Driveshaft,
     since_retime: u32,
 }
 
 impl TonewheelBank {
+    #[cfg(test)]
     pub fn new(sample_rate: f32) -> Self {
+        Self::with_model(sample_rate, &Model::BASELINE)
+    }
+
+    pub fn with_model(sample_rate: f32, model: &Model) -> Self {
         let mut wheels = [Tonewheel::EMPTY; TONEWHEEL_COUNT];
         for (index, wheel) in wheels.iter_mut().enumerate() {
             let frequency = gear_frequency(index).expect("bounded wheel index");
@@ -317,8 +341,13 @@ impl TonewheelBank {
             wheels,
             samples: [0.0; TONEWHEEL_COUNT],
             sample_rate,
-            eccentricity: ECCENTRICITY_DEPTH,
-            shaft: Driveshaft::new(sample_rate),
+            eccentricity: model[Knob::EccentricityDepth],
+            profile: Profile {
+                low_octave_third: model[Knob::LowOctaveThird],
+                second_octave_third: model[Knob::SecondOctaveThird],
+                low_octave_fifth: model[Knob::LowOctaveFifth],
+            },
+            shaft: Driveshaft::new(sample_rate, model),
             since_retime: 0,
         }
     }
@@ -375,7 +404,7 @@ impl TonewheelBank {
             .zip(self.samples.iter_mut())
             .enumerate()
         {
-            *sample = wheel.tick(self.sample_rate, index, self.eccentricity);
+            *sample = wheel.tick(self.sample_rate, index, self.eccentricity, self.profile);
         }
     }
 

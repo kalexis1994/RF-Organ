@@ -144,6 +144,18 @@ fails when any of them moves with the sample rate, then benchmarks five loads at
 each rate — from an idle generator up to a fully engaged console — so that the
 cost of each subsystem is the difference between two rows.
 
+Every number the engine is built from is registered with what it rests on -
+documented, measured, derived, borrowed from another model, or provisional -
+and the span it could plausibly take; `docs/PROVENANCE.md` is the table.
+`sensitivity` moves each unmeasured constant to both ends of its span, renders
+the calibration phrases again and ranks the constants by how far the sound
+moved, in decibels of level, spectral shape and envelope, which is where a
+measurement would be worth the most:
+
+```text
+cargo run --release -p rf-organ-lab -- sensitivity artifacts/sensitivity
+```
+
 The output includes scalar measurements, expression, tone-control and
 transformer-intermodulation response, percussion envelopes, scanner sidebands,
 isolated pedal spectra and key-off response, and rotary acceleration/braking

@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
+use crate::model::{Knob, Model};
 use crate::preset::PRESET_COUNT;
 use crate::tonewheel::TONEWHEEL_COUNT;
 
@@ -139,6 +140,48 @@ impl Registration {
 /// the rate control. Provisional: Hammond publishes that the rate exists and
 /// is adjustable, not what it is.
 pub(crate) const LEAKAGE_PER_KEY: f32 = 0.35;
+/// How much of a neighbouring wheel reaches the busbar at the top of the
+/// leakage control. Provisional: Hammond describes leakage, not its level.
+pub(crate) const LEAKAGE_CEILING: f32 = 0.12;
+/// What a manual's busbars hand the matching transformer, against the sum of
+/// the wheels they carry. Provisional: it sets the manuals' level against the
+/// pedals', and neither is measured.
+pub(crate) const MANUAL_BUS_GAIN: f32 = 0.055;
+
+/// The keying constants a model was built with, shared by the manuals and
+/// the pedals.
+#[derive(Clone, Copy)]
+pub(crate) struct Keying {
+    pub(crate) press_spread_brisk_s: f32,
+    pub(crate) press_spread_gentle_s: f32,
+    pub(crate) bounce_gentle_s: f32,
+    pub(crate) bounce_hard_s: f32,
+    pub(crate) bounce_redraw_hz: f32,
+    pub(crate) bounce_restitution: f32,
+    pub(crate) release_spread_s: f32,
+    pub(crate) release_click_share: f32,
+    pub(crate) key_click_soft_s: f32,
+    pub(crate) leakage_per_key: f32,
+    pub(crate) manual_bus_gain: f32,
+}
+
+impl Keying {
+    pub(crate) fn of(model: &Model) -> Self {
+        Self {
+            press_spread_brisk_s: model[Knob::PressSpreadBriskS],
+            press_spread_gentle_s: model[Knob::PressSpreadGentleS],
+            bounce_gentle_s: model[Knob::BounceGentleS],
+            bounce_hard_s: model[Knob::BounceHardS],
+            bounce_redraw_hz: model[Knob::BounceRedrawHz],
+            bounce_restitution: model[Knob::BounceRestitution],
+            release_spread_s: model[Knob::ReleaseSpreadS],
+            release_click_share: model[Knob::ReleaseClickShare],
+            key_click_soft_s: model[Knob::KeyClickSoftS],
+            leakage_per_key: model[Knob::LeakagePerKey],
+            manual_bus_gain: model[Knob::ManualBusGain],
+        }
+    }
+}
 
 /// How far apart a key's contacts may be asked to arrive, beyond the spread a
 /// press of its own gives them.
@@ -313,7 +356,7 @@ impl Contact {
         self.delay == 0 && self.bounce_left == 0 && self.gate == if self.target { 1.0 } else { 0.0 }
     }
 
-    fn tick(&mut self) -> bool {
+    fn tick(&mut self, restitution: f32) -> bool {
         if self.delay > 0 {
             self.delay -= 1;
             return false;
@@ -349,7 +392,7 @@ impl Contact {
                     self.target
                 };
                 self.gate = if closed { 1.0 } else { 0.0 };
-                self.bounce_travel *= BOUNCE_RESTITUTION;
+                self.bounce_travel *= restitution;
                 self.period_left = self.period;
             } else {
                 self.period_left -= 1;
@@ -418,10 +461,20 @@ pub struct Manual {
     /// decision, so this is what it waits for.
     took_first_contact: bool,
     leakage_boost: f32,
+    keying: Keying,
 }
 
 impl Manual {
+    #[cfg(test)]
     pub fn new(sample_rate: f32, presets: &'static [[u8; DRAWBAR_COUNT]; PRESET_COUNT]) -> Self {
+        Self::with_model(sample_rate, presets, &Model::BASELINE)
+    }
+
+    pub fn with_model(
+        sample_rate: f32,
+        presets: &'static [[u8; DRAWBAR_COUNT]; PRESET_COUNT],
+        model: &Model,
+    ) -> Self {
         let mut manual = Self {
             keys: [Key::EMPTY; MANUAL_KEY_COUNT],
             drawbars: [[8, 8, 8, 0, 0, 0, 0, 0, 0]; DRAWBAR_SET_COUNT],
@@ -440,6 +493,7 @@ impl Manual {
             held: 0,
             took_first_contact: false,
             leakage_boost: LEAKAGE_BOOST_DEFAULT,
+            keying: Keying::of(model),
         };
         for key in 0..MANUAL_KEY_COUNT {
             for bus in 0..DRAWBAR_COUNT {
@@ -544,20 +598,23 @@ impl Manual {
         // A key coming up is not a key going down played backwards, and until
         // now this treated it as one. See `RELEASE_SPREAD_S`.
         let spread_seconds = if target {
-            self.contact_spread * (PRESS_SPREAD_BRISK_S + PRESS_SPREAD_GENTLE_S * (1.0 - velocity))
+            self.contact_spread
+                * (self.keying.press_spread_brisk_s
+                    + self.keying.press_spread_gentle_s * (1.0 - velocity))
         } else {
-            self.contact_spread * RELEASE_SPREAD_S
+            self.contact_spread * self.keying.release_spread_s
         } + self.contact_delay * CONTACT_DELAY_CEILING_S;
         let spread_samples = (spread_seconds * self.sample_rate) as u32;
         // Bounce is the contact arriving and rebounding off the busbar. A
         // contact that is leaving has nothing to rebound from.
         let bounce_samples = if target {
-            (self.contact_bounce * (BOUNCE_GENTLE_S + BOUNCE_HARD_S * velocity) * self.sample_rate)
-                as u32
+            (self.contact_bounce
+                * (self.keying.bounce_gentle_s + self.keying.bounce_hard_s * velocity)
+                * self.sample_rate) as u32
         } else {
             0
         };
-        let period = (self.sample_rate / BOUNCE_REDRAW_HZ).max(1.0) as u16;
+        let period = (self.sample_rate / self.keying.bounce_redraw_hz).max(1.0) as u16;
         // A console's contacts arrive abruptly. Turning the click down is
         // turning that arrival into a ramp, which is the same control Hammond
         // gives and the same sentence: the attack slows as the click goes.
@@ -566,14 +623,14 @@ impl Manual {
         // about it: a ramp of two milliseconds already has no click left in
         // it, so a control that spent half its travel getting there would be
         // a switch with a long handle.
-        let softest = 1.0 / (KEY_CLICK_SOFT_S * self.sample_rate).max(1.0);
+        let softest = 1.0 / (self.keying.key_click_soft_s * self.sample_rate).max(1.0);
         let click = self.key_click * self.key_click * self.key_click;
         // A release arrives at a share of the speed a press does. See
         // `RELEASE_CLICK_SHARE`.
         let click = if target {
             click
         } else {
-            click * RELEASE_CLICK_SHARE
+            click * self.keying.release_click_share
         };
         let rise = click.max(softest).min(1.0);
         for bus in 0..DRAWBAR_COUNT {
@@ -607,6 +664,7 @@ impl Manual {
 
     pub fn tick_contacts(&mut self) {
         let mut touched = false;
+        let restitution = self.keying.bounce_restitution;
         for key in &mut self.keys {
             if !key.settling {
                 continue;
@@ -614,7 +672,7 @@ impl Manual {
             let mut settling = false;
             for (bus, contact) in key.contacts.iter_mut().enumerate() {
                 let before = contact.gate;
-                if contact.tick() {
+                if contact.tick(restitution) {
                     let level = self.levels[bus];
                     self.wheel_gains[contact.wheel as usize] += (contact.gate - before) * level;
                 }
@@ -673,7 +731,9 @@ impl Manual {
 
     /// What the leakage is multiplied by with this many keys down.
     fn leakage_gain(&self) -> f32 {
-        1.0 + self.leakage_boost * LEAKAGE_PER_KEY * f32::from(self.held.saturating_sub(1))
+        1.0 + self.leakage_boost
+            * self.keying.leakage_per_key
+            * f32::from(self.held.saturating_sub(1))
     }
 
     pub fn sample(
@@ -699,7 +759,7 @@ impl Manual {
                 output -= contact.gate * level * (wheels[index] + leakage * leak);
             }
         }
-        output * 0.055
+        output * self.keying.manual_bus_gain
     }
 
     pub fn harmonic_sample(&self, wheels: &[f32; TONEWHEEL_COUNT], bus: usize) -> f32 {
@@ -709,7 +769,7 @@ impl Manual {
             let contact = key.contacts[bus];
             output += contact.gate * wheels[contact.wheel as usize];
         }
-        output * 0.055
+        output * self.keying.manual_bus_gain
     }
 
     pub fn is_active(&self, note: u8) -> Option<bool> {

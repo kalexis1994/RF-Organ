@@ -236,8 +236,8 @@ pub const CONSTANTS: &[Constant] = &[
         "As the coupling's corner.",
     ),
     c(
-        "lib::LEAKAGE_CEILING",
-        f(crate::LEAKAGE_CEILING),
+        "manual::LEAKAGE_CEILING",
+        f(manual::LEAKAGE_CEILING),
         "gain",
         Provisional,
         Assumed(0.01, 0.3),
@@ -347,6 +347,30 @@ pub const CONSTANTS: &[Constant] = &[
         Provisional,
         Assumed(0.0, 1.0),
         "A floor for controllers that send no release velocity; the manuals no longer use one.",
+    ),
+    c(
+        "pedal::L20_CORNER_HZ",
+        f(pedal::L20_CORNER_HZ),
+        "Hz",
+        Provisional,
+        Assumed(200.0, 2_000.0),
+        "L20 is in the pedal circuit; its value is not legible in the available documents.",
+    ),
+    c(
+        "pedal::PEDAL_BUS_GAIN",
+        f(pedal::PEDAL_BUS_GAIN),
+        "gain",
+        Provisional,
+        Assumed(0.01, 0.06),
+        "Sets the pedals' level against the manuals'; neither is measured.",
+    ),
+    c(
+        "manual::MANUAL_BUS_GAIN",
+        f(manual::MANUAL_BUS_GAIN),
+        "gain",
+        Provisional,
+        Assumed(0.02, 0.1),
+        "Sets the manuals' level into the matching transformers; not measured.",
     ),
     // Percussion.
     c(
@@ -623,6 +647,30 @@ pub const CONSTANTS: &[Constant] = &[
         Provisional,
         Assumed(0.0, 1.0),
         "As V4A's.",
+    ),
+    c(
+        "electronics::STAGE_DRIVE_GAIN",
+        f(electronics::STAGE_DRIVE_GAIN),
+        "gain",
+        Provisional,
+        Assumed(2.0, 15.0),
+        "How hard the drive control pushes a stage into its curve; the stage values are not legible.",
+    ),
+    c(
+        "electronics::STAGE_MAKEUP",
+        f(electronics::STAGE_MAKEUP),
+        "gain",
+        Provisional,
+        Assumed(1.0, 6.0),
+        "Keeps a driven stage near its clean level.",
+    ),
+    c(
+        "electronics::DC_BLOCK_HZ",
+        f(electronics::DC_BLOCK_HZ),
+        "Hz",
+        Provisional,
+        Assumed(5.0, 40.0),
+        "The coupling capacitors after V3B; their values are not legible in the available scan.",
     ),
     c(
         "electronics::STAGE_CHARACTER_DEFAULT",
@@ -1019,6 +1067,14 @@ pub fn find(name: &str) -> Option<&'static Constant> {
     CONSTANTS.iter().find(|constant| constant.name == name)
 }
 
+/// Unmeasured constants a model cannot move yet, and why. Everything else
+/// that rests on less than a document is a [`Knob`], so the laboratory can
+/// find out what it is worth.
+pub const NOT_YET_KNOBS: [(&str, &str); 1] = [(
+    "rotary::CABINET_HALF_M",
+    "only reaches microphones at the cabinet's sides, through geometry the play surface shares",
+)];
+
 #[cfg(test)]
 mod tests {
     extern crate std;
@@ -1027,6 +1083,8 @@ mod tests {
     use std::format;
     use std::string::String;
     use std::vec::Vec;
+
+    use crate::model::{Knob, Model};
 
     /// The modules whose scalars the model is built from, as source text.
     const SOURCES: [(&str, &str); 12] = [
@@ -1122,6 +1180,61 @@ mod tests {
                 "{} is registered but not declared where its name says",
                 table.name
             );
+        }
+    }
+
+    /// The model a laboratory moves has to be the constants the table
+    /// describes, value for value, or a survey would be measuring something
+    /// other than the instrument.
+    #[test]
+    fn every_knob_is_a_registered_unmeasured_constant() {
+        let baseline = Model::BASELINE;
+        for (index, knob) in Knob::ALL.into_iter().enumerate() {
+            assert!(
+                Knob::ALL[..index]
+                    .iter()
+                    .all(|other| other.name() != knob.name()),
+                "{} is a knob twice",
+                knob.name()
+            );
+            let constant =
+                find(knob.name()).unwrap_or_else(|| panic!("{} is not registered", knob.name()));
+            assert!(
+                matches!(
+                    constant.basis,
+                    Basis::Measured | Basis::Borrowed | Basis::Provisional
+                ),
+                "{} is {} and has nothing to survey",
+                knob.name(),
+                constant.basis.name()
+            );
+            assert!(
+                f64::from(baseline[knob]) == constant.value,
+                "{} starts at {} where the table says {}",
+                knob.name(),
+                baseline[knob],
+                constant.value
+            );
+        }
+        // And the other way: an unmeasured constant is a knob unless it is a
+        // control's starting point, which a survey moves through the control,
+        // or it says why not.
+        for constant in CONSTANTS {
+            let unmeasured = matches!(
+                constant.basis,
+                Basis::Measured | Basis::Borrowed | Basis::Provisional
+            );
+            let a_default = constant.name.contains("DEFAULT");
+            let a_knob = Knob::ALL.iter().any(|knob| knob.name() == constant.name);
+            let excused = NOT_YET_KNOBS.iter().any(|(name, _)| *name == constant.name);
+            if unmeasured && !a_default {
+                assert!(
+                    a_knob || excused,
+                    "{} is unmeasured but no model can move it",
+                    constant.name
+                );
+            }
+            assert!(!(a_knob && excused), "{} is both", constant.name);
         }
     }
 

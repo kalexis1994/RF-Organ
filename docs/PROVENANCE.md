@@ -25,8 +25,8 @@ survey should look, not where the truth is.
 | measured | 4 |
 | derived | 5 |
 | borrowed | 4 |
-| provisional | 73 |
-| **total** | **102** |
+| provisional | 79 |
+| **total** | **108** |
 
 ## `tonewheel`
 
@@ -44,16 +44,11 @@ survey should look, not where the truth is.
 | `COUPLING_HZ` | 34 | Hz | provisional | 10 to 80 (assumed) | The service manual describes coil-spring couplings; their resonance is not published. |
 | `COUPLING_DAMPING` | 0.6 | ratio | provisional | 0.2 to 1 (assumed) | As the coupling's corner. |
 
-## `lib`
-
-| Constant | Value | Unit | Basis | Span | Rests on |
-|---|---:|---|---|---|---|
-| `LEAKAGE_CEILING` | 0.12 | gain | provisional | 0.01 to 0.3 (assumed) | Hammond describes leakage and compartments, not its level. |
-
 ## `manual`
 
 | Constant | Value | Unit | Basis | Span | Rests on |
 |---|---:|---|---|---|---|
+| `LEAKAGE_CEILING` | 0.12 | gain | provisional | 0.01 to 0.3 (assumed) | Hammond describes leakage and compartments, not its level. |
 | `CONTACT_DELAY_CEILING_S` | 0.7256 | s | documented | exact | Hammond's contact page: a contact may be delayed by up to 725.6 ms. |
 | `PRESS_SPREAD_BRISK_S` | 0.0004 | s | provisional | 0.0001 to 0.002 (assumed) | The keyboard-action study that measured contact spread (Moro et al., JASA 2017) is behind a paywall. |
 | `PRESS_SPREAD_GENTLE_S` | 0.008 | s | provisional | 0.002 to 0.02 (assumed) | As the brisk spread. |
@@ -72,6 +67,14 @@ survey should look, not where the truth is.
 | Constant | Value | Unit | Basis | Span | Rests on |
 |---|---:|---|---|---|---|
 | `RELEASE_VELOCITY_FLOOR` | 0.25 | velocity | provisional | 0 to 1 (assumed) | A floor for controllers that send no release velocity; the manuals no longer use one. |
+| `L20_CORNER_HZ` | 700 | Hz | provisional | 200 to 2000 (assumed) | L20 is in the pedal circuit; its value is not legible in the available documents. |
+| `PEDAL_BUS_GAIN` | 0.028 | gain | provisional | 0.01 to 0.06 (assumed) | Sets the pedals' level against the manuals'; neither is measured. |
+
+## `manual`
+
+| Constant | Value | Unit | Basis | Span | Rests on |
+|---|---:|---|---|---|---|
+| `MANUAL_BUS_GAIN` | 0.055 | gain | provisional | 0.02 to 0.1 (assumed) | Sets the manuals' level into the matching transformers; not measured. |
 
 ## `percussion`
 
@@ -126,6 +129,9 @@ survey should look, not where the truth is.
 | `V4A_DRIVE_SHARE` | 0.45 | ratio | provisional | 0 to 1 (assumed) | From outside the preamplifier only the chain is visible, not how the stages divide it. |
 | `V4B_DRIVE_SHARE` | 0.35 | ratio | provisional | 0 to 1 (assumed) | As V4A's. |
 | `V3B_DRIVE_SHARE` | 0.2 | ratio | provisional | 0 to 1 (assumed) | As V4A's. |
+| `STAGE_DRIVE_GAIN` | 7 | gain | provisional | 2 to 15 (assumed) | How hard the drive control pushes a stage into its curve; the stage values are not legible. |
+| `STAGE_MAKEUP` | 3.2 | gain | provisional | 1 to 6 (assumed) | Keeps a driven stage near its clean level. |
+| `DC_BLOCK_HZ` | 18 | Hz | provisional | 5 to 40 (assumed) | The coupling capacitors after V3B; their values are not legible in the available scan. |
 | `STAGE_CHARACTER_DEFAULT` | 1 | control | provisional | 0 to 3 (assumed) | Where the shared stage character starts; one means the asymmetries as written. |
 
 ## `rotary`

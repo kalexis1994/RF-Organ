@@ -8,6 +8,7 @@
 
 mod electronics;
 mod manual;
+mod model;
 mod pedal;
 mod percussion;
 mod preset;
@@ -48,6 +49,8 @@ pub use transformer::{
 };
 pub use vibrato_line::{CUTOFF_HZ as SCANNER_LINE_CUTOFF_HZ, ROTOR_HZ as SCANNER_ROTOR_HZ};
 
+pub use model::{Knob, Model};
+
 use manual::Manual;
 use pedal::Pedalboard;
 use percussion::Percussion;
@@ -55,9 +58,6 @@ use tonewheel::TonewheelBank;
 
 pub const SAMPLE_RATE_MIN: f32 = 32_000.0;
 pub const SAMPLE_RATE_MAX: f32 = 192_000.0;
-/// How much of a neighbouring wheel reaches the busbar at the top of the
-/// leakage control. Provisional: Hammond describes leakage, not its level.
-pub(crate) const LEAKAGE_CEILING: f32 = 0.12;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ModelError(pub &'static str);
@@ -94,31 +94,39 @@ pub struct OrganEngine {
     held_notes: u8,
     upper_scanner: bool,
     lower_scanner: bool,
+    leakage_ceiling: f32,
 }
 
 impl OrganEngine {
     pub fn new(sample_rate: f32) -> Result<Self, ModelError> {
+        Self::with_model(sample_rate, &Model::BASELINE)
+    }
+
+    /// An engine built from a model other than the shipped one. The plugin
+    /// never does this; the laboratory does, to find out what each of the
+    /// unmeasured constants is worth.
+    pub fn with_model(sample_rate: f32, model: &Model) -> Result<Self, ModelError> {
         if !sample_rate.is_finite() || !(SAMPLE_RATE_MIN..=SAMPLE_RATE_MAX).contains(&sample_rate) {
             return Err(ModelError(
                 "sample rate must be finite and between 32 and 192 kHz",
             ));
         }
         Ok(Self {
-            tonewheels: TonewheelBank::new(sample_rate),
+            tonewheels: TonewheelBank::with_model(sample_rate, model),
             // The panel is "divided into two sets of nine bars, each
             // connected to a separate matching transformer", so each manual
             // gets its own half of it.
-            upper: Manual::new(sample_rate, &preset::UPPER_PRESETS),
-            lower: Manual::new(sample_rate, &preset::LOWER_PRESETS),
-            pedals: Pedalboard::new(sample_rate),
-            upper_transformer: MatchingTransformer::new(sample_rate),
-            lower_pedal_transformer: MatchingTransformer::new(sample_rate),
-            electronics: ConsoleElectronics::new(sample_rate),
-            output_transformer: MatchingTransformer::new(sample_rate),
-            scanner: ScannerVibrato::new(sample_rate),
-            percussion: Percussion::new(sample_rate),
+            upper: Manual::with_model(sample_rate, &preset::UPPER_PRESETS, model),
+            lower: Manual::with_model(sample_rate, &preset::LOWER_PRESETS, model),
+            pedals: Pedalboard::with_model(sample_rate, model),
+            upper_transformer: MatchingTransformer::with_model(sample_rate, model),
+            lower_pedal_transformer: MatchingTransformer::with_model(sample_rate, model),
+            electronics: ConsoleElectronics::with_model(sample_rate, model),
+            output_transformer: MatchingTransformer::with_model(sample_rate, model),
+            scanner: ScannerVibrato::with_model(sample_rate, model),
+            percussion: Percussion::with_model(sample_rate, model),
             percussion_armed: false,
-            rotary: Rotary::new(sample_rate),
+            rotary: Rotary::with_model(sample_rate, model),
             transformer_character: (0.35, 0.25),
             transformer_trims: [(0.0, 0.0); 3],
             output_level: 0.72,
@@ -127,6 +135,7 @@ impl OrganEngine {
             held_notes: 0,
             upper_scanner: true,
             lower_scanner: false,
+            leakage_ceiling: model[Knob::LeakageCeiling],
         })
     }
 
@@ -352,7 +361,7 @@ impl OrganEngine {
         if !unit(value) {
             return false;
         }
-        self.leakage = value * LEAKAGE_CEILING;
+        self.leakage = value * self.leakage_ceiling;
         true
     }
 
