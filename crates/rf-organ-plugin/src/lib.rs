@@ -16,27 +16,41 @@ pub use settings::{PARAMETER_COUNT, Settings, presets};
 pub const MAX_FRAMES: u32 = 4096;
 pub const MAX_EVENTS: usize = 256;
 pub const STATE_VERSION: u32 = 21;
-pub const STATE_BYTES_V1: usize = 8 + 19 * 8;
-pub const STATE_BYTES_V2: usize = 8 + 24 * 8;
-pub const STATE_BYTES_V3: usize = 8 + 37 * 8;
-pub const STATE_BYTES_V4: usize = 8 + 41 * 8;
-pub const STATE_BYTES_V5: usize = 8 + 45 * 8;
-pub const STATE_BYTES_V6: usize = 8 + 51 * 8;
-pub const STATE_BYTES_V7: usize = 8 + 55 * 8;
-pub const STATE_BYTES_V8: usize = 8 + 57 * 8;
-pub const STATE_BYTES_V9: usize = 8 + 58 * 8;
-pub const STATE_BYTES_V10: usize = 8 + 60 * 8;
-pub const STATE_BYTES_V11: usize = 8 + 61 * 8;
-pub const STATE_BYTES_V12: usize = 8 + 64 * 8;
-pub const STATE_BYTES_V13: usize = 8 + 66 * 8;
-pub const STATE_BYTES_V14: usize = 8 + 67 * 8;
-pub const STATE_BYTES_V15: usize = 8 + 68 * 8;
-pub const STATE_BYTES_V16: usize = 8 + 69 * 8;
-pub const STATE_BYTES_V17: usize = 8 + 72 * 8;
-pub const STATE_BYTES_V18: usize = 8 + 73 * 8;
-pub const STATE_BYTES_V19: usize = 8 + 74 * 8;
-pub const STATE_BYTES_V20: usize = 8 + 75 * 8;
-pub const STATE_BYTES: usize = 8 + PARAMETER_COUNT * 8;
+pub const STATE_BYTES: usize = state_bytes(PARAMETER_COUNT);
+
+/// Every state this plugin has written, as its version and how many
+/// parameters it carried. Each version only ever appended parameters, so an
+/// older state is the first that many of today's, converted where a meaning
+/// changed. A new version is one more row here.
+const STATE_LAYOUTS: [(u32, usize); STATE_VERSION as usize] = [
+    (1, 19),
+    (2, 24),
+    (3, 37),
+    (4, 41),
+    (5, 45),
+    (6, 51),
+    (7, 55),
+    (8, 57),
+    (9, 58),
+    (10, 60),
+    (11, 61),
+    (12, 64),
+    (13, 66),
+    (14, 67),
+    (15, 68),
+    (16, 69),
+    (17, 72),
+    (18, 73),
+    (19, 74),
+    (20, 75),
+    (STATE_VERSION, PARAMETER_COUNT),
+];
+
+/// The size of a state carrying `fields` parameters: a magic, a version and
+/// one `f64` each.
+const fn state_bytes(fields: usize) -> usize {
+    8 + fields * 8
+}
 
 /// A gain as decibels, with nothing at all reported as the silence the
 /// volumes bottom out at.
@@ -225,62 +239,21 @@ impl Processor for RfOrganProcessor {
     }
 
     fn load_state(&mut self, state: &[u8]) -> bool {
-        if ![
-            STATE_BYTES_V1,
-            STATE_BYTES_V2,
-            STATE_BYTES_V3,
-            STATE_BYTES_V4,
-            STATE_BYTES_V5,
-            STATE_BYTES_V6,
-            STATE_BYTES_V7,
-            STATE_BYTES_V8,
-            STATE_BYTES_V9,
-            STATE_BYTES_V10,
-            STATE_BYTES_V11,
-            STATE_BYTES_V12,
-            STATE_BYTES_V13,
-            STATE_BYTES_V14,
-            STATE_BYTES_V15,
-            STATE_BYTES_V16,
-            STATE_BYTES_V17,
-            STATE_BYTES_V18,
-            STATE_BYTES_V19,
-            STATE_BYTES_V20,
-            STATE_BYTES,
-        ]
-        .contains(&state.len())
-            || &state[..4] != b"RFOR"
-        {
+        if state.get(..4) != Some(b"RFOR".as_slice()) {
             return false;
         }
-        let version = u32::from_le_bytes(state[4..8].try_into().expect("validated state"));
-        let fields = match (version, state.len()) {
-            (1, STATE_BYTES_V1) => 19,
-            (2, STATE_BYTES_V2) => 24,
-            (3, STATE_BYTES_V3) => 37,
-            (4, STATE_BYTES_V4) => 41,
-            (5, STATE_BYTES_V5) => 45,
-            (6, STATE_BYTES_V6) => 51,
-            (7, STATE_BYTES_V7) => 55,
-            (8, STATE_BYTES_V8) => 57,
-            (9, STATE_BYTES_V9) => 58,
-            (10, STATE_BYTES_V10) => 60,
-            (11, STATE_BYTES_V11) => 61,
-            (12, STATE_BYTES_V12) => 64,
-            (13, STATE_BYTES_V13) => 66,
-            (14, STATE_BYTES_V14) => 67,
-            (15, STATE_BYTES_V15) => 68,
-            (16, STATE_BYTES_V16) => 69,
-            (17, STATE_BYTES_V17) => 72,
-            (18, STATE_BYTES_V18) => 73,
-            (19, STATE_BYTES_V19) => 74,
-            (20, STATE_BYTES_V20) => 75,
-            (STATE_VERSION, STATE_BYTES) => PARAMETER_COUNT,
-            _ => return false,
+        let Some(version) = state
+            .get(4..8)
+            .map(|bytes| u32::from_le_bytes(bytes.try_into().expect("four bytes")))
+        else {
+            return false;
         };
-        if fields > PARAMETER_COUNT {
+        let Some(&(_, fields)) = STATE_LAYOUTS
+            .iter()
+            .find(|(written, fields)| *written == version && state_bytes(*fields) == state.len())
+        else {
             return false;
-        }
+        };
         let mut settings = Settings::default();
         // Up to version ten the horn and the drum shared one bipolar balance
         // between them. They have a volume each now, as Hammond documents
@@ -482,6 +455,55 @@ export_processor!(RfOrganProcessor,
 mod tests {
     use super::*;
 
+    /// The size of the state `version` wrote, as a constant a test can size
+    /// an array with.
+    const fn written_bytes(version: u32) -> usize {
+        let mut row = 0;
+        while row < STATE_LAYOUTS.len() {
+            if STATE_LAYOUTS[row].0 == version {
+                return state_bytes(STATE_LAYOUTS[row].1);
+            }
+            row += 1;
+        }
+        panic!("no state was written at that version");
+    }
+
+    /// Reading an old state relies on every version having appended to the
+    /// one before it, and on the last row being what `save_state` writes.
+    #[test]
+    fn every_state_version_appends_to_the_one_before() {
+        let mut previous = (0, 0);
+        for (version, fields) in STATE_LAYOUTS {
+            assert_eq!(version, previous.0 + 1, "version {version} is out of turn");
+            assert!(fields > previous.1, "version {version} carries no more");
+            previous = (version, fields);
+        }
+        assert_eq!(previous, (STATE_VERSION, PARAMETER_COUNT));
+        assert_eq!(written_bytes(STATE_VERSION), STATE_BYTES);
+    }
+
+    /// A state that names one version and has the size of another, or is
+    /// cut short, or is not ours, is refused rather than half read.
+    #[test]
+    fn a_state_that_does_not_match_its_version_is_refused() {
+        let source = RfOrganProcessor::default();
+        let mut current = [0_u8; STATE_BYTES];
+        assert_eq!(source.save_state(&mut current), Some(STATE_BYTES));
+
+        let mut mislabelled = current;
+        mislabelled[4..8].copy_from_slice(&20_u32.to_le_bytes());
+        let mut restored = RfOrganProcessor::default();
+        assert!(!restored.load_state(&mislabelled));
+        assert!(!restored.load_state(&current[..written_bytes(20)]));
+        assert!(!restored.load_state(&current[..6]));
+        assert!(!restored.load_state(&[]));
+
+        let mut foreign = current;
+        foreign[..4].copy_from_slice(b"XXXX");
+        assert!(!restored.load_state(&foreign));
+        assert!(restored.load_state(&current));
+    }
+
     #[test]
     fn state_round_trip_and_factory_presets() {
         let mut source = RfOrganProcessor::default();
@@ -512,8 +534,8 @@ mod tests {
             (-1.0, f64::from(LEVEL_SILENT_DB), 0.0),
             (1.0, 0.0, f64::from(LEVEL_SILENT_DB)),
         ] {
-            let mut legacy = [0_u8; STATE_BYTES_V10];
-            legacy.copy_from_slice(&current[..STATE_BYTES_V10]);
+            let mut legacy = [0_u8; written_bytes(10)];
+            legacy.copy_from_slice(&current[..written_bytes(10)]);
             legacy[4..8].copy_from_slice(&10_u32.to_le_bytes());
             let offset = 8 + 44 * 8;
             legacy[offset..offset + 8].copy_from_slice(&balance.to_le_bytes());
@@ -541,27 +563,27 @@ mod tests {
         let source = RfOrganProcessor::default();
         let mut current = [0_u8; STATE_BYTES];
         assert_eq!(source.save_state(&mut current), Some(STATE_BYTES));
-        let mut legacy = [0_u8; STATE_BYTES_V1];
-        legacy.copy_from_slice(&current[..STATE_BYTES_V1]);
+        let mut legacy = [0_u8; written_bytes(1)];
+        legacy.copy_from_slice(&current[..written_bytes(1)]);
         legacy[4..8].copy_from_slice(&1_u32.to_le_bytes());
         let mut restored = RfOrganProcessor::default();
         assert!(restored.load_state(&legacy));
         assert_eq!(restored.settings, Settings::default());
 
-        let mut version_two = [0_u8; STATE_BYTES_V2];
-        version_two.copy_from_slice(&current[..STATE_BYTES_V2]);
+        let mut version_two = [0_u8; written_bytes(2)];
+        version_two.copy_from_slice(&current[..written_bytes(2)]);
         version_two[4..8].copy_from_slice(&2_u32.to_le_bytes());
         assert!(restored.load_state(&version_two));
         assert_eq!(restored.settings, Settings::default());
 
-        let mut version_three = [0_u8; STATE_BYTES_V3];
-        version_three.copy_from_slice(&current[..STATE_BYTES_V3]);
+        let mut version_three = [0_u8; written_bytes(3)];
+        version_three.copy_from_slice(&current[..written_bytes(3)]);
         version_three[4..8].copy_from_slice(&3_u32.to_le_bytes());
         assert!(restored.load_state(&version_three));
         assert_eq!(restored.settings, Settings::default());
 
-        let mut version_four = [0_u8; STATE_BYTES_V4];
-        version_four.copy_from_slice(&current[..STATE_BYTES_V4]);
+        let mut version_four = [0_u8; written_bytes(4)];
+        version_four.copy_from_slice(&current[..written_bytes(4)]);
         version_four[4..8].copy_from_slice(&4_u32.to_le_bytes());
         assert!(restored.load_state(&version_four));
         assert_eq!(restored.settings, Settings::default());
@@ -587,16 +609,16 @@ mod tests {
             ..Settings::default()
         };
 
-        let mut version_five = [0_u8; STATE_BYTES_V5];
-        version_five.copy_from_slice(&current[..STATE_BYTES_V5]);
+        let mut version_five = [0_u8; written_bytes(5)];
+        version_five.copy_from_slice(&current[..written_bytes(5)]);
         version_five[4..8].copy_from_slice(&5_u32.to_le_bytes());
         place_in_units(&mut version_five);
         assert!(restored.load_state(&version_five));
         assert_eq!(restored.settings, migrated);
         assert_eq!(restored.settings.transformer_trims, [[0.0; 2]; 3]);
 
-        let mut version_six = [0_u8; STATE_BYTES_V6];
-        version_six.copy_from_slice(&current[..STATE_BYTES_V6]);
+        let mut version_six = [0_u8; written_bytes(6)];
+        version_six.copy_from_slice(&current[..written_bytes(6)]);
         version_six[4..8].copy_from_slice(&6_u32.to_le_bytes());
         place_in_units(&mut version_six);
         assert!(restored.load_state(&version_six));
