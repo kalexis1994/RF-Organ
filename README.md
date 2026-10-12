@@ -173,9 +173,13 @@ Every number the engine is built from is registered with what it rests on -
 documented, measured, derived, borrowed from another model, or provisional -
 and the span it could plausibly take; `docs/PROVENANCE.md` is the table.
 `sensitivity` moves each unmeasured constant to both ends of its span, renders
-the calibration phrases again and ranks the constants by how far the sound
-moved, in decibels of level, spectral shape and envelope, which is where a
-measurement would be worth the most:
+the calibration phrases again - and five of its own that play what they do
+not: keys let go one by one under a softened click, the percussion's soft and
+slow settings, the swell pedal moving, the cabinet braked with a dynamic
+capsule, the pedals released, and the cabinet's amplifier pushed - and ranks
+the constants by how far the sound moved, in decibels of level, spectral
+shape and envelope, which is where a measurement would be worth the most.
+Every constant is reached by at least one phrase:
 
 ```text
 cargo run --release -p rf-organ-lab -- sensitivity artifacts/sensitivity

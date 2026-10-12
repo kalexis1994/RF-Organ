@@ -296,6 +296,21 @@ The busbar readings, the tapering wires and the impedances set the wheel
 and key tapers in `crates/rf-organ-dsp/src/taper.rs`; the readings taken
 through the keys are kept out of that and check it.
 
+## HammondWiki
+
+That a busbar sits on a matching-transformer tap of a fraction of an ohm,
+which is what turns a wheel's output into a current and lets its source
+impedance be read from the readings above, rests on HammondWiki's account
+of the matching transformer (https://www.dairiki.org/HammondWiki/MatchingTransformer):
+primary taps at 6, 8, 11, 16, 22, 32, 45 and 64 turns, quoting Hammond's
+patent, against a 477 to 1 ratio to the secondary. Its descriptions of the
+generator's filters and of the output-level readings
+(https://www.dairiki.org/HammondWiki/ToneGeneratorFilter,
+https://www.dairiki.org/HammondWiki/ToneWheelGeneratorOutputLevels) were read
+alongside Kon Zissis's data. HammondWiki's content is copyright Geoffrey T.
+Dairiki and its other authors and is published under the Open Publication
+License; figures were taken from it, not text.
+
 ## Leakage rate documentation
 
 Version 0.34.0 takes the growth of the leakage from the XK-7 manual, which

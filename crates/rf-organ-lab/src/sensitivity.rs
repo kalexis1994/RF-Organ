@@ -19,20 +19,206 @@ use crate::captures::{PHRASE_SECONDS, SAMPLE_RATE};
 use crate::signal::{decibels, rms, welch_power};
 use crate::{Scenario, render_phrase_with};
 use rf_organ_dsp::provenance::{Basis, Span, find};
-use rf_organ_dsp::{Knob, Model};
+use rf_organ_dsp::{
+    Knob, MicrophoneType, Model, OrganEngine, OrganPart, PercussionDecay, PercussionVolume,
+    Registration, RotaryMode,
+};
 use std::fmt::Write as _;
 use std::thread;
 
-/// The phrases a knob is judged by: the generator and keying alone, then
-/// each of the stages that can be switched into the path.
-const SCENARIOS: [Scenario; 6] = [
-    Scenario::Direct,
-    Scenario::Percussion,
-    Scenario::Scanner,
-    Scenario::Chorale,
-    Scenario::Tremolo,
-    Scenario::PedalBoth,
+/// The phrases a knob is judged by. The first six are the calibration's
+/// own: the generator and keying alone, then each of the stages that can be
+/// switched into the path. They are a capture protocol and stay as they are,
+/// so the rest are the survey's own, each played the way the controls a
+/// player actually moves would reach what the calibration phrases do not:
+/// keys let go one by one, a softened click, the percussion's other settings,
+/// the swell pedal moving, the cabinet braked, a dynamic capsule, the pedals
+/// released without velocity, and the cabinet's amplifier pushed.
+#[derive(Clone, Copy)]
+enum Phrase {
+    Calibration(Scenario),
+    Staccato,
+    Swell,
+    Brake,
+    PedalWalk,
+    Driven,
+}
+
+const PHRASES: [Phrase; 11] = [
+    Phrase::Calibration(Scenario::Direct),
+    Phrase::Calibration(Scenario::Percussion),
+    Phrase::Calibration(Scenario::Scanner),
+    Phrase::Calibration(Scenario::Chorale),
+    Phrase::Calibration(Scenario::Tremolo),
+    Phrase::Calibration(Scenario::PedalBoth),
+    Phrase::Staccato,
+    Phrase::Swell,
+    Phrase::Brake,
+    Phrase::PedalWalk,
+    Phrase::Driven,
 ];
+
+impl Phrase {
+    const fn id(self) -> &'static str {
+        match self {
+            Self::Calibration(scenario) => scenario.id(),
+            Self::Staccato => "survey-staccato-soft-percussion",
+            Self::Swell => "survey-swell-pedal",
+            Self::Brake => "survey-brake-dynamic-capsule",
+            Self::PedalWalk => "survey-pedal-walk",
+            Self::Driven => "survey-driven-cabinet",
+        }
+    }
+
+    fn render(self, model: &Model) -> Result<Vec<f32>, String> {
+        match self {
+            Self::Calibration(scenario) => {
+                render_phrase_with(scenario, model).map_err(|error| error.to_string())
+            }
+            phrase => survey_render(phrase, model),
+        }
+    }
+}
+
+/// Renders one of the survey's own phrases: the plugin's own starting
+/// settings, where the calibration phrases leave the engine's, and then
+/// what each phrase plays.
+fn survey_render(phrase: Phrase, model: &Model) -> Result<Vec<f32>, String> {
+    let rate = SAMPLE_RATE as usize;
+    let mut engine = OrganEngine::with_model(SAMPLE_RATE as f32, model).map_err(|error| error.0)?;
+    let defaults = [
+        engine.set_output_level(0.72),
+        engine.set_leakage(0.2),
+        engine.set_rotary_acceleration(0.5),
+        engine.set_expression_character(0.55),
+        engine.set_console(0.32, 0.0, 0.0),
+        engine.set_rotary_cabinet(0.22),
+    ];
+    if defaults.contains(&false) {
+        return Err("the engine refused a starting setting".to_owned());
+    }
+    let chord = [48_u8, 55, 60, 64];
+    match phrase {
+        Phrase::Staccato => {
+            // Low enough that the gentlest arrival, not the control, sets the
+            // attack: the control is cubed, and the gentle end only binds below it.
+            let _ = engine.set_key_click(0.05);
+            engine.set_percussion_enabled(true);
+            engine.set_percussion_volume(PercussionVolume::Soft);
+            engine.set_percussion_decay(PercussionDecay::Slow);
+        }
+        Phrase::Swell => {
+            let _ = engine.set_console(0.32, 0.5, 0.0);
+        }
+        Phrase::Brake => {
+            engine.set_rotary_microphone_type(MicrophoneType::Dynamic);
+            engine.set_rotary_mode(RotaryMode::Tremolo);
+        }
+        Phrase::Driven => {
+            let _ = engine.set_rotary_drive(0.85);
+            engine.set_rotary_mode(RotaryMode::Tremolo);
+            for (index, position) in [8, 8, 8, 8, 6, 8, 4, 8, 6].into_iter().enumerate() {
+                let _ = engine.set_manual_drawbar(
+                    OrganPart::Upper,
+                    Registration::AdjustB,
+                    index,
+                    position,
+                );
+            }
+        }
+        Phrase::PedalWalk | Phrase::Calibration(_) => {}
+    }
+
+    let mut output = Vec::with_capacity(PHRASE_SECONDS * rate * 2);
+    for frame in 0..PHRASE_SECONDS * rate {
+        match phrase {
+            // Three detached chords, a third of a second each with a gap that
+            // lets the percussion recover only part of the way, each key let
+            // go on its own.
+            Phrase::Staccato => {
+                for start in [rate / 4, rate * 5 / 4, rate * 2] {
+                    if frame == start {
+                        for note in chord {
+                            let _ = engine.note_on_part(OrganPart::Upper, note, 0.8);
+                        }
+                    }
+                    if frame == start + rate / 3 {
+                        for note in chord {
+                            let _ = engine.note_off_part(OrganPart::Upper, note, 0.5);
+                        }
+                    }
+                }
+            }
+            // The chord held while the pedal closes to a third and opens again.
+            Phrase::Swell => {
+                if frame == rate / 4 {
+                    for note in chord {
+                        let _ = engine.note_on_part(OrganPart::Upper, note, 0.86);
+                    }
+                }
+                if frame % (rate / 100) == 0 {
+                    let t = frame as f64 / rate as f64;
+                    let pedal = if t < 1.0 {
+                        1.0
+                    } else if t < 2.0 {
+                        1.0 - 0.7 * (t - 1.0)
+                    } else if t < 3.0 {
+                        0.3 + 0.7 * (t - 2.0)
+                    } else {
+                        1.0
+                    };
+                    let _ = engine.set_expression(pedal as f32);
+                }
+                if frame == rate * 3 + rate / 2 {
+                    for note in chord {
+                        let _ = engine.note_off_part(OrganPart::Upper, note, 0.5);
+                    }
+                }
+            }
+            // Fast, stopped at one second, back to fast at two and a half.
+            Phrase::Brake => {
+                if frame == rate / 4 {
+                    for note in chord {
+                        let _ = engine.note_on_part(OrganPart::Upper, note, 0.86);
+                    }
+                }
+                if frame == rate {
+                    engine.set_rotary_mode(RotaryMode::Brake);
+                }
+                if frame == rate * 5 / 2 {
+                    engine.set_rotary_mode(RotaryMode::Tremolo);
+                }
+            }
+            // Four pedal notes, each let go with no release velocity.
+            Phrase::PedalWalk => {
+                for (step, note) in [24_u8, 28, 31, 36].into_iter().enumerate() {
+                    let start = rate / 4 + step * rate * 3 / 4;
+                    if frame == start {
+                        let _ = engine.note_on_part(OrganPart::Pedal, note, 1.0);
+                    }
+                    if frame == start + rate / 2 {
+                        let _ = engine.note_off_part(OrganPart::Pedal, note, 0.0);
+                    }
+                }
+            }
+            Phrase::Driven => {
+                if frame == rate / 4 {
+                    for note in chord {
+                        let _ = engine.note_on_part(OrganPart::Upper, note, 1.0);
+                    }
+                }
+                if frame == rate * 3 {
+                    for note in chord {
+                        let _ = engine.note_off_part(OrganPart::Upper, note, 0.5);
+                    }
+                }
+            }
+            Phrase::Calibration(_) => {}
+        }
+        output.extend_from_slice(&engine.next_sample());
+    }
+    Ok(output)
+}
 
 /// Third-octave centres from about 31.5 Hz to 16 kHz.
 const BANDS: usize = 28;
@@ -148,10 +334,10 @@ fn survey_knob(knob: Knob, baseline: &[[Channel; 2]]) -> Result<Row, String> {
 }
 
 fn signatures(model: &Model) -> Result<Vec<[Channel; 2]>, String> {
-    SCENARIOS
+    PHRASES
         .iter()
-        .map(|scenario| {
-            let stereo = render_phrase_with(*scenario, model).map_err(|error| error.to_string())?;
+        .map(|phrase| {
+            let stereo = phrase.render(model)?;
             Ok([channel(&stereo, 0), channel(&stereo, 1)])
         })
         .collect()
@@ -202,7 +388,7 @@ fn difference(baseline: &[[Channel; 2]], moved: &[[Channel; 2]]) -> Finding {
         scenario: "",
         metric: "",
     };
-    for ((scenario, base), moved) in SCENARIOS.iter().zip(baseline).zip(moved) {
+    for ((phrase, base), moved) in PHRASES.iter().zip(baseline).zip(moved) {
         for (base, moved) in base.iter().zip(moved) {
             let level = (moved.level_db - base.level_db).abs().min(CAP_DB);
             let spectrum = shape_difference(base, moved);
@@ -215,7 +401,7 @@ fn difference(baseline: &[[Channel; 2]], moved: &[[Channel; 2]]) -> Finding {
                 if decibels.is_nan() || decibels > worst.decibels {
                     worst = Finding {
                         decibels: if decibels.is_nan() { CAP_DB } else { decibels },
-                        scenario: scenario.id(),
+                        scenario: phrase.id(),
                         metric,
                     };
                 }
