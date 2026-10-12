@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 //! RackForge adapter for the RF-Organ physical-model instrument.
 
+mod pedal;
 mod settings;
 
+use pedal::{HOLD_TO_BRAKE_S, SpeedPedal, Switch};
 use rackforge_plugin_sdk::{
     MIDI_FAMILY_CONTROL, MIDI_FAMILY_NOTE, MIDI2_FLAG_ORIGIN_7BIT, MIDI2_KIND_CONTROL_CHANGE,
     MIDI2_KIND_NOTE_OFF, MIDI2_KIND_NOTE_ON, MidiEvent, MidiEvent2, ParameterEvent, Processor,
@@ -17,7 +19,7 @@ pub use settings::{PARAMETER_COUNT, Settings, presets};
 
 pub const MAX_FRAMES: u32 = 4096;
 pub const MAX_EVENTS: usize = 256;
-pub const STATE_VERSION: u32 = 23;
+pub const STATE_VERSION: u32 = 24;
 pub const STATE_BYTES: usize = state_bytes(PARAMETER_COUNT);
 
 /// Every state this plugin has written, as its version and how many
@@ -47,6 +49,7 @@ const STATE_LAYOUTS: [(u32, usize); STATE_VERSION as usize] = [
     (20, 75),
     (21, 95),
     (22, 96),
+    (23, 97),
     (STATE_VERSION, PARAMETER_COUNT),
 ];
 
@@ -72,6 +75,13 @@ pub struct RfOrganProcessor {
     /// The speed the rotors go back to when CC 4 lets them go: the program's,
     /// until CC 1 throws the switch to another one.
     rotary_speed: RotaryMode,
+    /// The mode the cabinet was last put in, by a program, a control or
+    /// MIDI: the sustain pedal needs to know whether the rotors are stopped.
+    rotary_engaged: RotaryMode,
+    pedal: SpeedPedal,
+    /// How many frames an alternating press has to be held to stop the
+    /// rotors, at the rate the engine was prepared for.
+    hold_frames: u32,
     maximum_frames: u32,
     channels: u32,
 }
@@ -83,10 +93,57 @@ impl RfOrganProcessor {
         }
         self.settings = settings;
         self.rotary_speed = settings.rotary_mode;
+        self.rotary_engaged = settings.rotary_mode;
+        self.pedal.cancel_hold();
         if let Some(engine) = &mut self.engine {
             settings.apply(engine);
         }
         true
+    }
+
+    /// Puts the cabinet in `mode`, remembering it for the sustain pedal.
+    fn engage_rotary(&mut self, mode: RotaryMode) {
+        self.rotary_engaged = mode;
+        if let Some(engine) = &mut self.engine {
+            engine.set_rotary_mode(mode);
+        }
+    }
+
+    /// The speed switch on CC 1: below the middle is Chorale.
+    fn select_rotary_speed(&mut self, fast: bool) {
+        self.rotary_speed = if fast {
+            RotaryMode::Tremolo
+        } else {
+            RotaryMode::Chorale
+        };
+        self.engage_rotary(self.rotary_speed);
+    }
+
+    /// The rotor stop on CC 4: releasing it returns to the selected speed.
+    fn stop_rotors(&mut self, stop: bool) {
+        self.engage_rotary(if stop {
+            RotaryMode::Brake
+        } else {
+            self.rotary_speed
+        });
+    }
+
+    /// The sustain pedal on CC 64, down at or past the middle.
+    fn sustain_pedal(&mut self, down: bool) {
+        let change = self.pedal.set(
+            down,
+            self.settings.sustain_pedal,
+            self.rotary_speed,
+            self.rotary_engaged,
+        );
+        self.switch_rotary(change);
+    }
+
+    fn switch_rotary(&mut self, change: Option<Switch>) {
+        if let Some(Switch { selected, engaged }) = change {
+            self.rotary_speed = selected;
+            self.engage_rotary(engaged);
+        }
     }
 
     fn midi1(&mut self, event: &MidiEvent) {
@@ -107,21 +164,11 @@ impl RfOrganProcessor {
                 }
             }
             0xb0 => match index {
-                1 => {
-                    self.rotary_speed = if value < 64 {
-                        RotaryMode::Chorale
-                    } else {
-                        RotaryMode::Tremolo
-                    };
-                    engine.set_rotary_mode(self.rotary_speed);
-                }
+                1 => self.select_rotary_speed(value >= 64),
                 // Rotor stop, the third position a cabinet's switch has.
                 // Releasing it returns the rotors to the selected speed.
-                4 => engine.set_rotary_mode(if value < 64 {
-                    RotaryMode::Brake
-                } else {
-                    self.rotary_speed
-                }),
+                4 => self.stop_rotors(value < 64),
+                64 => self.sustain_pedal(value >= 64),
                 11 => {
                     let _ = engine.set_expression(f32::from(value) / 127.0);
                 }
@@ -168,19 +215,9 @@ impl RfOrganProcessor {
                     event.value as f32 / u32::MAX as f32
                 };
                 match event.index {
-                    1 => {
-                        self.rotary_speed = if value < 0.5 {
-                            RotaryMode::Chorale
-                        } else {
-                            RotaryMode::Tremolo
-                        };
-                        engine.set_rotary_mode(self.rotary_speed);
-                    }
-                    4 => engine.set_rotary_mode(if value < 0.5 {
-                        RotaryMode::Brake
-                    } else {
-                        self.rotary_speed
-                    }),
+                    1 => self.select_rotary_speed(value >= 0.5),
+                    4 => self.stop_rotors(value < 0.5),
+                    64 => self.sustain_pedal(value >= 0.5),
                     11 => {
                         let _ = engine.set_expression(value);
                     }
@@ -207,6 +244,7 @@ impl Processor for RfOrganProcessor {
         };
         self.settings.apply(&mut engine);
         self.engine = Some(Box::new(engine));
+        self.hold_frames = (rate * HOLD_TO_BRAKE_S).round().max(1.0) as u32;
         self.maximum_frames = frames;
         self.channels = outputs;
         true
@@ -219,6 +257,8 @@ impl Processor for RfOrganProcessor {
         self.settings = settings;
         if index == ROTARY_MODE {
             self.rotary_speed = settings.rotary_mode;
+            self.rotary_engaged = settings.rotary_mode;
+            self.pedal.cancel_hold();
         }
         if let Some(engine) = &mut self.engine {
             settings.apply_parameter(index, engine);
@@ -236,6 +276,8 @@ impl Processor for RfOrganProcessor {
             self.settings.apply(engine);
         }
         self.rotary_speed = self.settings.rotary_mode;
+        self.rotary_engaged = self.settings.rotary_mode;
+        self.pedal = SpeedPedal::default();
     }
 
     fn load_preset(&mut self, id: &str) -> bool {
@@ -445,6 +487,8 @@ impl Processor for RfOrganProcessor {
                 self.midi2(&midi2[midi2_index]);
                 midi2_index += 1;
             }
+            let held = self.pedal.tick(self.hold_frames);
+            self.switch_rotary(held);
             let [left, right] = self.engine.as_mut().expect("prepared engine").next_sample();
             let offset = frame as usize * outputs as usize;
             output[offset] = if outputs == 1 {
@@ -884,6 +928,79 @@ mod tests {
         processor.process(&[], &mut output, &stop_then_release, &[chorale], 64, 0, 2);
         let engine = processor.engine.as_ref().expect("prepared engine");
         assert_eq!(engine.rotary_mode(), RotaryMode::Chorale);
+    }
+
+    /// The sustain pedal is the cabinet's speed switch: a tap throws it, a
+    /// second of holding stops the rotors, and the next tap lets them go at
+    /// the speed they had. The hold is counted across blocks, in frames.
+    #[test]
+    fn the_sustain_pedal_switches_speed_and_a_hold_stops_the_rotors() {
+        const BLOCK: u32 = 512;
+        let mut processor = RfOrganProcessor::default();
+        assert!(processor.load_preset("chorale-888"));
+        assert!(processor.prepare(48_000.0, BLOCK, 0, 2));
+        let mut output = [0.0_f32; 2 * BLOCK as usize];
+        let mut play = |processor: &mut RfOrganProcessor, midi: &[MidiEvent]| {
+            processor.process(&[], &mut output, midi, &[], BLOCK, 0, 2);
+            processor
+                .engine
+                .as_ref()
+                .expect("prepared engine")
+                .rotary_mode()
+        };
+
+        let tap = [controller(0, 64, 127), controller(100, 64, 0)];
+        assert_eq!(play(&mut processor, &tap), RotaryMode::Tremolo);
+        assert_eq!(play(&mut processor, &tap), RotaryMode::Chorale);
+
+        // Held: fast at once, and stopped once a second has gone by.
+        assert_eq!(
+            play(&mut processor, &[controller(0, 64, 127)]),
+            RotaryMode::Tremolo
+        );
+        let second = processor.hold_frames.div_ceil(BLOCK);
+        for _ in 1..second - 1 {
+            assert_eq!(play(&mut processor, &[]), RotaryMode::Tremolo);
+        }
+        assert_eq!(play(&mut processor, &[]), RotaryMode::Brake);
+        assert_eq!(
+            play(&mut processor, &[controller(0, 64, 0)]),
+            RotaryMode::Brake
+        );
+        // The press that became a stop did not change the speed.
+        assert_eq!(play(&mut processor, &tap), RotaryMode::Chorale);
+    }
+
+    #[test]
+    fn the_sustain_pedal_can_be_momentary_or_ignored() {
+        let mut processor = RfOrganProcessor::default();
+        assert!(processor.load_preset("chorale-888"));
+        assert!(processor.prepare(48_000.0, 64, 0, 2));
+        let mut output = [0.0_f32; 128];
+        let mode = |processor: &RfOrganProcessor| {
+            processor
+                .engine
+                .as_ref()
+                .expect("prepared engine")
+                .rotary_mode()
+        };
+
+        assert!(processor.set_parameter(settings::SUSTAIN_PEDAL, 2.0));
+        processor.process(&[], &mut output, &[controller(0, 64, 127)], &[], 64, 0, 2);
+        assert_eq!(mode(&processor), RotaryMode::Tremolo);
+        processor.process(&[], &mut output, &[controller(0, 64, 0)], &[], 64, 0, 2);
+        assert_eq!(mode(&processor), RotaryMode::Chorale);
+
+        assert!(processor.set_parameter(settings::SUSTAIN_PEDAL, 0.0));
+        processor.process(&[], &mut output, &[controller(0, 64, 127)], &[], 64, 0, 2);
+        assert_eq!(mode(&processor), RotaryMode::Chorale);
+
+        // A program with the cabinet switched out is not switched in by it.
+        assert!(processor.load_preset("straight-888"));
+        assert!(processor.set_parameter(settings::SUSTAIN_PEDAL, 1.0));
+        let tap = [controller(0, 64, 0), controller(8, 64, 127)];
+        processor.process(&[], &mut output, &tap, &[], 64, 0, 2);
+        assert_eq!(mode(&processor), RotaryMode::Off);
     }
 
     /// Moving a drawbar is not a request to set the rest of the console

@@ -1069,6 +1069,16 @@
       "kind": { "type": "enum", "default": 0, "choices": [{ "value": 0, "name": "Dynamic" }, { "value": 1, "name": "Condenser" }] },
       "flags": { "automatable": true },
       "suggested_control": "list"
+    },
+    {
+      "index": 97,
+      "id": "rotary-sustain-pedal",
+      "name": "Sustain Pedal",
+      "page": "rotary",
+      "order": 22,
+      "kind": { "type": "enum", "default": 1, "choices": [{ "value": 0, "name": "Off" }, { "value": 1, "name": "Speed, Hold to Stop" }, { "value": 2, "name": "Fast While Held" }] },
+      "flags": { "automatable": true },
+      "suggested_control": "list"
     }
   ],
   "semantic_controls": [
