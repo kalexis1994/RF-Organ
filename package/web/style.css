@@ -26,6 +26,16 @@
   font-display: swap;
 }
 
+/* A panel is played, not read: a drag across a drawbar or a double tap on a
+   tablet must not leave a highlight behind. Nothing on the surface is text a
+   player would copy. */
+*,
+*::before,
+*::after {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 :root {
   color-scheme: dark;
   font-family: "RF Console", "Arial Narrow", Inter, system-ui, sans-serif;
