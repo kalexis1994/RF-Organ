@@ -100,22 +100,36 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo run --release -p rf-organ-lab -- sweep artifacts/sweep
 cargo build --release -p rf-organ-plugin --target wasm32-unknown-unknown
 Copy-Item target/wasm32-unknown-unknown/release/rf_organ_plugin.wasm package/component.wasm
-cargo build --release -p rf-organ-ui --target wasm32-unknown-unknown
-wasm-bindgen target/wasm32-unknown-unknown/release/rf_organ_ui.wasm --target web --out-dir package/web --out-name app --no-typescript
+bash tools/build-surface.sh
 cargo run --manifest-path ../rackforge/Cargo.toml --target-dir target/rackforge-core -p rackforge-core -- inspect package
 target/rackforge-core/debug/rackforge-core.exe smoke package --preset chorale-888
 ```
 
-The RackForge development SDK is consumed from the sibling `rackforge`
-checkout. Package metadata lives under `package/`.
+The RackForge plugin SDK is a git dependency pinned by revision, and
+`Cargo.lock` records it, so building and testing need nothing beside this
+checkout. Inspecting, smoking and packing the package run through the host's
+own tools, which come from a sibling `rackforge` checkout at the same
+revision; `bash tools/pins.sh rackforge` prints it. Package metadata lives
+under `package/`.
 
-`.github/workflows/ci.yml` reproduces that layout on every push and pull
-request: it checks out RackForge at the revision `Cargo.lock` records, then
-runs formatting, clippy, the test suite, both wasm32 builds, package inspection
-and smoke, the sample-rate sweep, and `tools/check-package.sh`, which proves the
-committed `component.wasm` still reports the same parameter schema, state size
-and rendered output as a build from the current sources. Bump `RACKFORGE_REF`
-and the lockfile together.
+To build against a local RackForge with changes of its own, override the
+dependency in an untracked `.cargo/config.toml`:
+
+```toml
+[patch."https://github.com/kalexis1994/rackforge"]
+rackforge-plugin-sdk = { path = "../rackforge/crates/rackforge-plugin-sdk" }
+```
+
+That rewrites the lockfile's entry to the local path, so it is not something
+to commit: CI builds `--locked` and refuses it. Moving to a newer SDK is a
+change to the `rev` in `Cargo.toml`, and CI and the release follow the lock.
+
+`.github/workflows/ci.yml` runs on every push and pull request: it checks out
+RackForge at the revision `Cargo.lock` records, then runs formatting, clippy,
+the test suite, both wasm32 builds, package inspection and smoke, the
+sample-rate sweep, and `tools/check-package.sh`, which proves the committed
+`component.wasm` still reports the same parameter schema, state size and
+rendered output as a build from the current sources.
 
 The manifest is at schema 3, which asks for a short name and a branding
 section. `tools/make-artwork.py` draws the icon, banner and splash from the
@@ -125,6 +139,10 @@ needs Pillow and writes into `package/branding/`.
 The custom surface is declared through the package's `web_ui` manifest table.
 Its HTML and CSS are static, `bootstrap.js` only initializes the module, and
 the generated `app.js` bridge plus `app_bg.wasm` contain the Rust UI runtime.
+Those two are not committed: wasm-bindgen output carries the paths of the
+machine that built it, so a committed copy could not be checked against the
+sources. `tools/build-surface.sh` builds them with the wasm-bindgen version
+`Cargo.lock` pins, and CI and the release always do.
 
 Deterministic calibration renders and quantitative measurements are produced
 by the Rust-only laboratory:
