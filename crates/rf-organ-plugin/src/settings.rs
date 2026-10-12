@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 use rf_organ_dsp::{
-    ConsoleStage, DRAWBAR_COUNT, DRUM_RADIUS_DEFAULT_M, DRUM_RADIUS_RANGE_M, HORN_RADIUS_DEFAULT_M,
-    HORN_RADIUS_RANGE_M, LEAKAGE_BOOST_DEFAULT, LEVEL_RANGE_DB, LEVEL_SILENT_DB,
-    MIC_DISTANCE_DEFAULT_M, MIC_DISTANCE_RANGE_M, MIC_OFFSET_MAX_M, MIC_PATTERN_DEFAULT,
-    MIC_SPACING_DEFAULT_M, MIC_SPACING_MAX_M, MainsFrequency, MicrophoneArray, MicrophonePair,
-    MicrophoneType, OrganEngine, OrganPart, PEDAL_DRAWBAR_COUNT, PercussionDecay,
+    AMP_DRIVE_DEFAULT, ConsoleStage, DRAWBAR_COUNT, DRUM_RADIUS_DEFAULT_M, DRUM_RADIUS_RANGE_M,
+    HORN_RADIUS_DEFAULT_M, HORN_RADIUS_RANGE_M, LEAKAGE_BOOST_DEFAULT, LEVEL_RANGE_DB,
+    LEVEL_SILENT_DB, MIC_DISTANCE_DEFAULT_M, MIC_DISTANCE_RANGE_M, MIC_OFFSET_MAX_M,
+    MIC_PATTERN_DEFAULT, MIC_SPACING_DEFAULT_M, MIC_SPACING_MAX_M, MainsFrequency, MicrophoneArray,
+    MicrophonePair, MicrophoneType, OrganEngine, OrganPart, PEDAL_DRAWBAR_COUNT, PercussionDecay,
     PercussionHarmonic, PercussionVolume, Registration, RotaryMode, STAGE_CHARACTER_DEFAULT,
     STAGE_CHARACTER_RANGE, SUB_LEVEL_DEFAULT_DB, ScannerMode, StopAngle,
     TRANSFORMER_ASYMMETRY_DEFAULT, TransformerUnit,
 };
 
-pub const PARAMETER_COUNT: usize = 95;
+pub const PARAMETER_COUNT: usize = 96;
 /// Per-stage offsets from the shared console character, ordered V4A, V4B, V3B.
 pub const CONSOLE_STAGE_TRIM_FIRST: u32 = 69;
 /// Bipolar per-transformer calibration trims, ordered T1, T2, T3.
@@ -30,6 +30,8 @@ pub const LOWER_ADJUST_A_DRAWBAR_LAST: u32 =
     LOWER_ADJUST_A_DRAWBAR_FIRST + DRAWBAR_COUNT as u32 - 1;
 pub const REGISTRATION: u32 = 93;
 pub const LOWER_REGISTRATION: u32 = 94;
+/// How hard the console drives the rotary cabinet's amplifier.
+pub const ROTARY_DRIVE: u32 = 95;
 pub const PEDAL_DRAWBAR_LAST: u32 = PEDAL_DRAWBAR_FIRST + PEDAL_DRAWBAR_COUNT as u32 - 1;
 pub const ROTARY_MODE: u32 = 16;
 
@@ -119,6 +121,9 @@ pub struct Settings {
     pub rotary_horn_level: f64,
     pub rotary_drum_level: f64,
     pub transformer_trims: [[f64; 2]; 3],
+    /// How hard the console drives the cabinet's amplifier: at the middle an
+    /// 888 chord at full expression reaches the edge of breakup.
+    pub rotary_drive: f64,
 }
 
 impl Default for Settings {
@@ -179,6 +184,7 @@ impl Default for Settings {
             rotary_horn_level: 0.0,
             rotary_drum_level: 0.0,
             transformer_trims: [[0.0; 2]; 3],
+            rotary_drive: AMP_DRIVE_DEFAULT as f64,
         }
     }
 }
@@ -239,6 +245,7 @@ impl Settings {
             && finite_range(self.rotary_drum_stop_angle, 0.0, 360.0)
             && level(self.rotary_sub_level)
             && unit(self.rotary_reflections)
+            && unit(self.rotary_drive)
             && level(self.rotary_horn_level)
             && level(self.rotary_drum_level)
             && self
@@ -315,6 +322,7 @@ impl Settings {
             }
             REGISTRATION => f64::from(self.registration.index()),
             LOWER_REGISTRATION => f64::from(self.lower_registration.index()),
+            ROTARY_DRIVE => self.rotary_drive,
             52 => self.rotary_mic_pattern,
             53 => self.rotary_horn_radius,
             54 => self.rotary_drum_radius,
@@ -382,6 +390,7 @@ impl Settings {
             41 => self.rotary_horn_mic_distance = value,
             42 => self.rotary_horn_mic_spacing = value,
             43 => self.rotary_reflections = value,
+            ROTARY_DRIVE => self.rotary_drive = value,
             44 => self.rotary_horn_level = value,
             45..=50 => {
                 let trim = (index - TRANSFORMER_TRIM_FIRST) as usize;
@@ -605,6 +614,9 @@ impl Settings {
                 engine.set_scanner_mode(self.scanner_mode);
                 engine.set_scanner_manuals(self.upper_scanner, self.lower_scanner);
             }
+            Group::RotaryDrive => {
+                let _ = engine.set_rotary_drive(self.rotary_drive as f32);
+            }
             Group::Percussion => {
                 engine.set_percussion_enabled(self.percussion_enabled);
                 engine.set_percussion_harmonic(self.percussion_harmonic);
@@ -649,11 +661,12 @@ enum Group {
     MicrophoneType,
     Scanner,
     Percussion,
+    RotaryDrive,
 }
 
 impl Group {
     /// In the order a whole program is put on the engine.
-    const ALL: [Self; 28] = [
+    const ALL: [Self; 29] = [
         Self::OutputLevel,
         Self::Expression,
         Self::ManualDrawbars,
@@ -682,6 +695,7 @@ impl Group {
         Self::MicrophoneType,
         Self::Scanner,
         Self::Percussion,
+        Self::RotaryDrive,
     ];
 
     const fn of(index: u32) -> Option<Self> {
@@ -717,6 +731,7 @@ impl Group {
             59 => Self::MicrophoneType,
             19 | 35 | 36 => Self::Scanner,
             20..=23 => Self::Percussion,
+            ROTARY_DRIVE => Self::RotaryDrive,
             _ => return None,
         })
     }

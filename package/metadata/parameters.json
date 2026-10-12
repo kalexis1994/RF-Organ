@@ -1049,6 +1049,16 @@
       },
       "flags": { "automatable": true },
       "suggested_control": "list"
+    },
+    {
+      "index": 95,
+      "id": "rotary-amp-drive",
+      "name": "Cabinet Amp Drive",
+      "page": "rotary",
+      "order": 20,
+      "kind": { "type": "float", "minimum": 0.0, "maximum": 1.0, "default": 0.5, "step": 0.001 },
+      "flags": { "automatable": true },
+      "suggested_control": "knob"
     }
   ],
   "semantic_controls": [

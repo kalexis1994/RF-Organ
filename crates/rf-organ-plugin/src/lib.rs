@@ -16,7 +16,7 @@ pub use settings::{PARAMETER_COUNT, Settings, presets};
 
 pub const MAX_FRAMES: u32 = 4096;
 pub const MAX_EVENTS: usize = 256;
-pub const STATE_VERSION: u32 = 21;
+pub const STATE_VERSION: u32 = 22;
 pub const STATE_BYTES: usize = state_bytes(PARAMETER_COUNT);
 
 /// Every state this plugin has written, as its version and how many
@@ -44,6 +44,7 @@ const STATE_LAYOUTS: [(u32, usize); STATE_VERSION as usize] = [
     (18, 73),
     (19, 74),
     (20, 75),
+    (21, 95),
     (STATE_VERSION, PARAMETER_COUNT),
 ];
 
@@ -698,6 +699,61 @@ mod tests {
         processor.process(&[], &mut output, &release, &[], 64, 0, 2);
         let engine = processor.engine.as_ref().expect("prepared engine");
         assert_eq!(engine.rotary_mode(), RotaryMode::Chorale);
+    }
+
+    /// A state saved before the cabinet amplifier had a drive control comes
+    /// back with the drive where the control starts.
+    #[test]
+    fn a_state_from_before_the_drive_starts_at_its_default() {
+        let source = RfOrganProcessor::default();
+        let mut current = [0_u8; STATE_BYTES];
+        assert_eq!(source.save_state(&mut current), Some(STATE_BYTES));
+        let mut older = [0_u8; written_bytes(21)];
+        older.copy_from_slice(&current[..written_bytes(21)]);
+        older[4..8].copy_from_slice(&21_u32.to_le_bytes());
+        let mut restored = RfOrganProcessor::default();
+        assert!(restored.load_state(&older));
+        assert_eq!(
+            restored.settings.rotary_drive,
+            f64::from(rf_organ_dsp::AMP_DRIVE_DEFAULT)
+        );
+    }
+
+    /// The drive reaches the cabinet: a chord through the rotary speaker
+    /// with the amplifier driven hard comes out flatter-topped than the
+    /// same chord with it clean.
+    #[test]
+    fn the_drive_reaches_the_cabinet_amplifier() {
+        let render = |drive: f64| {
+            let mut processor = RfOrganProcessor::default();
+            assert!(processor.load_preset("chorale-888"));
+            assert!(processor.set_parameter(settings::ROTARY_DRIVE, drive));
+            assert!(processor.prepare(48_000.0, 512, 0, 2));
+            let chord = [48, 52, 55, 60, 64, 67].map(|note| MidiEvent {
+                frame: 0,
+                data: [0x90, note, 127],
+                length: 3,
+            });
+            let mut output = [0.0_f32; 1024];
+            let (mut peak, mut power) = (0.0_f32, 0.0_f64);
+            for block in 0..60 {
+                let midi: &[MidiEvent] = if block == 0 { &chord } else { &[] };
+                processor.process(&[], &mut output, midi, &[], 512, 0, 2);
+                if block >= 20 {
+                    for sample in output {
+                        peak = peak.max(sample.abs());
+                        power += f64::from(sample) * f64::from(sample);
+                    }
+                }
+            }
+            f64::from(peak) / (power / (40.0 * 1024.0)).sqrt()
+        };
+        let clean = render(0.0);
+        let driven = render(1.0);
+        assert!(
+            driven < clean * 0.9,
+            "crest {clean:.3} clean, {driven:.3} driven"
+        );
     }
 
     fn controller(frame: u32, index: u8, value: u8) -> MidiEvent {

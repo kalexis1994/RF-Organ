@@ -431,8 +431,9 @@ copy of it; a range that moves in the DSP moves there too.
   its span, which is why it is a control. The output transformer, the plate
   supply's sag and the drivers' own responses are not modelled; this
   schematic's supply is a diode bridge with a choke and an OC3-held screen
-  rail, so there is little sag to leave out. The drive control is the
-  engine's; the plugin does not yet expose it.
+  rail, so there is little sag to leave out. The drive is the plugin's
+  Cabinet Amp Drive parameter, saved with state version 22; older states load
+  with it at the anchor.
 - Cabinet reflections and angle-dependent filters are present, but
   their coefficients are not yet fitted to multi-angle cabinet measurements.
 - The microphones are placed geometrically, in centimetres, and the delay,

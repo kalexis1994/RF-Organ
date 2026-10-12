@@ -24,7 +24,8 @@
 //! band, so a console that never drives it hard sounds as it did. How hard it
 //! is driven is a control, because on a real cabinet it is: the volume
 //! rheostat on the amplifier chassis and the connector kit set it, and no
-//! console's setting is published.
+//! console's setting is published. The plugin exposes it as Cabinet Amp
+//! Drive.
 
 use crate::model::{Knob, Model};
 

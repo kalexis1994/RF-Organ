@@ -8,14 +8,14 @@ use rf_organ_dsp::{
 use serde_json::{Value, json};
 
 pub const PROTOCOL: &str = "rackforge.plugin.web@1";
-pub const PARAMETERS: usize = 95;
+pub const PARAMETERS: usize = 96;
 pub const DEFAULTS: [f64; PARAMETERS] = [
     0.72, 1.0, 8.0, 8.0, 8.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.55, 0.45, 0.2, 0.38, 0.32, 0.0, 0.82,
     0.5, 0.0, 0.0, 1.0, 1.0, 1.0, 8.0, 8.0, 8.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 8.0, 0.0, 1.0, 0.0,
     0.32, 0.0, 0.0, 0.55, 0.35, 0.3, 0.22, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.5, 0.18, 0.12,
     0.0, 0.0, 1.0, -9.0, 1.0, 0.0, 0.35, 0.3, 0.0, 0.0, 0.0, 1.0, 0.5, 1.0, 0.0, 0.0, 0.0, 0.0,
     0.1, 1.0, 8.0, 8.0, 8.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 8.0, 8.0, 8.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0, 2.0, 2.0,
+    0.0, 2.0, 2.0, 0.5,
 ];
 
 /// The element each parameter is bound to, in parameter order.
@@ -120,6 +120,7 @@ pub const CONTROL_IDS: [&str; PARAMETERS] = [
     "lower-drawbar-a-1",
     "registration",
     "lower-registration",
+    "amp-drive",
 ];
 
 /// Elements the cabinet view writes to, which are not parameters and are
@@ -182,7 +183,7 @@ pub fn valid(index: usize, value: f64) -> bool {
     value.is_finite()
         && match index {
             0 => (0.0..=1.5).contains(&value),
-            1 | 11..=15 | 17..=18 | 37 | 40 | 43 | 52 | 66..=67 | 72..=74 => {
+            1 | 11..=15 | 17..=18 | 37 | 40 | 43 | 52 | 66..=67 | 72..=74 | 95 => {
                 (0.0..=1.0).contains(&value)
             }
             2..=10 | 24..=34 | 75..=92 => value.fract() == 0.0 && (0.0..=8.0).contains(&value),
