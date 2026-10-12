@@ -16,7 +16,10 @@ publish = false
 
 [workspace.dependencies]
 rf-organ-dsp = { path = "crates/rf-organ-dsp" }
-rackforge-plugin-sdk = { path = "../rackforge/crates/rackforge-plugin-sdk" }
+# The SDK comes from the RackForge revision this pins, and Cargo.lock records
+# it; CI and the release read that revision back out of the lock rather than
+# keeping a copy of it. To build against a local checkout instead, see README.
+rackforge-plugin-sdk = { git = "https://github.com/kalexis1994/rackforge", rev = "8e8991b67ddcb55507911abd93dcf52dfd6b5ef6" }
 serde_json = "1.0"
 
 [workspace.lints.rust]

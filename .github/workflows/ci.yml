@@ -1,11 +1,13 @@
-# RF-Organ lives in its own repository but builds against the RackForge SDK
-# from a sibling checkout, so CI reproduces that layout: both repositories are
-# checked out side by side and the SDK is pinned to the revision Cargo.lock
-# records. Bump RACKFORGE_REF and the lockfile together, never one alone.
+# RF-Organ builds against the RackForge SDK as a git dependency pinned by
+# revision, and Cargo.lock records that revision. The package is validated by
+# the host's own tools, which come from the same revision, so RackForge is
+# checked out beside RF-Organ at whatever the lock says - read from the lock by
+# `tools/pins.sh`, never kept here as a second copy that can disagree with it.
 #
-# What this does not check: the committed web surface. `package/web/app_bg.wasm`
-# is produced by wasm-bindgen, whose output cannot be compared across toolchains
-# the way the component can, so the UI crate is only compiled and tested here.
+# The play surface's generated half (`app.js` and `app_bg.wasm`) is not
+# committed: wasm-bindgen output carries the build machine's paths and cannot
+# be compared across machines, so it is built here from the sources, with the
+# wasm-bindgen the lock pins, before the package is inspected.
 name: CI
 
 on:
@@ -29,8 +31,6 @@ env:
   # Validation builds do not benefit from incremental artifacts and they grow
   # the cache for nothing.
   CARGO_INCREMENTAL: "0"
-  # RackForge 0.1.21, the SDK version in Cargo.lock.
-  RACKFORGE_REF: 8e8991b67ddcb55507911abd93dcf52dfd6b5ef6
 
 jobs:
   validate:
@@ -44,11 +44,19 @@ jobs:
           path: RF-Organ
           persist-credentials: false
 
-      - name: Check out the RackForge SDK
+      - name: Read the pins from the lockfile
+        id: pins
+        shell: bash
+        working-directory: RF-Organ
+        run: |
+          echo "rackforge=$(bash tools/pins.sh rackforge)" >> "$GITHUB_OUTPUT"
+          echo "wasm_bindgen=$(bash tools/pins.sh wasm-bindgen)" >> "$GITHUB_OUTPUT"
+
+      - name: Check out the RackForge host tools
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: kalexis1994/rackforge
-          ref: ${{ env.RACKFORGE_REF }}
+          ref: ${{ steps.pins.outputs.rackforge }}
           path: rackforge
           persist-credentials: false
 
@@ -75,6 +83,13 @@ jobs:
           key: rf-organ-ci
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
+      - name: Install the pinned wasm-bindgen
+        shell: bash
+        working-directory: RF-Organ
+        env:
+          WASM_BINDGEN_VERSION: ${{ steps.pins.outputs.wasm_bindgen }}
+        run: cargo install wasm-bindgen-cli --version "$WASM_BINDGEN_VERSION" --locked
+
       - name: Check formatting
         shell: bash
         working-directory: RF-Organ
@@ -95,8 +110,7 @@ jobs:
         working-directory: RF-Organ
         run: |
           cargo build --locked --release -p rf-organ-plugin --target wasm32-unknown-unknown
-          cargo build --locked --release -p rf-organ-ui --target wasm32-unknown-unknown
-
+          bash tools/build-surface.sh
       - name: Validate the package
         shell: bash
         working-directory: RF-Organ

@@ -150,6 +150,28 @@ path reads it every sample.
 
 ## Rotary cabinet
 
+The cabinet has its own amplifier, and the organ reaches the rotors through
+it: a balanced input, a 12AU7 pair driving two 6550s in push-pull with no
+feedback around the output transformer, and a passive crossover after it, as
+the schematic of the 122's main amplifier draws them. The input's 0.001 uF
+against its series resistors and volume rheostat rolls the top off near
+9 kHz; each 6550's plate is fed back to its own grid through 390 k and
+0.0047 uF, which lifts the bass about three and a half decibels below 60 Hz;
+and driven past the 25 V its cathodes bias the grids at, the grids conduct,
+the pair clips symmetrically - the third harmonic leads, the second all but
+cancels - and the 0.1 uF coupling capacitors charge and push both tubes
+towards cutoff, letting go over the 22 ms they and the 220 k grid leaks set.
+The crossover is the schematic's two second-order sections, the woofer's near
+620 Hz and the horn's near 1 kHz, into drivers taken as their nominal
+16 ohms.
+
+How hard the console drives it is a control, as it is on a cabinet, where the
+amplifier's volume rheostat and the connector kit set it. At its middle, the
+calibration's 888 chord at full expression reaches the grids' conduction and
+no further; louder registrations go past it. The host's output level now
+comes after the cabinet, so it no longer changes how hard the amplifier is
+driven.
+
 The horn turns counter-clockwise and the drum clockwise, at 400 and 340 rpm
 fast and 40 rpm slow. Each rotor has its own rise, fall and brake time, and a
 time means what Hammond says it means: the seconds needed to cross the whole
@@ -172,15 +194,23 @@ fetched, because a webview inside a host need not have a network and a panel
 whose lettering depends on whether it does is not a panel. Both are under the
 SIL Open Font License and both licences ship beside them.
 
-The plugin comes with sixteen programs. Eight are console setups - a
-registration together with the percussion, vibrato, cabinet and drive that go
-with a way of playing. Eight are tone colours whose registrations are quoted
+The plugin comes with twenty-one programs in four banks, listed in the order
+a player would reach for them. Console holds five setups that show what the
+instrument does: a straight registration, the chorus and slow cabinet, the
+percussion switch, the adjust keys and the pedals. Jazz & Blues and Gospel &
+Rock hold seven and three ways of playing, each a registration together with
+the percussion, vibrato, cabinet and drive that go with it; those
+registrations are the ones players commonly quote for the style rather than
+figures from a document. Tone Colours holds six whose registrations are quoted
 digit for digit from the published table of drawbar registration patterns for
 the four families a pipe organ is built from; the stop names on them are the
 pipe organ's own and are older than any tonewheel instrument. What surrounds
 each registration is this project's arrangement, and the provenance of the
 figures is in THIRD_PARTY_NOTICES.md, which is where trademarks live: nothing
-the package carries to a host names one, and a test now holds that.
+the package carries to a host names one, and a test now holds that. A program
+that places the horn's microphones itself was voiced on a spaced pair in
+front of the cabinet and keeps it; every other one takes the studio
+placement.
 
 The play surface is four tabs behind one strip that never leaves: output,
 expression and the rotary switch, which are what a player reaches for without
@@ -209,7 +239,7 @@ microphones, so moving them back zooms out instead of pushing them off the
 edge. The parameter table the surface validates against is the engine's, not a
 copy of it; a range that moves in the DSP moves there too.
 
-## Version 0.49.0 limitations
+## Version 0.50.0 limitations
 
 - The contact bounce decays at setBfree's restitution of 0.5, and the rate
   both models share, 1302 Hz of bounces, is that project's number rather
@@ -292,13 +322,35 @@ copy of it; a range that moves in the DSP moves there too.
   that character and the comparator fits the three separately - again the
   arrangement the matching transformers use, and again the answer is only as
   separate as the measurement was.
-- The generator's per-wheel taper is every wheel at unity, which no real
-  generator is. It is a table rather than a constant because what replaces it
-  is a measurement: the laboratory renders a chromatic sweep, the comparator
-  reads a reference recording of the same sweep against it, and the fit it
-  emits is the table. Fitting the model against itself returns unity exactly,
-  which is what keeps the console's own frequency response out of a table that
-  is supposed to describe 91 wheels.
+- The wheels' levels and the manuals' key tapering come from published
+  readings of real consoles rather than from this project. A busbar sits on a
+  matching-transformer tap of a fraction of an ohm, so a wheel drives a
+  current into it - V / Z straight onto it, V / (Z + R) through a tapering
+  wire of R ohms - and that is the whole model. Each wheel's V / Z is fitted
+  to Hammond's B-3 Table V and six consoles read straight off a busbar, with
+  the engine's own console response measured and taken out; each contact's
+  Z / (Z + R) comes from the tapering wires of five measured manuals and the
+  impedance three consoles show when the same wheel is read open-circuit,
+  onto a busbar and through a key. That impedance scale is the one fitted
+  number, and it comes out at 45, 49 and 53 ohms on the three, and predicts
+  each one's key readings as well from the other two's as from its own.
+- The check is the readings that were not fitted: Hammond's second chart and
+  six consoles read through one key and drawbar per wheel. Played through the
+  same keys and drawbars, the engine lands 2.2 dB rms from their median, about
+  the spread between the consoles themselves; with every wheel and contact at
+  unity it stood 4.5 dB away. A test holds it under 2.5 dB. The same readings
+  settled the wiring: all 549 manual contacts reach the wheel five measured
+  manuals wire them to, foldback included.
+- What the model leaves out: the impedance is a magnitude, not a phase; each
+  wheel's is the median of three consoles; and the levels say how the wheels
+  and contacts stand against each other, not how loud anything is. So the
+  wheel taper is scaled to give the pedals' 16' fundamentals, which have no
+  key taper, the power they had before, and the key taper to give an 888
+  registration the power it had; the stages after them were set by those
+  levels. The percussion, which leaves through the same key contacts, came out
+  2.2 dB stronger, and is left there because that is where its path puts it.
+- The comparator can still fit the wheel taper from a chromatic recording of a
+  console; fitting the model against itself returns the shipped table.
 - Leakage grows faster than what is played, at a rate that is a control of
   its own, which is how Hammond describes it. Measured against the notes that
   caused it, the leakage climbs 7.2 dB between one note and eight; with the
@@ -341,7 +393,16 @@ copy of it; a range that moves in the DSP moves there too.
   bounded rather than chosen - the bound stands in for the roll-off a real
   capsule has underneath it. The presence and the top that tell a dynamic
   capsule from a condenser are provisional, because no capsule is named
-  anywhere we can cite.
+  anywhere we can cite. Each pair has its own capsule, and the presence and
+  the top are applied to that pair before the pairs are summed.
+- The array starts where a cabinet is usually miked in a studio: a condenser
+  pair on the horn at the cabinet's two sides, 15 cm out from its flanks, and
+  a single dynamic microphone on the drum close to the front - a pair with no
+  spacing is one microphone. That shape is common practice; the numbers are
+  an engineer's choice and are provisional. Until state version 23 the
+  default was a spaced pair in front of each rotor with one shared capsule,
+  and an older state is read over that placement, so nothing already saved
+  moves.
 - The rotors are belted to alternating-current motors, so the supply sets
   every speed they reach: on 50 Hz the cabinet turns at five sixths of its
   rated speeds and reaches them sooner, because the belt ramps at the rate it
@@ -378,6 +439,18 @@ copy of it; a range that moves in the DSP moves there too.
   the third, which is the dominant and better conditioned of the two, and the
   laboratory reports the spacing between them for a bench to contradict. See
   `docs/CALIBRATION.md`.
+- The cabinet amplifier's component values are the schematic's; the valves'
+  gains, plate resistance and cutoff come from their published curves and are
+  provisional, as are the console's source impedance into the cabinet and the
+  drivers' impedance. The sensitivity survey puts every one of those under
+  0.4 dB except the drivers' (2.3 dB, through the crossover's Q) and the
+  6550's cutoff (1.7 dB); the drive itself moves the sound by 8.5 dB across
+  its span, which is why it is a control. The output transformer, the plate
+  supply's sag and the drivers' own responses are not modelled; this
+  schematic's supply is a diode bridge with a choke and an OC3-held screen
+  rail, so there is little sag to leave out. The drive is the plugin's
+  Cabinet Amp Drive parameter, saved with state version 22; older states load
+  with it at the anchor.
 - Cabinet reflections and angle-dependent filters are present, but
   their coefficients are not yet fitted to multi-angle cabinet measurements.
 - The microphones are placed geometrically, in centimetres, and the delay,

@@ -2,3 +2,8 @@
 /dist/
 /artifacts/
 *.rfplugin
+# The surface's generated half; tools/build-surface.sh makes it.
+/package/web/app.js
+/package/web/app_bg.wasm
+# A local override of the RackForge SDK; see README.
+/.cargo/config.toml

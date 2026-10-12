@@ -26,7 +26,7 @@ const NODES: usize = SECTIONS + 1;
 pub const TERMINALS: usize = 9;
 const STACKS: usize = 16;
 
-const INDUCTANCE_H: f64 = 0.5;
+pub(crate) const INDUCTANCE_H: f64 = 0.5;
 const CAPACITANCE_F: [f64; SECTIONS] = [
     4.0e-9, 4.0e-9, 4.0e-9, 4.0e-9, 4.0e-9, 4.0e-9, 4.0e-9, 4.0e-9, 4.0e-9, 4.0e-9, 4.0e-9, 4.0e-9,
     4.0e-9, 4.0e-9, 4.0e-9, 4.0e-9, 4.0e-9, 1.0e-9,
@@ -38,9 +38,9 @@ const CAPACITANCE_F: [f64; SECTIONS] = [
 /// and the laboratory measures the gain there at every supported rate.
 pub const CUTOFF_HZ: f64 = 7117.6259;
 
-const TERMINATION_OHM: f64 = 15_000.0;
+pub(crate) const TERMINATION_OHM: f64 = 15_000.0;
 /// Rc: in circuit for chorus, shorted for vibrato.
-const SOURCE_OHM: f64 = 22_000.0;
+pub(crate) const SOURCE_OHM: f64 = 22_000.0;
 /// The six tap dividers, as (upper, lower) resistance in ohms. Their ratio is
 /// the tap gain and their sum loads the ladder node.
 const DIVIDERS: [(f64, f64); 6] = [
@@ -73,7 +73,7 @@ pub const ROTOR_HZ: f32 = 6.9;
 /// instead of spanning eight decades. It is a change of variable, not a
 /// physical quantity; a test checks it against the component values, because
 /// the engine carries no square root of its own.
-const IMPEDANCE_OHM: f64 = 11_180.339_887_498_949;
+pub(crate) const IMPEDANCE_OHM: f64 = 11_180.339_887_498_949;
 
 fn divider_gain(node: usize) -> f64 {
     match DIVIDERS.get(node - 1) {
@@ -462,7 +462,13 @@ pub struct VibratoLine {
 }
 
 impl VibratoLine {
+    #[cfg(test)]
     pub fn new(sample_rate: f32) -> Self {
+        Self::with_rotor(sample_rate, ROTOR_HZ)
+    }
+
+    /// A line scanned at this many revolutions a second.
+    pub fn with_rotor(sample_rate: f32, rotor_hz: f32) -> Self {
         let rate = f64::from(sample_rate);
         Self {
             vibrato: Ladder::build(rate, true),
@@ -470,7 +476,7 @@ impl VibratoLine {
             state: [0.0; STATES],
             previous_input: 0.0,
             phase: 0.0,
-            phase_step: ROTOR_HZ / sample_rate,
+            phase_step: rotor_hz / sample_rate,
         }
     }
 

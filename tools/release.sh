@@ -11,7 +11,9 @@
 #     bash tools/release.sh            # validate, build, pack
 #     bash tools/release.sh --quick    # skip the test suite and the sweep
 #
-# Needs the sibling rackforge checkout, wasm-bindgen, and the wasm32 target.
+# Needs a sibling rackforge checkout at the revision Cargo.lock pins, for the
+# host's inspect, smoke and pack tools; wasm-bindgen at the version the lock
+# pins; and the wasm32 target.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -41,6 +43,21 @@ echo "RELEASE_VERSION $version"
 core_target=target/rackforge-core
 rackforge=../rackforge/Cargo.toml
 
+# The package is validated and packed by the host's own tools, and they have
+# to be the host the SDK in the lock came from: a release checked by a newer
+# host than it was built against has not been checked.
+pinned=$(bash tools/pins.sh rackforge)
+checked_out=$(git -C ../rackforge rev-parse HEAD 2>/dev/null || true)
+if [ -z "$checked_out" ]; then
+  echo "../rackforge is not a checkout; Cargo.lock pins RackForge $pinned" >&2
+  echo "clone it with: git clone https://github.com/kalexis1994/rackforge ../rackforge && git -C ../rackforge checkout $pinned" >&2
+  exit 1
+elif [ "$checked_out" != "$pinned" ]; then
+  echo "../rackforge is at $checked_out; Cargo.lock pins $pinned" >&2
+  echo "check it out with: git -C ../rackforge fetch origin $pinned && git -C ../rackforge checkout $pinned" >&2
+  exit 1
+fi
+
 echo "== formatting and lints =="
 cargo fmt --all -- --check
 cargo clippy --locked --workspace --all-targets -- -D warnings
@@ -59,9 +76,7 @@ cp THIRD_PARTY_NOTICES.md package/NOTICE.md
 echo "== wasm =="
 cargo build --locked --release -p rf-organ-plugin --target wasm32-unknown-unknown
 cp target/wasm32-unknown-unknown/release/rf_organ_plugin.wasm package/component.wasm
-cargo build --locked --release -p rf-organ-ui --target wasm32-unknown-unknown
-wasm-bindgen target/wasm32-unknown-unknown/release/rf_organ_ui.wasm \
-  --target web --out-dir package/web --out-name app --no-typescript
+bash tools/build-surface.sh
 
 echo "== package =="
 cargo run --locked --manifest-path "$rackforge" --target-dir "$core_target" \
