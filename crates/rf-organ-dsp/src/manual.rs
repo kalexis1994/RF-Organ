@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 use crate::model::{Knob, Model};
 use crate::preset::PRESET_COUNT;
+use crate::taper::KEY_TAPER;
 use crate::tonewheel::TONEWHEEL_COUNT;
 
 pub const DRAWBAR_COUNT: usize = 9;
@@ -300,6 +301,8 @@ pub fn drawbar_wheel(key: usize, bus: usize) -> Option<usize> {
 #[derive(Clone, Copy)]
 struct Contact {
     wheel: u8,
+    /// What this contact's tapering wire lets through of its wheel.
+    taper: f32,
     gate: f32,
     /// How much of the way the gate travels per sample once the contact is
     /// making. One is the abrupt arrival a console gives and anything less is
@@ -319,6 +322,7 @@ struct Contact {
 impl Contact {
     const EMPTY: Self = Self {
         wheel: 0,
+        taper: 1.0,
         gate: 0.0,
         rise: 1.0,
         target: false,
@@ -495,10 +499,10 @@ impl Manual {
             leakage_boost: LEAKAGE_BOOST_DEFAULT,
             keying: Keying::of(model),
         };
-        for key in 0..MANUAL_KEY_COUNT {
-            for bus in 0..DRAWBAR_COUNT {
-                manual.keys[key].contacts[bus].wheel =
-                    drawbar_wheel(key, bus).expect("bounded contact") as u8;
+        for (key, (state, tapers)) in manual.keys.iter_mut().zip(KEY_TAPER).enumerate() {
+            for (bus, (contact, taper)) in state.contacts.iter_mut().zip(tapers).enumerate() {
+                contact.wheel = drawbar_wheel(key, bus).expect("bounded contact") as u8;
+                contact.taper = taper;
             }
         }
         manual.rebuild_levels();
@@ -674,7 +678,8 @@ impl Manual {
                 let before = contact.gate;
                 if contact.tick(restitution) {
                     let level = self.levels[bus];
-                    self.wheel_gains[contact.wheel as usize] += (contact.gate - before) * level;
+                    self.wheel_gains[contact.wheel as usize] +=
+                        (contact.gate - before) * level * contact.taper;
                 }
                 // The first of the nine to touch anything, whichever it is.
                 touched |= before == 0.0 && contact.gate > 0.0 && !key.touched;
@@ -756,7 +761,7 @@ impl Manual {
                 let contact = key.contacts[8];
                 let index = contact.wheel as usize;
                 let leak = compartment_leak(wheels, index);
-                output -= contact.gate * level * (wheels[index] + leakage * leak);
+                output -= contact.gate * level * contact.taper * (wheels[index] + leakage * leak);
             }
         }
         output * self.keying.manual_bus_gain
@@ -767,7 +772,7 @@ impl Manual {
         let mut output = 0.0;
         for key in self.keys.iter().filter(|key| key.sounding()) {
             let contact = key.contacts[bus];
-            output += contact.gate * wheels[contact.wheel as usize];
+            output += contact.gate * contact.taper * wheels[contact.wheel as usize];
         }
         output * self.keying.manual_bus_gain
     }
@@ -814,7 +819,8 @@ impl Manual {
         self.wheel_gains.fill(0.0);
         for key in &self.keys {
             for (bus, contact) in key.contacts.iter().enumerate() {
-                self.wheel_gains[contact.wheel as usize] += contact.gate * self.levels[bus];
+                self.wheel_gains[contact.wheel as usize] +=
+                    contact.gate * self.levels[bus] * contact.taper;
             }
         }
     }

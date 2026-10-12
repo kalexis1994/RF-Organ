@@ -45,8 +45,9 @@ The current `0.49.0` baseline establishes the real-time architecture:
   perfectly steady and all 91 wheels stray together;
 - leakage that grows faster than what is played, because every contact that
   closes gives the harness another way onto the busbar;
-- a per-wheel taper table that is honestly flat, with a chromatic sweep and a
-  fit that fills it from a recording of a real console;
+- wheel levels and per-contact key tapering derived from published readings
+  of real consoles - Hammond's own tables among them - and checked against
+  readings that were not used to derive them;
 - the woofer's own unmodulated bass, which reaches the microphones without
   passing through a rotor, and a choice of capsule;
 - an integrated rotary speaker with counter-rotating horn and drum at their
@@ -156,12 +157,12 @@ measurement would be worth the most:
 cargo run --release -p rf-organ-lab -- sensitivity artifacts/sensitivity
 ```
 
-`wheel-levels` measures how the engine's wheels stand against each other and
-reports the distance from two sets of published console readings - each wheel
-straight off a busbar, and each through a key - reduced from Kon Zissis's
-tonewheel generator data by `tools/kon-wheel-levels.py`. The same data checks
-the manuals' wiring: every contact has to reach the wheel five measured
-manuals wire it to.
+`wheel-levels` derives the wheel and key tapers the engine ships from Kon
+Zissis's tonewheel generator data, reduced by `tools/kon-wheel-levels.py`,
+writes the tables for `taper.rs`, and reports how far the engine is from the
+readings taken straight off a busbar and from those taken through the keys,
+which are not used to derive anything. The same data checks the manuals'
+wiring: every contact has to reach the wheel five measured manuals wire it to.
 
 ```text
 cargo run --release -p rf-organ-lab -- wheel-levels artifacts/wheel-levels

@@ -1027,8 +1027,13 @@ pub const TABLES: &[Table] = &[
     },
     Table {
         name: "taper::TAPER",
-        basis: Provisional,
-        note: "Every wheel at unity: published busbar and key readings disagree once key tapering is left out, and the lab reports the distance to both.",
+        basis: Measured,
+        note: "Fitted to Hammond's Table V and six consoles read off a busbar, the engine's console response taken out; scaled to keep the pedals' level.",
+    },
+    Table {
+        name: "taper::KEY_TAPER",
+        basis: Measured,
+        note: "Z / (Z + R) from five measured manuals' tapering wires and three consoles' wheel impedances; checked against key readings not used to set it.",
     },
     Table {
         name: "preset::UPPER_PRESETS",

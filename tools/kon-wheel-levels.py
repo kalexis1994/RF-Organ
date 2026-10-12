@@ -1,23 +1,22 @@
 #!/usr/bin/env python3
-"""Reduces Kon Zissis's tonewheel generator data to what the laboratory checks.
+"""Reduces Kon Zissis's tonewheel generator data to what the laboratory uses.
 
 Reads the spreadsheet published at
 https://hammond-leslie.info/KonsTGandTaperingData/ (KonsData-20171011.xls) and
-writes three files into OUTPUT_DIRECTORY:
+writes four files into OUTPUT_DIRECTORY:
 
 busbar-levels.csv
     Each wheel connected straight to a preset-panel busbar and read at the
     preamplifier's output, as the B-3/C-3 service manual's Table V prescribes:
     that table and six consoles. What reaches a busbar from the wheel alone,
-    its filter and its loading included.
+    its filter and its loading included, with no tapering wire in the way.
 
 manual-levels.csv
     Each wheel read through one key and drawbar at the preamplifier's output,
     as Hammond's chart "Approximate output voltage readings of organ generator
     frequencies 1 to 91" lays out for consoles with manual tapering: that
-    chart and six C-3 and RT-3 consoles at full brightness. What a player
-    hears of the wheel through the path it was read on, that key's tapering
-    resistance included.
+    chart and six C-3 and RT-3 consoles at full brightness, with the key and
+    drawbar each wheel was read through.
 
     Both give, per wheel, the median, lowest and highest of their curves, each
     curve in dB against its own mean over the wheels it covers.
@@ -26,6 +25,15 @@ key-tapering.csv
     For every key and drawbar of a manual, the wheel its contact reaches and
     the median of the tapering resistance wire, in ohms, across five measured
     manuals: two of a 1965 C-3, a 1966 C-3, and two of a 1960 RT-3.
+
+source-impedance.csv
+    The impedance each wheel presents to its tapering wire, in ohms, from the
+    three organs read open-circuit, onto a busbar and through the keys on the
+    same occasion. A wheel open-circuit gives its voltage V; onto a busbar,
+    whose matching-transformer tap is a fraction of an ohm, a current V / Z;
+    through a key, V / (Z + R). So V_open / V_busbar is Z up to a scale, and
+    the scale is the one number per organ that turns its busbar readings into
+    its key readings through the measured wires.
 
     python tools/kon-wheel-levels.py KonsData-20171011.xls crates/rf-organ-lab/data
 
@@ -42,7 +50,10 @@ import xlrd
 WHEELS = 91
 KEYS = 61
 FOOTAGES = ["16'", "5 1/3'", "8'", "4'", "2 2/3'", "2'", "1 3/5'", "1 1/3'", "1'"]
+# The drawbars Hammond's second chart reads through, as it letters them.
+CHART_FOOTAGES = {16.0: 0, 5.3: 1, 1.0: 8}
 
+TERMINAL_SHEET = "Main  TG Data  mV PP"
 BUSBAR_SHEET = "GG + Busbar  TG output levels"
 MANUAL_SHEET = "GG+dbrs&keys TG output levels"
 
@@ -74,6 +85,34 @@ TAPERING_CHARTS = [
     "Nigel's RT3 Key Taper Chart UM",
     "Nigel's RT3 Key Taper Chart LM",
 ]
+# Organs read open-circuit at the terminal strip, onto a busbar and through
+# the keys on the same occasion: the phrases their three readings begin with.
+IMPEDANCE_ORGANS = [
+    (
+        "Kon's 1962 C-3, April 2007",
+        (
+            "Kon's 1962 C3. April 2007 TG curve. Stock complex waveform TG notes 1 to 12",
+            "Kon's 1962 C3. April 2007 TG curve. TG notes 1 - 12 are with the stock",
+            "Kon's 1962 C3. April 2007 TG curve. TG notes 13 to 91 through the manuals with bass foldback.Gain trimmer capacitor at 1 1/2 turns. Tone Control set at full",
+        ),
+    ),
+    (
+        "Ray's 1959 C-3",
+        (
+            "Ray's 1959 C3 s/n 80775. Recapped",
+            "Ray's 1959 C3",
+            "Ray's 1959 C3 S/n 80775. TG notes 49-55 recapped with .22 mf capacitors. TG notes 55-91 recapped with .1 mf capacitors. Measured with Tone Control set at full",
+        ),
+    ),
+    (
+        "Church 1960 RT-3",
+        (
+            "Church 1960 RT3 S/n 6925 With wax",
+            "Church 1960 RT3 with stock aged wax",
+            "Church 1960 RT3 with aged wax capacitors. Tone Control at full",
+        ),
+    ),
+]
 SOURCE = "Kon Zissis's tonewheel generator data (hammond-leslie.info, KonsData-20171011.xls)"
 
 
@@ -88,28 +127,42 @@ def column_for(sheet, row, label, prefix):
     sys.exit(f"no column for {label}")
 
 
+def rows_by_wheel(sheet, first_row, column):
+    rows = {}
+    for r in range(first_row, sheet.nrows):
+        if sheet.cell_type(r, column) == xlrd.XL_CELL_NUMBER:
+            rows.setdefault(int(sheet.cell_value(r, column)), r)
+    return rows
+
+
+def positive(sheet, row, column):
+    cell = sheet.cell(row, column)
+    return float(cell.value) if cell.ctype == xlrd.XL_CELL_NUMBER and cell.value > 0 else None
+
+
 def read_curve(sheet, rows, column, wheels, label):
     """A curve in dB against its own mean over `wheels`."""
     levels = {}
     for wheel in wheels:
-        cell = sheet.cell(rows[wheel], column)
-        if cell.ctype != xlrd.XL_CELL_NUMBER or cell.value <= 0:
+        value = positive(sheet, rows[wheel], column)
+        if value is None:
             sys.exit(f"{label} has no reading for wheel {wheel}")
-        levels[wheel] = 20.0 * math.log10(float(cell.value))
+        levels[wheel] = 20.0 * math.log10(value)
     mean = sum(levels.values()) / len(levels)
     return {wheel: level - mean for wheel, level in levels.items()}
 
 
-def write_levels(path, description, curves, wheels):
+def write_levels(path, description, curves, wheels, paths=None):
     with open(path, "w", encoding="utf-8", newline="\n") as handle:
         handle.write(f"# {description}\n# Written by tools/kon-wheel-levels.py from {SOURCE}.\n# Curves:\n")
-        for label, _ in curves[0]:
+        for label, _ in curves:
             handle.write(f"#   {label}\n")
-        handle.write("wheel,median_db,lowest_db,highest_db\n")
+        handle.write("wheel,median_db,lowest_db,highest_db" + (",key,drawbar" if paths else "") + "\n")
         for wheel in wheels:
-            column = [curve[wheel] for _, curve in curves[1]]
+            column = [curve[wheel] for _, curve in curves]
+            path = f",{paths[wheel][0]},{paths[wheel][1] + 1}" if paths else ""
             handle.write(
-                f"{wheel},{statistics.median(column):.3f},{min(column):.3f},{max(column):.3f}\n"
+                f"{wheel},{statistics.median(column):.3f},{min(column):.3f},{max(column):.3f}{path}\n"
             )
 
 
@@ -134,47 +187,9 @@ def tapering_chart(book, name):
     return table
 
 
-def main(source, destination):
-    book = xlrd.open_workbook(source, on_demand=True)
-
-    busbar = book.sheet_by_name(BUSBAR_SHEET)
-    busbar_rows = {}
-    for r in range(2, busbar.nrows):
-        if busbar.cell_type(r, 0) == xlrd.XL_CELL_NUMBER:
-            busbar_rows.setdefault(int(busbar.cell_value(r, 0)), r)
-    all_wheels = range(1, WHEELS + 1)
-    busbar_curves = [
-        (label, read_curve(busbar, busbar_rows, column_for(busbar, 1, label, prefix), all_wheels, label))
-        for label, prefix in BUSBAR_CURVES
-    ]
-    write_levels(
-        os.path.join(destination, "busbar-levels.csv"),
-        "Each wheel straight onto a busbar, read at the preamplifier's output (Table V protocol).",
-        (BUSBAR_CURVES, busbar_curves),
-        all_wheels,
-    )
-
-    manual = book.sheet_by_name(MANUAL_SHEET)
-    manual_rows = {}
-    for r in range(7, manual.nrows):
-        if manual.cell_type(r, 6) == xlrd.XL_CELL_NUMBER:
-            manual_rows.setdefault(int(manual.cell_value(r, 6)), r)
-    manual_wheels = range(13, WHEELS + 1)
-    manual_curves = []
-    for label, prefix in MANUAL_CURVES:
-        column = column_for(manual, 5, label, prefix)
-        # Hammond's chart lays its voltages three columns after its title.
-        if column == 4:
-            column = 7
-        manual_curves.append((label, read_curve(manual, manual_rows, column, manual_wheels, label)))
-    write_levels(
-        os.path.join(destination, "manual-levels.csv"),
-        "Each wheel through one key and drawbar, read at the preamplifier's output (Hammond chart 2 protocol).",
-        (MANUAL_CURVES, manual_curves),
-        manual_wheels,
-    )
-
+def write_wiring(book, destination):
     charts = [tapering_chart(book, name) for name in TAPERING_CHARTS]
+    wiring = {}
     with open(os.path.join(destination, "key-tapering.csv"), "w", encoding="utf-8", newline="\n") as handle:
         handle.write(
             "# Manual key tapering: the wheel each key's contact reaches for each drawbar,\n"
@@ -189,8 +204,132 @@ def main(source, destination):
                 wheels = [chart[(key, bus)][0] for chart in charts]
                 wheel = statistics.mode(wheels)
                 ohms = statistics.median(chart[(key, bus)][1] for chart in charts)
-                agreeing = wheels.count(wheel)
-                handle.write(f"{key},{bus + 1},{wheel},{agreeing},{ohms:g}\n")
+                wiring[(key, bus)] = (wheel, ohms)
+                handle.write(f"{key},{bus + 1},{wheel},{wheels.count(wheel)},{ohms:g}\n")
+    return wiring
+
+
+def read_paths(manual, manual_rows, wiring):
+    """The key and drawbar each wheel was read through. The chart names a
+    drawbar and a key; where the bass foldback lets two keys reach the wheel
+    on that drawbar, the one nearest the chart's numbering is taken."""
+    paths = {}
+    for wheel in range(13, WHEELS + 1):
+        r = manual_rows[wheel]
+        bus = CHART_FOOTAGES[round(manual.cell_value(r, 4), 1)]
+        named = int(manual.cell_value(r, 5))
+        keys = [k for (k, b), (w, _) in wiring.items() if b == bus and w == wheel]
+        if not keys:
+            sys.exit(f"no contact on drawbar {bus + 1} reaches wheel {wheel}")
+        paths[wheel] = (min(keys, key=lambda k: abs(k - named)), bus)
+    return paths
+
+
+def key_model(scale, readings):
+    """The model's prediction of each key reading, against its busbar reading,
+    with the organ's offset taken out, and the rms of what it leaves."""
+    model = [20 * math.log10(scale * z / (scale * z + r)) for z, r, _ in readings]
+    offset = statistics.mean(d - m for (_, _, d), m in zip(readings, model))
+    return math.sqrt(statistics.mean((d - m - offset) ** 2 for (_, _, d), m in zip(readings, model)))
+
+
+def write_source_impedance(book, destination, wiring, paths):
+    terminal = book.sheet_by_name(TERMINAL_SHEET)
+    busbar = book.sheet_by_name(BUSBAR_SHEET)
+    manual = book.sheet_by_name(MANUAL_SHEET)
+    terminal_rows = rows_by_wheel(terminal, 2, 3)
+    busbar_rows = rows_by_wheel(busbar, 2, 0)
+    manual_rows = rows_by_wheel(manual, 7, 6)
+
+    organs = []
+    for label, (terminal_prefix, busbar_prefix, manual_prefix) in IMPEDANCE_ORGANS:
+        t = column_for(terminal, 1, label, terminal_prefix)
+        b = column_for(busbar, 1, label, busbar_prefix)
+        m = column_for(manual, 5, label, manual_prefix)
+        ratio = {}
+        for wheel in range(1, WHEELS + 1):
+            v_open = positive(terminal, terminal_rows[wheel], t)
+            v_busbar = positive(busbar, busbar_rows[wheel], b)
+            if v_open is None or v_busbar is None:
+                sys.exit(f"{label} lacks wheel {wheel}")
+            ratio[wheel] = v_open / v_busbar
+        mean = statistics.mean(ratio[w] for w in range(13, WHEELS + 1))
+        relative = {w: z / mean for w, z in ratio.items()}
+        readings = []
+        for wheel, (key, bus) in paths.items():
+            v_manual = positive(manual, manual_rows[wheel], m)
+            if v_manual is not None:
+                v_busbar = positive(busbar, busbar_rows[wheel], b)
+                readings.append((relative[wheel], wiring[(key, bus)][1], 20 * math.log10(v_manual / v_busbar)))
+        spread = statistics.mean(d for *_, d in readings)
+        without = math.sqrt(statistics.mean((d - spread) ** 2 for *_, d in readings))
+        rms, scale = min((key_model(10 ** (x / 100), readings), 10 ** (x / 100)) for x in range(-100, 400))
+        organs.append((label, relative, readings, scale, rms, without))
+
+    notes = []
+    for label, _, readings, scale, rms, without in organs:
+        others = statistics.median(o[3] for o in organs if o[0] != label)
+        notes.append(
+            f"#   {label}: scale {scale:.1f} ohm leaves its key readings {rms:.2f} dB rms;"
+            f" the others' {others:.1f} ohm, {key_model(others, readings):.2f} dB; no model, {without:.2f} dB\n"
+        )
+    with open(os.path.join(destination, "source-impedance.csv"), "w", encoding="utf-8", newline="\n") as handle:
+        handle.write(
+            "# Source impedance each wheel presents to its tapering wire, in ohms:\n"
+            "# median, lowest and highest across organs read open-circuit at the\n"
+            "# terminal strip, straight onto a busbar and through the keys on the same\n"
+            "# occasion. Z is V_open / V_busbar, scaled so that V / (Z + R) turns each\n"
+            "# organ's busbar readings into its key readings through the measured wires.\n"
+            f"# Written by tools/kon-wheel-levels.py from {SOURCE}.\n# Organs:\n"
+        )
+        for note in notes:
+            handle.write(note)
+        handle.write("wheel,median_ohm,lowest_ohm,highest_ohm\n")
+        for wheel in range(1, WHEELS + 1):
+            column = [organ[3] * organ[1][wheel] for organ in organs]
+            handle.write(
+                f"{wheel},{statistics.median(column):.3f},{min(column):.3f},{max(column):.3f}\n"
+            )
+
+
+def main(source, destination):
+    book = xlrd.open_workbook(source, on_demand=True)
+
+    busbar = book.sheet_by_name(BUSBAR_SHEET)
+    busbar_rows = rows_by_wheel(busbar, 2, 0)
+    all_wheels = range(1, WHEELS + 1)
+    write_levels(
+        os.path.join(destination, "busbar-levels.csv"),
+        "Each wheel straight onto a busbar, read at the preamplifier's output (Table V protocol).",
+        [
+            (label, read_curve(busbar, busbar_rows, column_for(busbar, 1, label, prefix), all_wheels, label))
+            for label, prefix in BUSBAR_CURVES
+        ],
+        all_wheels,
+    )
+
+    wiring = write_wiring(book, destination)
+
+    manual = book.sheet_by_name(MANUAL_SHEET)
+    manual_rows = rows_by_wheel(manual, 7, 6)
+    paths = read_paths(manual, manual_rows, wiring)
+    manual_wheels = range(13, WHEELS + 1)
+    manual_curves = []
+    for label, prefix in MANUAL_CURVES:
+        column = column_for(manual, 5, label, prefix)
+        # Hammond's chart lays its voltages three columns after its title.
+        if column == 4:
+            column = 7
+        manual_curves.append((label, read_curve(manual, manual_rows, column, manual_wheels, label)))
+    write_levels(
+        os.path.join(destination, "manual-levels.csv"),
+        "Each wheel through one key and drawbar, read at the preamplifier's output (Hammond chart 2 protocol).",
+        manual_curves,
+        manual_wheels,
+        paths,
+    )
+
+    write_source_impedance(book, destination, wiring, paths)
 
 
 if __name__ == "__main__":

@@ -41,7 +41,7 @@ pub use rotary::{
     RotaryGeometry, RotaryMode, RotaryPlacement, SUB_LEVEL_DEFAULT_DB, StopAngle,
 };
 pub use scanner::{ScannerMode, ScannerVibrato};
-pub use taper::TAPER;
+pub use taper::{KEY_TAPER, TAPER};
 pub use tonewheel::{TONEWHEEL_COUNT, gear_frequency, gear_teeth};
 pub use transformer::{
     ASYMMETRY_DEFAULT as TRANSFORMER_ASYMMETRY_DEFAULT, MatchingTransformer,

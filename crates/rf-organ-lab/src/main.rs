@@ -149,26 +149,35 @@ fn sweep_suite(destination: &Path) -> Result<(), Box<dyn Error>> {
     }
 }
 
-/// Measures the engine's wheels against the published busbar and manual
-/// readings and reports how far it is from each.
+/// Derives the wheel and key tapers from the published readings, writes the
+/// tables `taper.rs` carries, and reports how far the engine as built is
+/// from the busbar readings and from the key readings.
 fn wheel_levels_suite(destination: &Path) -> Result<(), Box<dyn Error>> {
     fs::create_dir_all(destination)?;
-    let engine = wheel_levels::engine_levels()?;
-    let busbar = wheel_levels::distance(&engine, &wheel_levels::busbar()?);
-    let manual = wheel_levels::distance(&engine, &wheel_levels::manual()?);
+    let busbar = wheel_levels::busbar()?;
+    let manual = wheel_levels::manual()?;
+    let key_taper = wheel_levels::key_taper()?;
+    let response = wheel_levels::busbar_response()?;
+    let (taper, key_taper) = wheel_levels::fit_tapers(&busbar, &response, &key_taper);
+    let tables = wheel_levels::rust_tables(&taper, &key_taper);
+    fs::write(destination.join("taper.rs.txt"), &tables)?;
+
+    let at_busbar = wheel_levels::distance(&wheel_levels::engine_at_busbar()?, &busbar);
+    let through_keys =
+        wheel_levels::distance(&wheel_levels::engine_through_keys(&manual)?, &manual);
     fs::write(
         destination.join("wheel-levels.csv"),
-        wheel_levels::report(&busbar, &manual),
+        wheel_levels::report(&at_busbar, &through_keys),
     )?;
     println!(
-        "RF_ORGAN_LAB_WHEEL_LEVELS path={} busbar_rms_db={:.2} busbar_inside={}/{} manual_rms_db={:.2} manual_inside={}/{}",
+        "RF_ORGAN_LAB_WHEEL_LEVELS path={} busbar_rms_db={:.2} busbar_inside={}/{} keys_rms_db={:.2} keys_inside={}/{}",
         destination.display(),
-        busbar.rms_db,
-        busbar.inside,
-        busbar.wheels,
-        manual.rms_db,
-        manual.inside,
-        manual.wheels
+        at_busbar.rms_db,
+        at_busbar.inside,
+        at_busbar.wheels,
+        through_keys.rms_db,
+        through_keys.inside,
+        through_keys.wheels
     );
     Ok(())
 }

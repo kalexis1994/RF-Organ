@@ -292,24 +292,35 @@ copy of it; a range that moves in the DSP moves there too.
   that character and the comparator fits the three separately - again the
   arrangement the matching transformers use, and again the answer is only as
   separate as the measurement was.
-- The generator's per-wheel taper is every wheel at unity, which no real
-  generator is. It is a table rather than a constant because what replaces it
-  is a measurement: the laboratory renders a chromatic sweep, the comparator
-  reads a reference recording of the same sweep against it, and the fit it
-  emits is the table. Fitting the model against itself returns unity exactly,
-  which is what keeps the console's own frequency response out of a table that
-  is supposed to describe 91 wheels.
-- Published readings of real consoles were tried and do not yet fill it. Read
-  straight off a busbar (Hammond's Table V and six consoles), the wheels fall
-  7.5 dB at wheel 44, where the generator's filters begin; read through the
-  keys (Hammond's second chart and six consoles), they do not, because the key
-  tapering wires compensate it. The engine has no key tapering, and turning a
-  wire's ohms into gain does not survive cross-validation on these readings,
-  so neither set can be taken alone. `rf-organ-lab wheel-levels` reports the
-  distance: 8.5 dB rms from the busbar readings and 4.5 dB from the key
-  readings with the taper flat. What the readings did settle is the wiring:
-  every one of the 549 manual contacts reaches the wheel five measured
-  manuals wire it to, foldback included, and a test holds it.
+- The wheels' levels and the manuals' key tapering come from published
+  readings of real consoles rather than from this project. A busbar sits on a
+  matching-transformer tap of a fraction of an ohm, so a wheel drives a
+  current into it - V / Z straight onto it, V / (Z + R) through a tapering
+  wire of R ohms - and that is the whole model. Each wheel's V / Z is fitted
+  to Hammond's B-3 Table V and six consoles read straight off a busbar, with
+  the engine's own console response measured and taken out; each contact's
+  Z / (Z + R) comes from the tapering wires of five measured manuals and the
+  impedance three consoles show when the same wheel is read open-circuit,
+  onto a busbar and through a key. That impedance scale is the one fitted
+  number, and it comes out at 45, 49 and 53 ohms on the three, and predicts
+  each one's key readings as well from the other two's as from its own.
+- The check is the readings that were not fitted: Hammond's second chart and
+  six consoles read through one key and drawbar per wheel. Played through the
+  same keys and drawbars, the engine lands 2.2 dB rms from their median, about
+  the spread between the consoles themselves; with every wheel and contact at
+  unity it stood 4.5 dB away. A test holds it under 2.5 dB. The same readings
+  settled the wiring: all 549 manual contacts reach the wheel five measured
+  manuals wire them to, foldback included.
+- What the model leaves out: the impedance is a magnitude, not a phase; each
+  wheel's is the median of three consoles; and the levels say how the wheels
+  and contacts stand against each other, not how loud anything is. So the
+  wheel taper is scaled to give the pedals' 16' fundamentals, which have no
+  key taper, the power they had before, and the key taper to give an 888
+  registration the power it had; the stages after them were set by those
+  levels. The percussion, which leaves through the same key contacts, came out
+  2.2 dB stronger, and is left there because that is where its path puts it.
+- The comparator can still fit the wheel taper from a chromatic recording of a
+  console; fitting the model against itself returns the shipped table.
 - Leakage grows faster than what is played, at a rate that is a control of
   its own, which is how Hammond describes it. Measured against the notes that
   caused it, the leakage climbs 7.2 dB between one note and eight; with the
