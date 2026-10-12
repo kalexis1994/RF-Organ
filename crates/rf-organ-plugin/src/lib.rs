@@ -11,6 +11,7 @@ use rackforge_plugin_sdk::{
 use rf_organ_dsp::{
     LEVEL_SILENT_DB, MIC_DISTANCE_RANGE_M, MIC_SPACING_MAX_M, OrganEngine, OrganPart, RotaryMode,
 };
+use settings::ROTARY_MODE;
 pub use settings::{PARAMETER_COUNT, Settings, presets};
 
 pub const MAX_FRAMES: u32 = 4096;
@@ -51,6 +52,9 @@ fn decibels_of(gain: f64) -> f64 {
 pub struct RfOrganProcessor {
     engine: Option<Box<OrganEngine>>,
     settings: Settings,
+    /// The speed the rotors go back to when CC 4 lets them go: the program's,
+    /// until CC 1 throws the switch to another one.
+    rotary_speed: RotaryMode,
     maximum_frames: u32,
     channels: u32,
 }
@@ -61,6 +65,7 @@ impl RfOrganProcessor {
             return false;
         }
         self.settings = settings;
+        self.rotary_speed = settings.rotary_mode;
         if let Some(engine) = &mut self.engine {
             settings.apply(engine);
         }
@@ -85,17 +90,20 @@ impl RfOrganProcessor {
                 }
             }
             0xb0 => match index {
-                1 => engine.set_rotary_mode(if value < 64 {
-                    RotaryMode::Chorale
-                } else {
-                    RotaryMode::Tremolo
-                }),
+                1 => {
+                    self.rotary_speed = if value < 64 {
+                        RotaryMode::Chorale
+                    } else {
+                        RotaryMode::Tremolo
+                    };
+                    engine.set_rotary_mode(self.rotary_speed);
+                }
                 // Rotor stop, the third position a cabinet's switch has.
                 // Releasing it returns the rotors to the selected speed.
                 4 => engine.set_rotary_mode(if value < 64 {
                     RotaryMode::Brake
                 } else {
-                    self.settings.rotary_mode
+                    self.rotary_speed
                 }),
                 11 => {
                     let _ = engine.set_expression(f32::from(value) / 127.0);
@@ -143,15 +151,18 @@ impl RfOrganProcessor {
                     event.value as f32 / u32::MAX as f32
                 };
                 match event.index {
-                    1 => engine.set_rotary_mode(if value < 0.5 {
-                        RotaryMode::Chorale
-                    } else {
-                        RotaryMode::Tremolo
-                    }),
+                    1 => {
+                        self.rotary_speed = if value < 0.5 {
+                            RotaryMode::Chorale
+                        } else {
+                            RotaryMode::Tremolo
+                        };
+                        engine.set_rotary_mode(self.rotary_speed);
+                    }
                     4 => engine.set_rotary_mode(if value < 0.5 {
                         RotaryMode::Brake
                     } else {
-                        self.settings.rotary_mode
+                        self.rotary_speed
                     }),
                     11 => {
                         let _ = engine.set_expression(value);
@@ -188,7 +199,14 @@ impl Processor for RfOrganProcessor {
         let Some(settings) = self.settings.with_parameter(index, value) else {
             return false;
         };
-        self.apply_settings(settings)
+        self.settings = settings;
+        if index == ROTARY_MODE {
+            self.rotary_speed = settings.rotary_mode;
+        }
+        if let Some(engine) = &mut self.engine {
+            settings.apply_parameter(index, engine);
+        }
+        true
     }
 
     fn get_parameter(&self, index: u32) -> Option<f64> {
@@ -200,6 +218,7 @@ impl Processor for RfOrganProcessor {
             engine.reset();
             self.settings.apply(engine);
         }
+        self.rotary_speed = self.settings.rotary_mode;
     }
 
     fn load_preset(&mut self, id: &str) -> bool {
@@ -657,6 +676,70 @@ mod tests {
         processor.process(&[], &mut output, &release, &[], 64, 0, 2);
         let engine = processor.engine.as_ref().expect("prepared engine");
         assert_eq!(engine.rotary_mode(), RotaryMode::Chorale);
+    }
+
+    fn controller(frame: u32, index: u8, value: u8) -> MidiEvent {
+        MidiEvent {
+            frame,
+            data: [0xb0, index, value],
+            length: 3,
+        }
+    }
+
+    /// The speed the rotors return to is the one last chosen, and CC 1 is
+    /// one way of choosing it: a player who throws the cabinet to fast and
+    /// then stops it expects it to come back fast.
+    #[test]
+    fn releasing_the_stop_returns_to_the_speed_last_chosen() {
+        let mut processor = RfOrganProcessor::default();
+        assert!(processor.load_preset("chorale-888"));
+        assert!(processor.prepare(48_000.0, 64, 0, 2));
+        let mut output = [0.0_f32; 128];
+
+        let fast_then_stop = [controller(0, 1, 127), controller(8, 4, 0)];
+        processor.process(&[], &mut output, &fast_then_stop, &[], 64, 0, 2);
+        let engine = processor.engine.as_ref().expect("prepared engine");
+        assert_eq!(engine.rotary_mode(), RotaryMode::Brake);
+
+        processor.process(&[], &mut output, &[controller(0, 4, 127)], &[], 64, 0, 2);
+        let engine = processor.engine.as_ref().expect("prepared engine");
+        assert_eq!(engine.rotary_mode(), RotaryMode::Tremolo);
+
+        // The parameter is the other way of choosing it.
+        let chorale = ParameterEvent {
+            frame: 0,
+            index: ROTARY_MODE,
+            value: f64::from(RotaryMode::Chorale as u8),
+        };
+        let stop_then_release = [controller(8, 4, 0), controller(16, 4, 127)];
+        processor.process(&[], &mut output, &stop_then_release, &[chorale], 64, 0, 2);
+        let engine = processor.engine.as_ref().expect("prepared engine");
+        assert_eq!(engine.rotary_mode(), RotaryMode::Chorale);
+    }
+
+    /// Moving a drawbar is not a request to set the rest of the console
+    /// again. Before this, any parameter put the expression and the cabinet
+    /// speed back to what the parameters held, so a pedal on CC 11 jumped
+    /// open and a speed thrown on CC 1 fell back whenever a control moved.
+    #[test]
+    fn a_control_moved_leaves_what_midi_set_alone() {
+        let mut processor = RfOrganProcessor::default();
+        assert!(processor.load_preset("chorale-888"));
+        assert!(processor.prepare(48_000.0, 64, 0, 2));
+        let mut output = [0.0_f32; 128];
+
+        let midi = [controller(0, 11, 0), controller(0, 1, 127)];
+        let drawbar = ParameterEvent {
+            frame: 16,
+            index: settings::DRAWBAR_FIRST,
+            value: 4.0,
+        };
+        processor.process(&[], &mut output, &midi, &[drawbar], 64, 0, 2);
+
+        assert_eq!(processor.settings.drawbars_b[0], 4);
+        let engine = processor.engine.as_ref().expect("prepared engine");
+        assert_eq!(engine.expression(), 0.0);
+        assert_eq!(engine.rotary_mode(), RotaryMode::Tremolo);
     }
 
     /// The manifest tells the host what state format the plugin writes, and
