@@ -69,6 +69,15 @@ registrations named Jazz, Bluesy, Groovy & Funky, Max Power and Squabble, but
 their figures are drawings that the scan reachable from `docs/RESEARCH.md`
 does not render as text. They are absent rather than guessed.
 
+The Jazz & Blues and Gospel & Rock banks are not quoted from that table or
+from any other document. Their registrations - 88 8000 000 with third
+percussion for an organ trio, 80 8000 000 for a hollow comp or a left-hand
+bass, 88 8800 000 for a blues shuffle, 88 8000 008 and 88 8888 888 for a
+pushed, bright sound, 68 8600 000 under a rock ballad - are the ones players
+commonly pass on for those styles, and they are offered as starting points in
+that tradition rather than as transcriptions of any recording or any player's
+documented setting. No player is named in a program's name or description.
+
 ## Preset panel registrations
 
 Version 0.44.0 fills the nine preset keys of each manual. The B-3/C-3 service

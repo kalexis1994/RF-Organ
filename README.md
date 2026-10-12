@@ -19,8 +19,9 @@ The current `0.50.0` baseline establishes the real-time architecture:
   sets of nine adjustable drawbars;
 - a play surface in four tabs with drawbars drawn as drawbars, and package
   artwork of the instrument itself;
-- sixteen programs, half of them tone colours quoted from a published table of
-  drawbar registration patterns for the four pipe-organ tone families;
+- twenty-one programs in four banks - the console's own setups, jazz and
+  blues, gospel and rock, and six tone colours quoted from a published table
+  of drawbar registration patterns for the four pipe-organ tone families;
 - B-3-style drawbar wiring and foldback;
 - compartment leakage following the service manual's four-wheel compartments,
   and a once-per-revolution level change for wheel eccentricity;

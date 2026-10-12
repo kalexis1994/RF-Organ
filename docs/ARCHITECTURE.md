@@ -194,15 +194,23 @@ fetched, because a webview inside a host need not have a network and a panel
 whose lettering depends on whether it does is not a panel. Both are under the
 SIL Open Font License and both licences ship beside them.
 
-The plugin comes with sixteen programs. Eight are console setups - a
-registration together with the percussion, vibrato, cabinet and drive that go
-with a way of playing. Eight are tone colours whose registrations are quoted
+The plugin comes with twenty-one programs in four banks, listed in the order
+a player would reach for them. Console holds five setups that show what the
+instrument does: a straight registration, the chorus and slow cabinet, the
+percussion switch, the adjust keys and the pedals. Jazz & Blues and Gospel &
+Rock hold seven and three ways of playing, each a registration together with
+the percussion, vibrato, cabinet and drive that go with it; those
+registrations are the ones players commonly quote for the style rather than
+figures from a document. Tone Colours holds six whose registrations are quoted
 digit for digit from the published table of drawbar registration patterns for
 the four families a pipe organ is built from; the stop names on them are the
 pipe organ's own and are older than any tonewheel instrument. What surrounds
 each registration is this project's arrangement, and the provenance of the
 figures is in THIRD_PARTY_NOTICES.md, which is where trademarks live: nothing
-the package carries to a host names one, and a test now holds that.
+the package carries to a host names one, and a test now holds that. A program
+that places the horn's microphones itself was voiced on a spaced pair in
+front of the cabinet and keeps it; every other one takes the studio
+placement.
 
 The play surface is four tabs behind one strip that never leaves: output,
 expression and the rotary switch, which are what a player reaches for without

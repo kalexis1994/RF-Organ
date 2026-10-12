@@ -750,23 +750,35 @@ impl Group {
     }
 }
 
-/// The programs the plugin ships with.
+/// The programs the plugin ships with, in the order the catalogue lists them.
 ///
-/// The first eight are console setups: a registration together with the
-/// percussion, vibrato, cabinet and drive that go with a way of playing. The
-/// eight after them are tone colours, and their registrations are not
-/// invented: they are quoted digit for digit from the published table of
-/// drawbar registration patterns for the four families a pipe organ is built
-/// from, in the 2-4-3 notation that table uses. The stop names are the pipe
-/// organ's own and are centuries older than any tonewheel instrument; the
-/// provenance of the figures is in THIRD_PARTY_NOTICES.md, which is where
-/// this project keeps trademarks. What surrounds each registration is this
-/// plugin's arrangement and not the table's: which cabinet speed, how much
-/// drive, whether the scanner is in, what the lower manual and the pedals
-/// carry.
-pub fn presets() -> [(&'static str, &'static str, &'static str, Settings); 16] {
+/// They come in four banks. The console's own setups come first: a
+/// registration with the percussion, vibrato, cabinet and drive that show
+/// what the instrument does. Then two banks of ways of playing it, jazz and
+/// blues, then gospel and rock, whose registrations are the ones players
+/// commonly quote for those styles rather than figures from a document; what
+/// surrounds each one is this plugin's arrangement. Last are the tone
+/// colours, and their registrations are not invented: they are quoted digit
+/// for digit from the published table of drawbar registration patterns for
+/// the four families a pipe organ is built from, in the 2-4-3 notation that
+/// table uses. The stop names are the pipe organ's own and are centuries
+/// older than any tonewheel instrument; the provenance of the figures is in
+/// THIRD_PARTY_NOTICES.md, which is where this project keeps trademarks.
+///
+/// A program that places the horn's microphones itself was voiced on a
+/// spaced pair in front of the cabinet, and says so; every other one takes
+/// the studio placement that is the default.
+pub fn presets() -> [(&'static str, &'static str, &'static str, Settings); 21] {
     let straight = Settings::default();
+    let third_percussion = |volume| Settings {
+        percussion_enabled: true,
+        percussion_harmonic: PercussionHarmonic::Third,
+        percussion_volume: volume,
+        percussion_decay: PercussionDecay::Fast,
+        ..straight
+    };
     [
+        // Console.
         (
             "straight-888",
             "Straight 888",
@@ -783,55 +795,30 @@ pub fn presets() -> [(&'static str, &'static str, &'static str, Settings); 16] {
                 upper_scanner: true,
                 rotary_horn_mic_distance: 0.9,
                 rotary_horn_mic_spacing: 0.24,
+                rotary_horn_mic_sides: false,
                 ..straight
             },
         ),
         (
-            "tremolo-jazz",
-            "Tremolo Jazz",
-            "Third-harmonic single-trigger percussion with fast integrated rotary motion.",
+            "percussion-switch",
+            "Percussion Switch",
+            "The 1' drawbar left out so the percussion tablet swaps the registration.",
             Settings {
-                drawbars_b: [8, 8, 8, 0, 0, 0, 0, 8, 0],
-                rotary_mode: RotaryMode::Tremolo,
-                transformer_drive: 0.52,
-                console_drive: 0.44,
-                percussion_enabled: true,
-                percussion_harmonic: PercussionHarmonic::Third,
-                percussion_volume: PercussionVolume::Normal,
-                percussion_decay: PercussionDecay::Fast,
-                rotary_horn_mic_distance: 0.25,
-                rotary_horn_mic_spacing: 0.38,
-                rotary_reflections: 0.16,
-                rotary_drum_level: -1.1,
-                ..straight
-            },
-        ),
-        (
-            "jazz-comp",
-            "Jazz Comp",
-            "Hollow comping registration with third-harmonic percussion and slow rotary motion.",
-            Settings {
-                drawbars_b: [8, 0, 8, 0, 0, 0, 0, 0, 0],
+                drawbars_b: [8, 8, 8, 0, 0, 0, 0, 0, 8],
                 rotary_mode: RotaryMode::Chorale,
-                percussion_enabled: true,
-                percussion_harmonic: PercussionHarmonic::Third,
-                percussion_volume: PercussionVolume::Normal,
-                percussion_decay: PercussionDecay::Fast,
-                rotary_horn_mic_distance: 0.5,
-                rotary_horn_mic_spacing: 0.28,
-                ..straight
+                ..third_percussion(PercussionVolume::Normal)
             },
         ),
         (
-            "ballad-chorus",
-            "Ballad Chorus",
-            "Fundamental registration through the C3 vibrato line, cabinet stationary.",
+            "two-registrations",
+            "Two Registrations",
+            "A flute on the A# adjust key and a full registration on B, to change with a key.",
             Settings {
-                drawbars_b: [8, 8, 8, 0, 0, 0, 0, 0, 0],
-                scanner_mode: ScannerMode::Chorus3,
-                upper_scanner: true,
-                rotary_mode: RotaryMode::Off,
-                output_level: 0.66,
+                drawbars_a: [0, 0, 8, 0, 0, 0, 0, 0, 0],
+                drawbars_b: [8, 8, 8, 8, 0, 0, 0, 0, 0],
+                lower_drawbars_a: [0, 0, 6, 0, 0, 0, 0, 0, 0],
+                lower_drawbars_b: [8, 6, 8, 0, 0, 0, 0, 0, 0],
+                rotary_mode: RotaryMode::Chorale,
                 ..straight
             },
         ),
@@ -848,6 +835,129 @@ pub fn presets() -> [(&'static str, &'static str, &'static str, Settings); 16] {
                 ..straight
             },
         ),
+        // Jazz and blues.
+        (
+            "jazz-trio",
+            "Jazz Trio",
+            "88 8000 000 with soft, fast third percussion and no scanner, over a left-hand bass of 80 8000 000 on the lower manual; cabinet slow.",
+            Settings {
+                lower_drawbars_b: [8, 0, 8, 0, 0, 0, 0, 0, 0],
+                pedal_drawbars: [8, 0],
+                rotary_mode: RotaryMode::Chorale,
+                ..third_percussion(PercussionVolume::Soft)
+            },
+        ),
+        (
+            "jazz-comp",
+            "Jazz Comp",
+            "Hollow comping registration with third-harmonic percussion and slow rotary motion.",
+            Settings {
+                drawbars_b: [8, 0, 8, 0, 0, 0, 0, 0, 0],
+                rotary_mode: RotaryMode::Chorale,
+                rotary_horn_mic_distance: 0.5,
+                rotary_horn_mic_spacing: 0.28,
+                rotary_horn_mic_sides: false,
+                ..third_percussion(PercussionVolume::Normal)
+            },
+        ),
+        (
+            "lower-comp",
+            "Lower Comp",
+            "Third percussion on 88 8000 000 for the right hand over soft chords of 00 7600 000 on the lower manual, pedals off for a bass player.",
+            Settings {
+                lower_drawbars_b: [0, 0, 7, 6, 0, 0, 0, 0, 0],
+                pedal_drawbars: [0, 0],
+                rotary_mode: RotaryMode::Chorale,
+                ..third_percussion(PercussionVolume::Soft)
+            },
+        ),
+        (
+            "tremolo-jazz",
+            "Tremolo Jazz",
+            "The trio registration, 88 8000 000, with normal third percussion, more drive and the cabinet at speed for a climax.",
+            Settings {
+                rotary_mode: RotaryMode::Tremolo,
+                transformer_drive: 0.52,
+                console_drive: 0.44,
+                rotary_horn_mic_distance: 0.25,
+                rotary_horn_mic_spacing: 0.38,
+                rotary_horn_mic_sides: false,
+                rotary_reflections: 0.16,
+                rotary_drum_level: -1.1,
+                ..third_percussion(PercussionVolume::Normal)
+            },
+        ),
+        (
+            "ballad-chorus",
+            "Ballad Chorus",
+            "Soft flutes, 00 8600 000, through the C3 chorus with the cabinet stationary, for ballads.",
+            Settings {
+                drawbars_b: [0, 0, 8, 6, 0, 0, 0, 0, 0],
+                lower_drawbars_b: [0, 0, 6, 4, 0, 0, 0, 0, 0],
+                scanner_mode: ScannerMode::Chorus3,
+                upper_scanner: true,
+                lower_scanner: true,
+                rotary_mode: RotaryMode::Off,
+                output_level: 0.8,
+                ..straight
+            },
+        ),
+        (
+            "blues-shuffle",
+            "Blues Shuffle",
+            "88 8800 000 through the C3 chorus with a slow cabinet ready to speed up and a little drive.",
+            Settings {
+                drawbars_b: [8, 8, 8, 8, 0, 0, 0, 0, 0],
+                lower_drawbars_b: [0, 0, 8, 8, 0, 0, 0, 0, 0],
+                pedal_drawbars: [8, 4],
+                scanner_mode: ScannerMode::Chorus3,
+                upper_scanner: true,
+                rotary_mode: RotaryMode::Chorale,
+                transformer_drive: 0.48,
+                console_drive: 0.42,
+                ..straight
+            },
+        ),
+        (
+            "gritty-blues",
+            "Gritty Blues",
+            "88 8000 008 with no scanner and the cabinet amplifier pushed into breakup.",
+            Settings {
+                drawbars_b: [8, 8, 8, 0, 0, 0, 0, 0, 8],
+                pedal_drawbars: [8, 4],
+                rotary_mode: RotaryMode::Chorale,
+                transformer_drive: 0.55,
+                console_drive: 0.55,
+                rotary_drive: 0.8,
+                ..straight
+            },
+        ),
+        // Gospel and rock.
+        (
+            "gospel-full",
+            "Gospel Full",
+            "88 8888 000 on both manuals through the C3 chorus, transformer drive and slow rotary motion.",
+            Settings {
+                drawbars_b: [8, 8, 8, 8, 8, 8, 0, 0, 0],
+                rotary_mode: RotaryMode::Chorale,
+                transformer_drive: 0.62,
+                console_drive: 0.48,
+                console_bass: 0.18,
+                console_treble: -0.08,
+                leakage: 0.28,
+                scanner_mode: ScannerMode::Chorus3,
+                lower_drawbars_b: [8, 8, 8, 8, 0, 0, 0, 0, 0],
+                pedal_drawbars: [8, 8],
+                upper_scanner: true,
+                lower_scanner: true,
+                rotary_horn_mic_distance: 0.45,
+                rotary_horn_mic_spacing: 0.32,
+                rotary_horn_mic_sides: false,
+                rotary_reflections: 0.3,
+                rotary_horn_level: -0.7,
+                ..straight
+            },
+        ),
         (
             "full-shout",
             "Full Shout",
@@ -861,34 +971,25 @@ pub fn presets() -> [(&'static str, &'static str, &'static str, Settings); 16] {
                 console_drive: 0.52,
                 rotary_horn_mic_distance: 0.22,
                 rotary_horn_mic_spacing: 0.36,
+                rotary_horn_mic_sides: false,
                 rotary_reflections: 0.26,
                 ..straight
             },
         ),
         (
-            "gospel-full",
-            "Gospel Full",
-            "Full drawbars, C3 scanner chorus, transformer drive and slow rotary motion.",
+            "rock-ballad",
+            "Rock Ballad",
+            "68 8600 000 through the C3 chorus with a slow cabinet, the sustained organ under a rock ballad.",
             Settings {
-                drawbars_b: [8, 8, 8, 8, 6, 8, 4, 8, 6],
-                rotary_mode: RotaryMode::Chorale,
-                transformer_drive: 0.62,
-                console_drive: 0.48,
-                console_bass: 0.18,
-                console_treble: -0.08,
-                leakage: 0.28,
+                drawbars_b: [6, 8, 8, 6, 0, 0, 0, 0, 0],
                 scanner_mode: ScannerMode::Chorus3,
-                lower_drawbars_b: [8, 8, 8, 8, 6, 0, 0, 0, 0],
-                pedal_drawbars: [8, 8],
                 upper_scanner: true,
-                lower_scanner: true,
-                rotary_horn_mic_distance: 0.45,
-                rotary_horn_mic_spacing: 0.32,
-                rotary_reflections: 0.3,
-                rotary_horn_level: -0.7,
+                rotary_mode: RotaryMode::Chorale,
+                transformer_drive: 0.45,
                 ..straight
             },
         ),
+        // Tone colours.
         (
             "tibia-8",
             "Tibia 8'",
@@ -910,6 +1011,7 @@ pub fn presets() -> [(&'static str, &'static str, &'static str, Settings); 16] {
                 pedal_drawbars: [8, 4],
                 rotary_mode: RotaryMode::Chorale,
                 rotary_horn_mic_distance: 0.8,
+                rotary_horn_mic_sides: false,
                 ..straight
             },
         ),
@@ -961,33 +1063,6 @@ pub fn presets() -> [(&'static str, &'static str, &'static str, Settings); 16] {
                 scanner_mode: ScannerMode::Vibrato3,
                 upper_scanner: true,
                 output_level: 0.8,
-                ..straight
-            },
-        ),
-        (
-            "percussion-switch",
-            "Percussion Switch",
-            "The 1' drawbar left out so the percussion tablet swaps the registration.",
-            Settings {
-                drawbars_b: [8, 8, 8, 0, 0, 0, 0, 0, 8],
-                rotary_mode: RotaryMode::Chorale,
-                percussion_enabled: true,
-                percussion_harmonic: PercussionHarmonic::Third,
-                percussion_volume: PercussionVolume::Normal,
-                percussion_decay: PercussionDecay::Fast,
-                ..straight
-            },
-        ),
-        (
-            "two-registrations",
-            "Two Registrations",
-            "A flute on the A# adjust key and a full registration on B, to change with a key.",
-            Settings {
-                drawbars_a: [0, 0, 8, 0, 0, 0, 0, 0, 0],
-                drawbars_b: [8, 8, 8, 8, 0, 0, 0, 0, 0],
-                lower_drawbars_a: [0, 0, 6, 0, 0, 0, 0, 0, 0],
-                lower_drawbars_b: [8, 6, 8, 0, 0, 0, 0, 0, 0],
-                rotary_mode: RotaryMode::Chorale,
                 ..straight
             },
         ),
@@ -1056,10 +1131,16 @@ mod tests {
                 "{id} has a different description in the catalogue"
             );
         }
-        assert_eq!(
-            catalogue.matches("\"bank\": \"registrations\"").count(),
-            presets().len()
-        );
+        assert_eq!(catalogue.matches("\"bank\": ").count(), presets().len());
+        // The catalogue lists them in the engine's order, bank by bank, so
+        // the host shows them the way this file arranges them.
+        let mut cursor = 0;
+        for (id, ..) in presets() {
+            let at = catalogue[cursor..]
+                .find(&format!("\"id\": \"{id}\""))
+                .unwrap_or_else(|| panic!("{id} is out of order in the catalogue"));
+            cursor += at + 1;
+        }
     }
 
     /// A program that makes no sound is the one failure a catalogue of them
