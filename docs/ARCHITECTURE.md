@@ -239,8 +239,16 @@ microphones, so moving them back zooms out instead of pushing them off the
 edge. The parameter table the surface validates against is the engine's, not a
 copy of it; a range that moves in the DSP moves there too.
 
-## Version 0.50.0 limitations
+## Version 0.51.0 limitations
 
+- The wheel levels and the key tapering are fitted to published readings of
+  real consoles, which are a population of instruments and not one: the
+  model sounds like their median, not like any console in particular.
+- The cabinet amplifier follows the published schematic, and where its drive
+  sits by default - the edge of breakup for an 888 chord at full expression -
+  is a judgement rather than a measurement.
+- The studio microphone placement and the jazz, blues, gospel and rock
+  registrations are common practice, not figures from a document.
 - The contact bounce decays at setBfree's restitution of 0.5, and the rate
   both models share, 1302 Hz of bounces, is that project's number rather
   than one measured here. Where either came from is the keyboard-action
