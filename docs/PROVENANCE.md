@@ -21,12 +21,12 @@ survey should look, not where the truth is.
 
 | Basis | Constants |
 |---|---:|
-| documented | 16 |
+| documented | 30 |
 | measured | 4 |
 | derived | 5 |
 | borrowed | 4 |
-| provisional | 79 |
-| **total** | **108** |
+| provisional | 88 |
+| **total** | **131** |
 
 ## `tonewheel`
 
@@ -155,7 +155,40 @@ survey should look, not where the truth is.
 | `ACCELERATION_SPAN` | 1.8 | ratio | provisional | 0.5 to 4 (assumed) | As the briskest scale. |
 | `MODE_DELAY_SECONDS` | 0.04 | s | provisional | 0 to 1 (sourced) | Hammond exposes the relay and clutch delay as 0 to 1 s. |
 | `RATED_MAINS_HZ` | 60 | Hz | documented | exact | The supply the quoted speeds belong to. |
-| `CROSSOVER_HZ` | 800 | Hz | provisional | 500 to 1200 (assumed) | The figure commonly quoted for the cabinet's crossover; no Leslie document is cited for it here, and the single-pole slope is this model's reduction. |
+| `WOOFER_COIL_H` | 0.0052 | H | documented | exact | L3, in series with the woofer: Electro Music's 122 main amplifier schematic (redrawn 1995). |
+| `WOOFER_SHUNT_F` | 0.0000125 | F | documented | exact | C16B, across the woofer: Electro Music's 122 main amplifier schematic (redrawn 1995). |
+| `HORN_SERIES_F` | 0.0000078 | F | documented | exact | C16A, in series with the horn driver: Electro Music's 122 main amplifier schematic (redrawn 1995). |
+| `HORN_COIL_H` | 0.0032 | H | documented | exact | L2, across the horn driver: Electro Music's 122 main amplifier schematic (redrawn 1995). |
+| `DRIVER_OHM` | 16 | ohm | provisional | 8 to 32 (assumed) | The drivers' nominal rating, taken as a resistance; a driver is not one. |
+
+## `leslie_amp`
+
+| Constant | Value | Unit | Basis | Span | Rests on |
+|---|---:|---|---|---|---|
+| `INPUT_SERIES_OHM` | 20000 | ohm | documented | exact | R1 + R3, in series with the input lines: Electro Music's 122 main amplifier schematic (redrawn 1995). |
+| `VOLUME_RHEOSTAT_OHM` | 100000 | ohm | documented | exact | R2, the volume rheostat across the lines, at full: Electro Music's 122 main amplifier schematic (redrawn 1995). |
+| `INPUT_SHUNT_F` | 0.000000001 | F | documented | exact | C7, across the two grids: Electro Music's 122 main amplifier schematic (redrawn 1995). |
+| `DRIVER_PLATE_LOAD_OHM` | 56000 | ohm | documented | exact | R8 and R9, the 12AU7 plate loads: Electro Music's 122 main amplifier schematic (redrawn 1995). |
+| `DRIVER_BIAS_V` | 6 | V | documented | exact | The 12AU7 pair's cathode voltage: Electro Music's 122 main amplifier schematic (redrawn 1995). |
+| `COUPLING_F` | 0.0000001 | F | documented | exact | C9 and C10, into the 6550 grids: Electro Music's 122 main amplifier schematic (redrawn 1995). |
+| `GRID_LEAK_OHM` | 220000 | ohm | documented | exact | R10 and R11, the 6550 grid leaks: Electro Music's 122 main amplifier schematic (redrawn 1995). |
+| `FEEDBACK_OHM` | 390000 | ohm | documented | exact | R14 and R15, plate to grid: Electro Music's 122 main amplifier schematic (redrawn 1995). |
+| `FEEDBACK_F` | 0.0000000047 | F | documented | exact | C21 and C13, plate to grid: Electro Music's 122 main amplifier schematic (redrawn 1995). |
+| `OUTPUT_BIAS_V` | 25 | V | documented | exact | The 6550 cathode voltage across R12: Electro Music's 122 main amplifier schematic (redrawn 1995). |
+| `DRIVER_GAIN` | 14.2 | gain | provisional | 10 to 17 (assumed) | A 12AU7 half's gain at this stage's current, from the valve's curves. |
+| `DRIVER_PLATE_OHM` | 11000 | ohm | provisional | 6000 to 16000 (assumed) | A 12AU7 half's plate resistance at this stage's current, from the valve's curves. |
+| `OUTPUT_STAGE_GAIN` | 22 | gain | provisional | 10 to 40 (assumed) | A 6550's plate-to-grid gain into a load the schematic does not give. |
+| `OUTPUT_CUTOFF_V` | 38 | V | provisional | 30 to 50 (assumed) | Where a 6550 stops conducting at 310 V on its screens, from the valve's curves. |
+| `GRID_CONDUCTION_OHM` | 1500 | ohm | provisional | 500 to 5000 (assumed) | What a conducting 6550 grid presents; not published. |
+| `ORGAN_SOURCE_OHM` | 600 | ohm | provisional | 50 to 5000 (assumed) | The console's output through its connector kit; no kit's figure is published. |
+| `GRID_VOLTS_PER_UNIT` | 122.05 | V | provisional | 30 to 490 (assumed) | Anchored so an 888 chord at full expression reaches grid conduction at the middle of the drive control; a setting, not a property. Re-anchored by the laboratory. |
+| `DRIVE_SPAN_DB` | 24 | dB | provisional | 12 to 36 (assumed) | How far the drive control moves the amplifier's input, end to end. |
+| `AMP_DRIVE_DEFAULT` | 0.5 | control | provisional | 0 to 1 (assumed) | Where the drive control starts: the anchor itself. |
+
+## `rotary`
+
+| Constant | Value | Unit | Basis | Span | Rests on |
+|---|---:|---|---|---|---|
 | `HORN_SHELF_HZ` | 2200 | Hz | provisional | 1000 to 5000 (assumed) | Stands in for the horn's directivity measured at many angles. |
 | `HORN_BODY_AWAY` | 0.55 | gain | provisional | 0.2 to 0.9 (assumed) | As the horn's shelf. |
 | `HORN_BODY_FACING` | 0.35 | gain | provisional | 0.1 to 0.8 (assumed) | As the horn's shelf. |
@@ -206,4 +239,5 @@ Scalars the engine declares that describe no instrument.
 | `rotary::RESTING_HZ` | below this a rotor is treated as stopped; a numerical floor |
 | `rotary::NEAREST_SQUARED_M2` | keeps a path length away from zero; never reached |
 | `rotary::LEVEL_SILENT_DB` | the floor a volume reads as silence at; a display convention |
+| `leslie_amp::KNEE_V` | rounds the corner where a grid starts to conduct; a numerical smoothing |
 | `transformer::LEAN_CEILING` | keeps a leaning core's weak half bending at all; a guard on the reduction |

@@ -4,6 +4,7 @@ mod analysis;
 mod captures;
 mod compare;
 mod invariance;
+mod leslie;
 mod provenance;
 mod sensitivity;
 mod signal;
@@ -76,6 +77,19 @@ fn run() -> Result<(), Box<dyn Error>> {
                 "RF_ORGAN_LAB_PROVENANCE path={}",
                 PathBuf::from(destination).display()
             );
+            Ok(())
+        }
+        Some("leslie") => {
+            let destination = arguments.next().ok_or("leslie requires OUTPUT_DIRECTORY")?;
+            if arguments.next().is_some() {
+                return Err(usage().into());
+            }
+            let destination = PathBuf::from(destination);
+            fs::create_dir_all(&destination)?;
+            let report = leslie::report()?;
+            fs::write(destination.join("leslie-amp.csv"), &report)?;
+            print!("{report}");
+            println!("RF_ORGAN_LAB_LESLIE path={}", destination.display());
             Ok(())
         }
         Some("wheel-levels") => {
@@ -219,7 +233,7 @@ fn sensitivity_suite(destination: &Path) -> Result<(), Box<dyn Error>> {
 
 const fn usage() -> &'static str {
     "usage:\n  rf-organ-lab render OUTPUT_DIRECTORY [--transformer-drive-trims T1,T2,T3]\n  rf-organ-lab compare MODEL_DIRECTORY REFERENCE_DIRECTORY OUTPUT_DIRECTORY\n  rf-organ-lab sweep OUTPUT_DIRECTORY
-  rf-organ-lab provenance OUTPUT_FILE\n  rf-organ-lab sensitivity OUTPUT_DIRECTORY\n  rf-organ-lab wheel-levels OUTPUT_DIRECTORY"
+  rf-organ-lab provenance OUTPUT_FILE\n  rf-organ-lab sensitivity OUTPUT_DIRECTORY\n  rf-organ-lab wheel-levels OUTPUT_DIRECTORY\n  rf-organ-lab leslie OUTPUT_DIRECTORY"
 }
 
 /// Parses the optional per-transformer drive trims. They exist so that a

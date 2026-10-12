@@ -7,6 +7,7 @@
 //! establish a physically informed baseline and remain subject to measurement.
 
 mod electronics;
+mod leslie_amp;
 mod manual;
 mod model;
 mod pedal;
@@ -49,6 +50,7 @@ pub use transformer::{
 };
 pub use vibrato_line::{CUTOFF_HZ as SCANNER_LINE_CUTOFF_HZ, ROTOR_HZ as SCANNER_ROTOR_HZ};
 
+pub use leslie_amp::{AMP_DRIVE_DEFAULT, LeslieAmp};
 pub use model::{Knob, Model};
 
 use manual::Manual;
@@ -560,8 +562,19 @@ impl OrganEngine {
         );
         let console = self.route_ao28_inputs(upper, lower, pedals, percussion);
         let console = self.electronics.process(console, self.expression);
-        let organ = self.output_transformer.process(console) * self.output_level;
-        self.rotary.process(organ)
+        // The cabinet's amplifier is driven by what the console sends it, so
+        // the host's output level, which is no part of the instrument, comes
+        // after it.
+        let organ = self.output_transformer.process(console);
+        self.rotary
+            .process(organ)
+            .map(|side| side * self.output_level)
+    }
+
+    /// How hard the console drives the rotary cabinet's amplifier, from
+    /// clean at zero to well into clipping at one.
+    pub fn set_rotary_drive(&mut self, value: f32) -> bool {
+        self.rotary.set_drive(value)
     }
 
     /// Routes the generator buses into the AO-28 input channels. T2 receives

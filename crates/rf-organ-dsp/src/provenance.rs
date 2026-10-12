@@ -11,7 +11,10 @@
 //! `docs/PROVENANCE.md` is generated from this table by the laboratory and is
 //! held to it by a test there.
 
-use crate::{electronics, manual, pedal, percussion, rotary, tonewheel, transformer, vibrato_line};
+use crate::{
+    electronics, leslie_amp, manual, pedal, percussion, rotary, tonewheel, transformer,
+    vibrato_line,
+};
 
 /// What a constant rests on, from firmest to softest.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -93,7 +96,7 @@ pub struct Table {
 
 /// Scalars in the engine that are not part of the model: limits of the host
 /// contract, numerical guards and floors of a display. Each says why.
-pub const NOT_MODEL: [(&str, &str); 6] = [
+pub const NOT_MODEL: [(&str, &str); 7] = [
     (
         "lib::SAMPLE_RATE_MIN",
         "the host contract, measured as rate invariant",
@@ -113,6 +116,10 @@ pub const NOT_MODEL: [(&str, &str); 6] = [
     (
         "rotary::LEVEL_SILENT_DB",
         "the floor a volume reads as silence at; a display convention",
+    ),
+    (
+        "leslie_amp::KNEE_V",
+        "rounds the corner where a grid starts to conduct; a numerical smoothing",
     ),
     (
         "transformer::LEAN_CEILING",
@@ -818,12 +825,196 @@ pub const CONSTANTS: &[Constant] = &[
         "The supply the quoted speeds belong to.",
     ),
     c(
-        "rotary::CROSSOVER_HZ",
-        f(rotary::CROSSOVER_HZ),
-        "Hz",
+        "rotary::WOOFER_COIL_H",
+        f(rotary::WOOFER_COIL_H),
+        "H",
+        Documented,
+        Exact,
+        "L3, in series with the woofer: Electro Music's 122 main amplifier schematic (redrawn 1995).",
+    ),
+    c(
+        "rotary::WOOFER_SHUNT_F",
+        f(rotary::WOOFER_SHUNT_F),
+        "F",
+        Documented,
+        Exact,
+        "C16B, across the woofer: Electro Music's 122 main amplifier schematic (redrawn 1995).",
+    ),
+    c(
+        "rotary::HORN_SERIES_F",
+        f(rotary::HORN_SERIES_F),
+        "F",
+        Documented,
+        Exact,
+        "C16A, in series with the horn driver: Electro Music's 122 main amplifier schematic (redrawn 1995).",
+    ),
+    c(
+        "rotary::HORN_COIL_H",
+        f(rotary::HORN_COIL_H),
+        "H",
+        Documented,
+        Exact,
+        "L2, across the horn driver: Electro Music's 122 main amplifier schematic (redrawn 1995).",
+    ),
+    c(
+        "rotary::DRIVER_OHM",
+        f(rotary::DRIVER_OHM),
+        "ohm",
         Provisional,
-        Assumed(500.0, 1_200.0),
-        "The figure commonly quoted for the cabinet's crossover; no Leslie document is cited for it here, and the single-pole slope is this model's reduction.",
+        Assumed(8.0, 32.0),
+        "The drivers' nominal rating, taken as a resistance; a driver is not one.",
+    ),
+    c(
+        "leslie_amp::INPUT_SERIES_OHM",
+        f(leslie_amp::INPUT_SERIES_OHM),
+        "ohm",
+        Documented,
+        Exact,
+        "R1 + R3, in series with the input lines: Electro Music's 122 main amplifier schematic (redrawn 1995).",
+    ),
+    c(
+        "leslie_amp::VOLUME_RHEOSTAT_OHM",
+        f(leslie_amp::VOLUME_RHEOSTAT_OHM),
+        "ohm",
+        Documented,
+        Exact,
+        "R2, the volume rheostat across the lines, at full: Electro Music's 122 main amplifier schematic (redrawn 1995).",
+    ),
+    c(
+        "leslie_amp::INPUT_SHUNT_F",
+        f(leslie_amp::INPUT_SHUNT_F),
+        "F",
+        Documented,
+        Exact,
+        "C7, across the two grids: Electro Music's 122 main amplifier schematic (redrawn 1995).",
+    ),
+    c(
+        "leslie_amp::DRIVER_PLATE_LOAD_OHM",
+        f(leslie_amp::DRIVER_PLATE_LOAD_OHM),
+        "ohm",
+        Documented,
+        Exact,
+        "R8 and R9, the 12AU7 plate loads: Electro Music's 122 main amplifier schematic (redrawn 1995).",
+    ),
+    c(
+        "leslie_amp::DRIVER_BIAS_V",
+        f(leslie_amp::DRIVER_BIAS_V),
+        "V",
+        Documented,
+        Exact,
+        "The 12AU7 pair's cathode voltage: Electro Music's 122 main amplifier schematic (redrawn 1995).",
+    ),
+    c(
+        "leslie_amp::COUPLING_F",
+        f(leslie_amp::COUPLING_F),
+        "F",
+        Documented,
+        Exact,
+        "C9 and C10, into the 6550 grids: Electro Music's 122 main amplifier schematic (redrawn 1995).",
+    ),
+    c(
+        "leslie_amp::GRID_LEAK_OHM",
+        f(leslie_amp::GRID_LEAK_OHM),
+        "ohm",
+        Documented,
+        Exact,
+        "R10 and R11, the 6550 grid leaks: Electro Music's 122 main amplifier schematic (redrawn 1995).",
+    ),
+    c(
+        "leslie_amp::FEEDBACK_OHM",
+        f(leslie_amp::FEEDBACK_OHM),
+        "ohm",
+        Documented,
+        Exact,
+        "R14 and R15, plate to grid: Electro Music's 122 main amplifier schematic (redrawn 1995).",
+    ),
+    c(
+        "leslie_amp::FEEDBACK_F",
+        f(leslie_amp::FEEDBACK_F),
+        "F",
+        Documented,
+        Exact,
+        "C21 and C13, plate to grid: Electro Music's 122 main amplifier schematic (redrawn 1995).",
+    ),
+    c(
+        "leslie_amp::OUTPUT_BIAS_V",
+        f(leslie_amp::OUTPUT_BIAS_V),
+        "V",
+        Documented,
+        Exact,
+        "The 6550 cathode voltage across R12: Electro Music's 122 main amplifier schematic (redrawn 1995).",
+    ),
+    c(
+        "leslie_amp::DRIVER_GAIN",
+        f(leslie_amp::DRIVER_GAIN),
+        "gain",
+        Provisional,
+        Assumed(10.0, 17.0),
+        "A 12AU7 half's gain at this stage's current, from the valve's curves.",
+    ),
+    c(
+        "leslie_amp::DRIVER_PLATE_OHM",
+        f(leslie_amp::DRIVER_PLATE_OHM),
+        "ohm",
+        Provisional,
+        Assumed(6_000.0, 16_000.0),
+        "A 12AU7 half's plate resistance at this stage's current, from the valve's curves.",
+    ),
+    c(
+        "leslie_amp::OUTPUT_STAGE_GAIN",
+        f(leslie_amp::OUTPUT_STAGE_GAIN),
+        "gain",
+        Provisional,
+        Assumed(10.0, 40.0),
+        "A 6550's plate-to-grid gain into a load the schematic does not give.",
+    ),
+    c(
+        "leslie_amp::OUTPUT_CUTOFF_V",
+        f(leslie_amp::OUTPUT_CUTOFF_V),
+        "V",
+        Provisional,
+        Assumed(30.0, 50.0),
+        "Where a 6550 stops conducting at 310 V on its screens, from the valve's curves.",
+    ),
+    c(
+        "leslie_amp::GRID_CONDUCTION_OHM",
+        f(leslie_amp::GRID_CONDUCTION_OHM),
+        "ohm",
+        Provisional,
+        Assumed(500.0, 5_000.0),
+        "What a conducting 6550 grid presents; not published.",
+    ),
+    c(
+        "leslie_amp::ORGAN_SOURCE_OHM",
+        f(leslie_amp::ORGAN_SOURCE_OHM),
+        "ohm",
+        Provisional,
+        Assumed(50.0, 5_000.0),
+        "The console's output through its connector kit; no kit's figure is published.",
+    ),
+    c(
+        "leslie_amp::GRID_VOLTS_PER_UNIT",
+        f(leslie_amp::GRID_VOLTS_PER_UNIT),
+        "V",
+        Provisional,
+        Assumed(30.0, 490.0),
+        "Anchored so an 888 chord at full expression reaches grid conduction at the middle of the drive control; a setting, not a property. Re-anchored by the laboratory.",
+    ),
+    c(
+        "leslie_amp::DRIVE_SPAN_DB",
+        f(leslie_amp::DRIVE_SPAN_DB),
+        "dB",
+        Provisional,
+        Assumed(12.0, 36.0),
+        "How far the drive control moves the amplifier's input, end to end.",
+    ),
+    c(
+        "leslie_amp::AMP_DRIVE_DEFAULT",
+        f(leslie_amp::AMP_DRIVE_DEFAULT),
+        "control",
+        Provisional,
+        Assumed(0.0, 1.0),
+        "Where the drive control starts: the anchor itself.",
     ),
     c(
         "rotary::HORN_SHELF_HZ",
@@ -1092,8 +1283,9 @@ mod tests {
     use crate::model::{Knob, Model};
 
     /// The modules whose scalars the model is built from, as source text.
-    const SOURCES: [(&str, &str); 12] = [
+    const SOURCES: [(&str, &str); 13] = [
         ("electronics", include_str!("electronics.rs")),
+        ("leslie_amp", include_str!("leslie_amp.rs")),
         ("lib", include_str!("lib.rs")),
         ("manual", include_str!("manual.rs")),
         ("pedal", include_str!("pedal.rs")),

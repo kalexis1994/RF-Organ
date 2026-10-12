@@ -331,6 +331,21 @@ how fast the motor's coupling lets it swing, and where the coil springs
 resonate are not figures Hammond publishes, so all of them are provisional
 and the laboratory reports the pitch deviation they come to.
 
+## Rotary cabinet amplifier schematic
+
+The cabinet amplifier and crossover in `crates/rf-organ-dsp/src/leslie_amp.rs`
+and `rotary.rs` take their component values - input network, 12AU7 plate
+loads and bias, coupling capacitors and grid leaks, the 6550 plate-to-grid
+networks and bias, and the crossover's coils and capacitors - from the
+schematic of the 122 main amplifier titled "117V Type 122 rotor and reverb
+amplifiers", a redrawing dated 25 October 1995 of Electro Music's original,
+as published at https://synthfool.com/docs/Leslie/. Values were read from it;
+nothing of the drawing is carried. The valves' gain, plate resistance and
+cutoff are from their published characteristic curves and are provisional.
+The figures quoted in the forum threads consulted - about 40 W at 1 kHz,
+0.16 V sensitivity, 16-ohm drivers, an 800 Hz crossover - agree with the
+schematic where they overlap and are not otherwise used.
+
 ## Rotary cabinet documentation
 
 Version 0.21.0 takes the mechanical description Hammond publishes for a

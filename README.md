@@ -53,6 +53,9 @@ The current `0.49.0` baseline establishes the real-time architecture:
 - an integrated rotary speaker with counter-rotating horn and drum at their
   specified speeds, separate rise, fall and brake times per rotor, spectral
   directivity, microphone geometry and early cabinet reflections;
+- the cabinet's own valve amplifier and passive crossover, from the published
+  schematic of its main amplifier, clipping and blocking the way a push-pull
+  pair with no global feedback does;
 - a RackForge play surface implemented in Rust/WASM, with console-style
   drawbars, direct access to every automatable parameter, host-driven
   parameter synchronization, day/stage lighting and a plan view of the

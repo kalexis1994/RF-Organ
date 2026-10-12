@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 use core::f32::consts::TAU;
 
+use crate::leslie_amp::LeslieAmp;
 use crate::model::{Knob, Model};
 
 const DELAY_CAPACITY: usize = 8192;
@@ -155,10 +156,19 @@ pub const SUB_LEVEL_DEFAULT_DB: f32 = -9.0;
 pub(crate) const SUB_INTO_DRUM: f32 = 1.0;
 pub(crate) const SUB_INTO_HORN: f32 = 0.25;
 
-/// Where the cabinet's crossover splits the signal between the horn and the
-/// drum. The figure is the one quoted for the cabinet; the slope here is a
-/// single pole, which is this model's reduction rather than the network's.
-pub(crate) const CROSSOVER_HZ: f32 = 800.0;
+/// The cabinet's passive crossover, as the 122 schematic gives it: the
+/// woofer through L3 in series with C16B across it, the horn driver through
+/// C16A in series with L2 across it. Each is a second-order filter into its
+/// driver; 800 Hz is the figure quoted for the pair, and these parts put the
+/// woofer's corner near 620 Hz and the horn's near 1 kHz.
+pub(crate) const WOOFER_COIL_H: f32 = 5.2e-3;
+pub(crate) const WOOFER_SHUNT_F: f32 = 12.5e-6;
+pub(crate) const HORN_SERIES_F: f32 = 7.8e-6;
+pub(crate) const HORN_COIL_H: f32 = 3.2e-3;
+/// What each driver presents to its half of the crossover, taken as a
+/// resistance. Provisional: 16 ohms is the drivers' nominal rating, and a
+/// driver is not a resistor.
+pub(crate) const DRIVER_OHM: f32 = 16.0;
 
 /// The horn's directivity, as a shelf that turns with it: below the corner
 /// its output varies between the body's two levels as the mouth turns away
@@ -816,8 +826,9 @@ pub struct Rotary {
     sample_rate: f32,
     mode: RotaryMode,
     mix: f32,
-    crossover: f32,
-    low_state: f32,
+    amp: LeslieAmp,
+    woofer_filter: Biquad,
+    horn_filter: Biquad,
     horn: Rotor,
     drum: Rotor,
     horn_delay: DelayLine,
@@ -883,13 +894,14 @@ impl Rotary {
     }
 
     pub fn with_model(sample_rate: f32, model: &Model) -> Self {
-        let x = TAU * model[Knob::CrossoverHz] / sample_rate;
+        let driver = model[Knob::DriverOhm];
         let mut cabinet = Self {
             sample_rate,
             mode: RotaryMode::Off,
             mix: 0.82,
-            crossover: x / (1.0 + x),
-            low_state: 0.0,
+            amp: LeslieAmp::with_model(sample_rate, model),
+            woofer_filter: Biquad::low_pass(sample_rate, WOOFER_COIL_H, WOOFER_SHUNT_F, driver),
+            horn_filter: Biquad::high_pass(sample_rate, HORN_COIL_H, HORN_SERIES_F, driver),
             // A cabinet turns its horn counter-clockwise and its drum
             // clockwise, which is why they sweep past the microphones in
             // opposite directions.
@@ -958,6 +970,11 @@ impl Rotary {
         };
         cabinet.settle_fixed_paths();
         cabinet
+    }
+
+    /// How hard the console drives the cabinet's amplifier.
+    pub fn set_drive(&mut self, value: f32) -> bool {
+        self.amp.set_drive(value)
     }
 
     /// Which capsule the pair is.
@@ -1147,9 +1164,9 @@ impl Rotary {
     }
 
     pub fn process(&mut self, input: f32) -> [f32; 2] {
-        self.low_state += self.crossover * (input - self.low_state);
-        let low = self.low_state;
-        let high = input - low;
+        let driven = self.amp.process(input);
+        let low = self.woofer_filter.process(driven);
+        let high = self.horn_filter.process(driven);
         self.horn_delay.push(high);
         self.drum_delay.push(low);
 
@@ -1326,7 +1343,9 @@ impl Rotary {
     }
 
     pub fn reset(&mut self) {
-        self.low_state = 0.0;
+        self.amp.reset();
+        self.woofer_filter.reset();
+        self.horn_filter.reset();
         self.horn_delay.clear();
         self.drum_delay.clear();
         self.cabinet_left.clear();
@@ -1349,6 +1368,66 @@ fn small_rotation(angle: f32) -> (f32, f32) {
 
 fn unit(value: f32) -> bool {
     value.is_finite() && (0.0..=1.0).contains(&value)
+}
+
+/// A second-order section of the crossover: the analogue filter an inductor
+/// and a capacitor make into a resistive driver, taken through the bilinear
+/// transform with its corner held where the parts put it.
+#[derive(Clone, Copy)]
+struct Biquad {
+    b: [f32; 3],
+    a: [f32; 2],
+    state: [f32; 2],
+}
+
+impl Biquad {
+    /// Inductor in series, capacitor across the driver.
+    fn low_pass(sample_rate: f32, coil_h: f32, capacitor_f: f32, driver_ohm: f32) -> Self {
+        let (k, q) = Self::prewarp(sample_rate, coil_h, capacitor_f, driver_ohm);
+        let norm = 1.0 / (1.0 + k / q + k * k);
+        let b0 = k * k * norm;
+        Self::new([b0, 2.0 * b0, b0], k, q, norm)
+    }
+
+    /// Capacitor in series, inductor across the driver.
+    fn high_pass(sample_rate: f32, coil_h: f32, capacitor_f: f32, driver_ohm: f32) -> Self {
+        let (k, q) = Self::prewarp(sample_rate, coil_h, capacitor_f, driver_ohm);
+        let norm = 1.0 / (1.0 + k / q + k * k);
+        Self::new([norm, -2.0 * norm, norm], k, q, norm)
+    }
+
+    fn prewarp(sample_rate: f32, coil_h: f32, capacitor_f: f32, driver_ohm: f32) -> (f32, f32) {
+        let root = crate::leslie_amp::sqrt(coil_h * capacitor_f);
+        let corner = 1.0 / (TAU * root);
+        let q = driver_ohm * crate::leslie_amp::sqrt(capacitor_f / coil_h);
+        (tan_small(core::f32::consts::PI * corner / sample_rate), q)
+    }
+
+    fn new(b: [f32; 3], k: f32, q: f32, norm: f32) -> Self {
+        Self {
+            b,
+            a: [2.0 * (k * k - 1.0) * norm, (1.0 - k / q + k * k) * norm],
+            state: [0.0; 2],
+        }
+    }
+
+    fn process(&mut self, input: f32) -> f32 {
+        let output = self.b[0] * input + self.state[0];
+        self.state[0] = self.b[1] * input - self.a[0] * output + self.state[1];
+        self.state[1] = self.b[2] * input - self.a[1] * output;
+        output
+    }
+
+    fn reset(&mut self) {
+        self.state = [0.0; 2];
+    }
+}
+
+/// Tangent of a small angle, by its series; the crossover's corners never
+/// ask for more than a tenth of a radian.
+fn tan_small(angle: f32) -> f32 {
+    let square = angle * angle;
+    angle * (1.0 + square * (1.0 / 3.0 + square * (2.0 / 15.0 + square * (17.0 / 315.0))))
 }
 
 fn one_pole(frequency: f32, sample_rate: f32) -> f32 {

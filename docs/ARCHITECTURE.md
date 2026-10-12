@@ -150,6 +150,28 @@ path reads it every sample.
 
 ## Rotary cabinet
 
+The cabinet has its own amplifier, and the organ reaches the rotors through
+it: a balanced input, a 12AU7 pair driving two 6550s in push-pull with no
+feedback around the output transformer, and a passive crossover after it, as
+the schematic of the 122's main amplifier draws them. The input's 0.001 uF
+against its series resistors and volume rheostat rolls the top off near
+9 kHz; each 6550's plate is fed back to its own grid through 390 k and
+0.0047 uF, which lifts the bass about three and a half decibels below 60 Hz;
+and driven past the 25 V its cathodes bias the grids at, the grids conduct,
+the pair clips symmetrically - the third harmonic leads, the second all but
+cancels - and the 0.1 uF coupling capacitors charge and push both tubes
+towards cutoff, letting go over the 22 ms they and the 220 k grid leaks set.
+The crossover is the schematic's two second-order sections, the woofer's near
+620 Hz and the horn's near 1 kHz, into drivers taken as their nominal
+16 ohms.
+
+How hard the console drives it is a control, as it is on a cabinet, where the
+amplifier's volume rheostat and the connector kit set it. At its middle, the
+calibration's 888 chord at full expression reaches the grids' conduction and
+no further; louder registrations go past it. The host's output level now
+comes after the cabinet, so it no longer changes how hard the amplifier is
+driven.
+
 The horn turns counter-clockwise and the drum clockwise, at 400 and 340 rpm
 fast and 40 rpm slow. Each rotor has its own rise, fall and brake time, and a
 time means what Hammond says it means: the seconds needed to cross the whole
@@ -400,6 +422,17 @@ copy of it; a range that moves in the DSP moves there too.
   the third, which is the dominant and better conditioned of the two, and the
   laboratory reports the spacing between them for a bench to contradict. See
   `docs/CALIBRATION.md`.
+- The cabinet amplifier's component values are the schematic's; the valves'
+  gains, plate resistance and cutoff come from their published curves and are
+  provisional, as are the console's source impedance into the cabinet and the
+  drivers' impedance. The sensitivity survey puts every one of those under
+  0.4 dB except the drivers' (2.3 dB, through the crossover's Q) and the
+  6550's cutoff (1.7 dB); the drive itself moves the sound by 8.5 dB across
+  its span, which is why it is a control. The output transformer, the plate
+  supply's sag and the drivers' own responses are not modelled; this
+  schematic's supply is a diode bridge with a choke and an OC3-held screen
+  rail, so there is little sag to leave out. The drive control is the
+  engine's; the plugin does not yet expose it.
 - Cabinet reflections and angle-dependent filters are present, but
   their coefficients are not yet fitted to multi-angle cabinet measurements.
 - The microphones are placed geometrically, in centimetres, and the delay,
