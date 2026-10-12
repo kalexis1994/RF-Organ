@@ -5,7 +5,7 @@
 RF-Organ is a physically informed tonewheel-organ instrument for RackForge.
 It is written in Rust and licensed under GPL-2.0-or-later.
 
-The current `0.49.0` baseline establishes the real-time architecture:
+The current `0.50.0` baseline establishes the real-time architecture:
 
 - one continuously rotating bank of 91 shared tonewheels;
 - 60 Hz gear-ratio tuning instead of ideal equal temperament;
@@ -60,8 +60,7 @@ The current `0.49.0` baseline establishes the real-time architecture:
   drawbars, direct access to every automatable parameter, host-driven
   parameter synchronization, day/stage lighting and a plan view of the
   cabinet driven by the engine's own rotor model;
-- eight registrations, from a straight 888 to a full shout, and a manifest at
-  schema 3 with its own artwork.
+- a manifest at schema 3 with its own artwork.
 
 The sound constants are intentionally provisional. This baseline is a
 testable scaffold for measurement and calibration, not a finished clone.
@@ -72,9 +71,13 @@ testable scaffold for measurement and calibration, not a finished clone.
 - Channel 2 notes: lower manual, MIDI notes 36 through 96.
 - Channel 3 notes: pedal clavier, MIDI notes 24 through 48.
 - CC 1: rotary speed, Chorale below 64 and Tremolo at or above 64.
-- CC 4: rotor stop, braking below 64 and returning to the selected speed at or
-  above 64.
+- CC 4: rotor stop, braking below 64 and returning at or above 64 to the speed
+  last chosen, by CC 1 or by the rotary speed parameter.
 - CC 11: expression pedal.
+
+What MIDI sets stays set when a control moves: a parameter change reaches only
+the part of the engine that parameter drives, so the pedal and the cabinet
+speed hold until the next controller or a change to their own parameters.
 - CC 120/123: all notes off for the addressed channel/part.
 
 ## Installing a build

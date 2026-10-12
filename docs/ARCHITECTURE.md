@@ -231,7 +231,7 @@ microphones, so moving them back zooms out instead of pushing them off the
 edge. The parameter table the surface validates against is the engine's, not a
 copy of it; a range that moves in the DSP moves there too.
 
-## Version 0.49.0 limitations
+## Version 0.50.0 limitations
 
 - The contact bounce decays at setBfree's restitution of 0.5, and the rate
   both models share, 1302 Hz of bounces, is that project's number rather

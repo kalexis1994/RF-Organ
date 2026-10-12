@@ -281,6 +281,12 @@ impl OrganEngine {
         true
     }
 
+    /// Where the expression pedal was last set, before the swell network's
+    /// own slew.
+    pub const fn expression(&self) -> f32 {
+        self.expression
+    }
+
     pub fn set_contact_spread(&mut self, value: f32) -> bool {
         self.upper.set_contact_spread(value)
             && self.lower.set_contact_spread(value)

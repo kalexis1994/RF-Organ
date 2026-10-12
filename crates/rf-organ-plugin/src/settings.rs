@@ -31,6 +31,7 @@ pub const LOWER_ADJUST_A_DRAWBAR_LAST: u32 =
 pub const REGISTRATION: u32 = 93;
 pub const LOWER_REGISTRATION: u32 = 94;
 pub const PEDAL_DRAWBAR_LAST: u32 = PEDAL_DRAWBAR_FIRST + PEDAL_DRAWBAR_COUNT as u32 - 1;
+pub const ROTARY_MODE: u32 = 16;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Settings {
@@ -259,7 +260,7 @@ impl Settings {
             13 => self.leakage,
             14 => self.transformer_drive,
             15 => self.transformer_hysteresis,
-            16 => f64::from(self.rotary_mode as u8),
+            ROTARY_MODE => f64::from(self.rotary_mode as u8),
             17 => self.rotary_mix,
             18 => self.rotary_acceleration,
             19 => f64::from(self.scanner_mode as u8),
@@ -344,7 +345,7 @@ impl Settings {
             13 => self.leakage = value,
             14 => self.transformer_drive = value,
             15 => self.transformer_hysteresis = value,
-            16 if value.fract() == 0.0 => {
+            ROTARY_MODE if value.fract() == 0.0 => {
                 self.rotary_mode = RotaryMode::from_index(value as u8)?;
             }
             17 => self.rotary_mix = value,
@@ -436,101 +437,288 @@ impl Settings {
         self.valid().then_some(self)
     }
 
+    /// Puts every setting on the engine, as a program or a restored state
+    /// does.
     pub fn apply(self, engine: &mut OrganEngine) {
         debug_assert!(self.valid());
-        let _ = engine.set_output_level(self.output_level as f32);
-        let _ = engine.set_expression(self.expression as f32);
-        for (part, groups) in [
-            (OrganPart::Upper, [self.drawbars_a, self.drawbars_b]),
-            (
-                OrganPart::Lower,
-                [self.lower_drawbars_a, self.lower_drawbars_b],
-            ),
-        ] {
-            for (key, group) in [Registration::AdjustA, Registration::AdjustB]
-                .into_iter()
-                .zip(groups)
-            {
-                for (index, position) in group.into_iter().enumerate() {
-                    let _ = engine.set_manual_drawbar(part, key, index, position);
+        for group in Group::ALL {
+            self.apply_group(group, engine);
+        }
+    }
+
+    /// Puts on the engine only what one parameter reaches.
+    ///
+    /// A player moving one drawbar has not asked for the rest of the console
+    /// to be set again. Re-applying everything put the expression and the
+    /// cabinet speed back to what the parameters said, so a pedal held on
+    /// CC 11 or a speed thrown on CC 1 was undone by the next control anyone
+    /// touched.
+    pub fn apply_parameter(self, index: u32, engine: &mut OrganEngine) {
+        debug_assert!(self.valid());
+        if let Some(group) = Group::of(index) {
+            self.apply_group(group, engine);
+        }
+    }
+
+    fn apply_group(self, group: Group, engine: &mut OrganEngine) {
+        match group {
+            Group::OutputLevel => {
+                let _ = engine.set_output_level(self.output_level as f32);
+            }
+            Group::Expression => {
+                let _ = engine.set_expression(self.expression as f32);
+            }
+            Group::ManualDrawbars => {
+                for (part, groups) in [
+                    (OrganPart::Upper, [self.drawbars_a, self.drawbars_b]),
+                    (
+                        OrganPart::Lower,
+                        [self.lower_drawbars_a, self.lower_drawbars_b],
+                    ),
+                ] {
+                    for (key, group) in [Registration::AdjustA, Registration::AdjustB]
+                        .into_iter()
+                        .zip(groups)
+                    {
+                        for (index, position) in group.into_iter().enumerate() {
+                            let _ = engine.set_manual_drawbar(part, key, index, position);
+                        }
+                    }
                 }
             }
+            Group::Registrations => {
+                let _ = engine.set_manual_registration(OrganPart::Upper, self.registration);
+                let _ = engine.set_manual_registration(OrganPart::Lower, self.lower_registration);
+            }
+            Group::PedalDrawbars => {
+                for (index, position) in self.pedal_drawbars.into_iter().enumerate() {
+                    let _ = engine.set_manual_drawbar(
+                        OrganPart::Pedal,
+                        Registration::AdjustB,
+                        index,
+                        position,
+                    );
+                }
+            }
+            Group::ContactSpread => {
+                let _ = engine.set_contact_spread(self.contact_spread as f32);
+            }
+            Group::ContactBounce => {
+                let _ = engine.set_contact_bounce(self.contact_bounce as f32);
+            }
+            Group::ContactDelay => {
+                let _ = engine.set_contact_delay(self.contact_delay as f32);
+            }
+            Group::KeyClick => {
+                let _ = engine.set_key_click(self.key_click as f32);
+            }
+            Group::Leakage => {
+                let _ = engine.set_leakage(self.leakage as f32);
+            }
+            Group::DriveWobble => {
+                let _ = engine.set_drive_wobble(self.drive_wobble as f32);
+            }
+            Group::LeakageBoost => {
+                let _ = engine.set_leakage_boost(self.leakage_boost as f32);
+            }
+            Group::ConsoleStages => {
+                let _ = engine.set_console_stage_character(self.console_stage_character as f32);
+                for (stage, trim) in ConsoleStage::ALL.into_iter().zip(self.console_stage_trims) {
+                    let _ = engine.set_console_stage_trim(stage, trim as f32);
+                }
+            }
+            Group::Transformers => {
+                let _ = engine.set_transformer(
+                    self.transformer_drive as f32,
+                    self.transformer_hysteresis as f32,
+                );
+                let _ = engine.set_transformer_asymmetry(self.transformer_asymmetry as f32);
+                for (unit, [drive, hysteresis]) in
+                    TransformerUnit::ALL.into_iter().zip(self.transformer_trims)
+                {
+                    let _ = engine.set_transformer_trim(unit, drive as f32, hysteresis as f32);
+                }
+            }
+            Group::Console => {
+                let _ = engine.set_console(
+                    self.console_drive as f32,
+                    self.console_bass as f32,
+                    self.console_treble as f32,
+                );
+            }
+            Group::ExpressionCharacter => {
+                let _ = engine.set_expression_character(self.expression_character as f32);
+            }
+            Group::RotaryMode => engine.set_rotary_mode(self.rotary_mode),
+            Group::RotaryMix => {
+                let _ = engine.set_rotary_mix(self.rotary_mix as f32);
+            }
+            Group::RotaryAcceleration => {
+                let _ = engine.set_rotary_acceleration(self.rotary_acceleration as f32);
+            }
+            Group::RotaryCabinet => {
+                let _ = engine.set_rotary_cabinet(self.rotary_reflections as f32);
+            }
+            Group::RotaryLevels => {
+                let _ = engine.set_rotary_levels(
+                    self.rotary_horn_level as f32,
+                    self.rotary_drum_level as f32,
+                    self.rotary_sub_level as f32,
+                );
+            }
+            Group::RotaryMicrophones => {
+                let _ = engine.set_rotary_microphones(MicrophoneArray {
+                    horn: MicrophonePair {
+                        distance_m: self.rotary_horn_mic_distance as f32,
+                        spacing_m: self.rotary_horn_mic_spacing as f32,
+                        offset_m: self.rotary_horn_mic_offset as f32,
+                        at_the_sides: self.rotary_horn_mic_sides,
+                    },
+                    drum: MicrophonePair {
+                        distance_m: self.rotary_drum_mic_distance as f32,
+                        spacing_m: self.rotary_drum_mic_spacing as f32,
+                        offset_m: self.rotary_drum_mic_offset as f32,
+                        at_the_sides: self.rotary_drum_mic_sides,
+                    },
+                    pattern: self.rotary_mic_pattern as f32,
+                });
+            }
+            Group::RotaryRadii => {
+                let _ = engine.set_rotary_rotor_radii(
+                    self.rotary_horn_radius as f32,
+                    self.rotary_drum_radius as f32,
+                );
+            }
+            Group::RotaryStopAngles => {
+                if let (Some(horn), Some(drum)) = (
+                    StopAngle::from_degrees(self.rotary_horn_stop_angle as f32),
+                    StopAngle::from_degrees(self.rotary_drum_stop_angle as f32),
+                ) {
+                    let _ = engine.set_rotary_stop_angles(horn, drum);
+                }
+            }
+            Group::Mains => engine.set_mains(self.rotary_mains),
+            Group::MicrophoneType => {
+                engine.set_rotary_microphone_type(self.rotary_microphone_type);
+            }
+            Group::Scanner => {
+                engine.set_scanner_mode(self.scanner_mode);
+                engine.set_scanner_manuals(self.upper_scanner, self.lower_scanner);
+            }
+            Group::Percussion => {
+                engine.set_percussion_enabled(self.percussion_enabled);
+                engine.set_percussion_harmonic(self.percussion_harmonic);
+                engine.set_percussion_volume(self.percussion_volume);
+                engine.set_percussion_decay(self.percussion_decay);
+            }
         }
-        let _ = engine.set_manual_registration(OrganPart::Upper, self.registration);
-        let _ = engine.set_manual_registration(OrganPart::Lower, self.lower_registration);
-        for (index, position) in self.pedal_drawbars.into_iter().enumerate() {
-            let _ =
-                engine.set_manual_drawbar(OrganPart::Pedal, Registration::AdjustB, index, position);
-        }
-        let _ = engine.set_contact_spread(self.contact_spread as f32);
-        let _ = engine.set_contact_bounce(self.contact_bounce as f32);
-        let _ = engine.set_contact_delay(self.contact_delay as f32);
-        let _ = engine.set_key_click(self.key_click as f32);
-        let _ = engine.set_leakage(self.leakage as f32);
-        let _ = engine.set_drive_wobble(self.drive_wobble as f32);
-        let _ = engine.set_leakage_boost(self.leakage_boost as f32);
-        let _ = engine.set_console_stage_character(self.console_stage_character as f32);
-        for (stage, trim) in ConsoleStage::ALL.into_iter().zip(self.console_stage_trims) {
-            let _ = engine.set_console_stage_trim(stage, trim as f32);
-        }
-        let _ = engine.set_transformer(
-            self.transformer_drive as f32,
-            self.transformer_hysteresis as f32,
-        );
-        let _ = engine.set_transformer_asymmetry(self.transformer_asymmetry as f32);
-        for (unit, [drive, hysteresis]) in
-            TransformerUnit::ALL.into_iter().zip(self.transformer_trims)
-        {
-            let _ = engine.set_transformer_trim(unit, drive as f32, hysteresis as f32);
-        }
-        let _ = engine.set_console(
-            self.console_drive as f32,
-            self.console_bass as f32,
-            self.console_treble as f32,
-        );
-        let _ = engine.set_expression_character(self.expression_character as f32);
-        engine.set_rotary_mode(self.rotary_mode);
-        let _ = engine.set_rotary_mix(self.rotary_mix as f32);
-        let _ = engine.set_rotary_acceleration(self.rotary_acceleration as f32);
-        let _ = engine.set_rotary_cabinet(self.rotary_reflections as f32);
-        let _ = engine.set_rotary_levels(
-            self.rotary_horn_level as f32,
-            self.rotary_drum_level as f32,
-            self.rotary_sub_level as f32,
-        );
-        let _ = engine.set_rotary_microphones(MicrophoneArray {
-            horn: MicrophonePair {
-                distance_m: self.rotary_horn_mic_distance as f32,
-                spacing_m: self.rotary_horn_mic_spacing as f32,
-                offset_m: self.rotary_horn_mic_offset as f32,
-                at_the_sides: self.rotary_horn_mic_sides,
-            },
-            drum: MicrophonePair {
-                distance_m: self.rotary_drum_mic_distance as f32,
-                spacing_m: self.rotary_drum_mic_spacing as f32,
-                offset_m: self.rotary_drum_mic_offset as f32,
-                at_the_sides: self.rotary_drum_mic_sides,
-            },
-            pattern: self.rotary_mic_pattern as f32,
-        });
-        let _ = engine.set_rotary_rotor_radii(
-            self.rotary_horn_radius as f32,
-            self.rotary_drum_radius as f32,
-        );
-        if let (Some(horn), Some(drum)) = (
-            StopAngle::from_degrees(self.rotary_horn_stop_angle as f32),
-            StopAngle::from_degrees(self.rotary_drum_stop_angle as f32),
-        ) {
-            let _ = engine.set_rotary_stop_angles(horn, drum);
-        }
-        engine.set_mains(self.rotary_mains);
-        engine.set_rotary_microphone_type(self.rotary_microphone_type);
-        engine.set_scanner_mode(self.scanner_mode);
-        engine.set_scanner_manuals(self.upper_scanner, self.lower_scanner);
-        engine.set_percussion_enabled(self.percussion_enabled);
-        engine.set_percussion_harmonic(self.percussion_harmonic);
-        engine.set_percussion_volume(self.percussion_volume);
-        engine.set_percussion_decay(self.percussion_decay);
+    }
+}
+
+/// What one call on the engine sets. Some parameters reach the engine
+/// together - the three console controls are one call - so a change to one
+/// of them puts the whole group on again, and the rest of the console is left
+/// alone.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Group {
+    OutputLevel,
+    Expression,
+    ManualDrawbars,
+    Registrations,
+    PedalDrawbars,
+    ContactSpread,
+    ContactBounce,
+    ContactDelay,
+    KeyClick,
+    Leakage,
+    DriveWobble,
+    LeakageBoost,
+    ConsoleStages,
+    Transformers,
+    Console,
+    ExpressionCharacter,
+    RotaryMode,
+    RotaryMix,
+    RotaryAcceleration,
+    RotaryCabinet,
+    RotaryLevels,
+    RotaryMicrophones,
+    RotaryRadii,
+    RotaryStopAngles,
+    Mains,
+    MicrophoneType,
+    Scanner,
+    Percussion,
+}
+
+impl Group {
+    /// In the order a whole program is put on the engine.
+    const ALL: [Self; 28] = [
+        Self::OutputLevel,
+        Self::Expression,
+        Self::ManualDrawbars,
+        Self::Registrations,
+        Self::PedalDrawbars,
+        Self::ContactSpread,
+        Self::ContactBounce,
+        Self::ContactDelay,
+        Self::KeyClick,
+        Self::Leakage,
+        Self::DriveWobble,
+        Self::LeakageBoost,
+        Self::ConsoleStages,
+        Self::Transformers,
+        Self::Console,
+        Self::ExpressionCharacter,
+        Self::RotaryMode,
+        Self::RotaryMix,
+        Self::RotaryAcceleration,
+        Self::RotaryCabinet,
+        Self::RotaryLevels,
+        Self::RotaryMicrophones,
+        Self::RotaryRadii,
+        Self::RotaryStopAngles,
+        Self::Mains,
+        Self::MicrophoneType,
+        Self::Scanner,
+        Self::Percussion,
+    ];
+
+    const fn of(index: u32) -> Option<Self> {
+        Some(match index {
+            0 => Self::OutputLevel,
+            1 => Self::Expression,
+            DRAWBAR_FIRST..=DRAWBAR_LAST
+            | LOWER_DRAWBAR_FIRST..=LOWER_DRAWBAR_LAST
+            | ADJUST_A_DRAWBAR_FIRST..=ADJUST_A_DRAWBAR_LAST
+            | LOWER_ADJUST_A_DRAWBAR_FIRST..=LOWER_ADJUST_A_DRAWBAR_LAST => Self::ManualDrawbars,
+            REGISTRATION | LOWER_REGISTRATION => Self::Registrations,
+            PEDAL_DRAWBAR_FIRST..=PEDAL_DRAWBAR_LAST => Self::PedalDrawbars,
+            11 => Self::ContactSpread,
+            12 => Self::ContactBounce,
+            72 => Self::ContactDelay,
+            74 => Self::KeyClick,
+            13 => Self::Leakage,
+            66 => Self::DriveWobble,
+            67 => Self::LeakageBoost,
+            68..=71 => Self::ConsoleStages,
+            14 | 15 | 45..=50 | 73 => Self::Transformers,
+            37..=39 => Self::Console,
+            40 => Self::ExpressionCharacter,
+            ROTARY_MODE => Self::RotaryMode,
+            17 => Self::RotaryMix,
+            18 => Self::RotaryAcceleration,
+            43 => Self::RotaryCabinet,
+            44 | 58 | 60 => Self::RotaryLevels,
+            41 | 42 | 51 | 52 | 61..=65 => Self::RotaryMicrophones,
+            53 | 54 => Self::RotaryRadii,
+            55 | 56 => Self::RotaryStopAngles,
+            57 => Self::Mains,
+            59 => Self::MicrophoneType,
+            19 | 35 | 36 => Self::Scanner,
+            20..=23 => Self::Percussion,
+            _ => return None,
+        })
     }
 }
 
@@ -928,6 +1116,62 @@ mod tests {
             .expect("thread")
             .join()
             .expect("the programs all sound");
+    }
+
+    #[test]
+    fn every_parameter_reaches_the_engine_through_a_group() {
+        for index in 0..PARAMETER_COUNT as u32 {
+            assert!(Group::of(index).is_some(), "parameter {index} has no group");
+        }
+        assert_eq!(Group::of(PARAMETER_COUNT as u32), None);
+    }
+
+    /// Setting one parameter has to leave the engine exactly where setting
+    /// all of them would have, or a program loaded and a control moved would
+    /// sound different from the same values arrived at the other way.
+    #[test]
+    fn one_parameter_lands_where_the_whole_program_would() {
+        const CANDIDATES: [f64; 11] = [0.0, 1.0, 0.5, 0.25, 0.15, 2.0, 3.0, -0.5, -6.0, 90.0, 8.0];
+        const FRAMES: usize = 960;
+        std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(|| {
+                let (_, _, _, base) = presets()
+                    .into_iter()
+                    .find(|preset| preset.0 == "gospel-full")
+                    .expect("program");
+                for index in 0..PARAMETER_COUNT as u32 {
+                    let changed = CANDIDATES
+                        .into_iter()
+                        .filter_map(|value| base.with_parameter(index, value))
+                        .find(|changed| *changed != base)
+                        .unwrap_or_else(|| panic!("no other value for parameter {index}"));
+                    let render = |apply: &dyn Fn(&mut OrganEngine)| {
+                        let mut engine = OrganEngine::new(48_000.0).expect("engine");
+                        base.apply(&mut engine);
+                        assert!(engine.note_on_part(OrganPart::Upper, 60, 1.0));
+                        assert!(engine.note_on_part(OrganPart::Pedal, 36, 1.0));
+                        let mut frames = Vec::with_capacity(2 * FRAMES);
+                        for _ in 0..FRAMES {
+                            frames.push(engine.next_sample());
+                        }
+                        apply(&mut engine);
+                        for _ in 0..FRAMES {
+                            frames.push(engine.next_sample());
+                        }
+                        frames
+                    };
+                    let whole = render(&|engine| changed.apply(engine));
+                    let one = render(&|engine| changed.apply_parameter(index, engine));
+                    assert!(
+                        whole == one,
+                        "parameter {index} lands somewhere else on its own"
+                    );
+                }
+            })
+            .expect("thread")
+            .join()
+            .expect("every parameter lands where the program would");
     }
 
     #[test]
