@@ -9,7 +9,7 @@ vendor = "RackForge"
 version = "0.51.0"
 description = "Physical-model tonewheel organ with an integrated rotary speaker module"
 kind = "instrument"
-state_version = 23
+state_version = 24
 capabilities = ["audio_output", "midi_input", "presets", "state"]
 ui_layouts = ["little@1"]
 

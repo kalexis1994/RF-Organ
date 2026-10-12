@@ -76,6 +76,11 @@ testable scaffold for measurement and calibration, not a finished clone.
 - CC 4: rotor stop, braking below 64 and returning at or above 64 to the speed
   last chosen, by CC 1 or by the rotary speed parameter.
 - CC 11: expression pedal.
+- CC 64: the sustain pedal, which a tonewheel console has no use for, is the
+  cabinet's speed switch. By default each press changes speed and holding it
+  for a second stops the rotors, as Hammond's own clones do it; the Sustain
+  Pedal parameter makes it fast-while-held instead, or turns it off. It does
+  nothing while the cabinet is switched out.
 
 What MIDI sets stays set when a control moves: a parameter change reaches only
 the part of the engine that parameter drives, so the pedal and the cabinet

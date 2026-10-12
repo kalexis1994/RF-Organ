@@ -11,7 +11,9 @@ use rf_organ_dsp::{
     StopAngle, TRANSFORMER_ASYMMETRY_DEFAULT, TransformerUnit,
 };
 
-pub const PARAMETER_COUNT: usize = 97;
+use crate::pedal::SustainPedal;
+
+pub const PARAMETER_COUNT: usize = 98;
 /// Per-stage offsets from the shared console character, ordered V4A, V4B, V3B.
 pub const CONSOLE_STAGE_TRIM_FIRST: u32 = 69;
 /// Bipolar per-transformer calibration trims, ordered T1, T2, T3.
@@ -35,6 +37,8 @@ pub const LOWER_REGISTRATION: u32 = 94;
 pub const ROTARY_DRIVE: u32 = 95;
 /// The drum's pair's capsule; parameter 59 is the horn's.
 pub const DRUM_MICROPHONE_TYPE: u32 = 96;
+/// What the sustain pedal does to the cabinet's speed.
+pub const SUSTAIN_PEDAL: u32 = 97;
 pub const PEDAL_DRAWBAR_LAST: u32 = PEDAL_DRAWBAR_FIRST + PEDAL_DRAWBAR_COUNT as u32 - 1;
 pub const ROTARY_MODE: u32 = 16;
 
@@ -129,6 +133,9 @@ pub struct Settings {
     pub rotary_drive: f64,
     /// The drum's pair's capsule; `rotary_microphone_type` is the horn's.
     pub rotary_drum_microphone_type: MicrophoneType,
+    /// What the sustain pedal does: the console has no sustain, so it is
+    /// the cabinet's speed switch.
+    pub sustain_pedal: SustainPedal,
 }
 
 impl Default for Settings {
@@ -191,6 +198,7 @@ impl Default for Settings {
             transformer_trims: [[0.0; 2]; 3],
             rotary_drive: AMP_DRIVE_DEFAULT as f64,
             rotary_drum_microphone_type: MicrophoneType::Dynamic,
+            sustain_pedal: SustainPedal::Alternate,
         }
     }
 }
@@ -330,6 +338,7 @@ impl Settings {
             LOWER_REGISTRATION => f64::from(self.lower_registration.index()),
             ROTARY_DRIVE => self.rotary_drive,
             DRUM_MICROPHONE_TYPE => f64::from(self.rotary_drum_microphone_type as u8),
+            SUSTAIN_PEDAL => f64::from(self.sustain_pedal as u8),
             52 => self.rotary_mic_pattern,
             53 => self.rotary_horn_radius,
             54 => self.rotary_drum_radius,
@@ -400,6 +409,9 @@ impl Settings {
             ROTARY_DRIVE => self.rotary_drive = value,
             DRUM_MICROPHONE_TYPE if value.fract() == 0.0 => {
                 self.rotary_drum_microphone_type = MicrophoneType::from_index(value as u8)?;
+            }
+            SUSTAIN_PEDAL if value.fract() == 0.0 => {
+                self.sustain_pedal = SustainPedal::from_index(value as u8)?;
             }
             44 => self.rotary_horn_level = value,
             45..=50 => {
@@ -630,6 +642,8 @@ impl Settings {
             Group::RotaryDrive => {
                 let _ = engine.set_rotary_drive(self.rotary_drive as f32);
             }
+            // The processor reads the pedal; the engine never sees it.
+            Group::SustainPedal => {}
             Group::Percussion => {
                 engine.set_percussion_enabled(self.percussion_enabled);
                 engine.set_percussion_harmonic(self.percussion_harmonic);
@@ -675,11 +689,12 @@ enum Group {
     Scanner,
     Percussion,
     RotaryDrive,
+    SustainPedal,
 }
 
 impl Group {
     /// In the order a whole program is put on the engine.
-    const ALL: [Self; 29] = [
+    const ALL: [Self; 30] = [
         Self::OutputLevel,
         Self::Expression,
         Self::ManualDrawbars,
@@ -709,6 +724,7 @@ impl Group {
         Self::Scanner,
         Self::Percussion,
         Self::RotaryDrive,
+        Self::SustainPedal,
     ];
 
     const fn of(index: u32) -> Option<Self> {
@@ -745,6 +761,7 @@ impl Group {
             19 | 35 | 36 => Self::Scanner,
             20..=23 => Self::Percussion,
             ROTARY_DRIVE => Self::RotaryDrive,
+            SUSTAIN_PEDAL => Self::SustainPedal,
             _ => return None,
         })
     }
