@@ -45,13 +45,17 @@ The current `0.49.0` baseline establishes the real-time architecture:
   perfectly steady and all 91 wheels stray together;
 - leakage that grows faster than what is played, because every contact that
   closes gives the harness another way onto the busbar;
-- a per-wheel taper table that is honestly flat, with a chromatic sweep and a
-  fit that fills it from a recording of a real console;
+- wheel levels and per-contact key tapering derived from published readings
+  of real consoles - Hammond's own tables among them - and checked against
+  readings that were not used to derive them;
 - the woofer's own unmodulated bass, which reaches the microphones without
   passing through a rotor, and a choice of capsule;
 - an integrated rotary speaker with counter-rotating horn and drum at their
   specified speeds, separate rise, fall and brake times per rotor, spectral
   directivity, microphone geometry and early cabinet reflections;
+- the cabinet's own valve amplifier and passive crossover, from the published
+  schematic of its main amplifier, clipping and blocking the way a push-pull
+  pair with no global feedback does;
 - a RackForge play surface implemented in Rust/WASM, with console-style
   drawbars, direct access to every automatable parameter, host-driven
   parameter synchronization, day/stage lighting and a plan view of the
@@ -143,6 +147,29 @@ fitting chain is verified.
 fails when any of them moves with the sample rate, then benchmarks five loads at
 each rate — from an idle generator up to a fully engaged console — so that the
 cost of each subsystem is the difference between two rows.
+
+Every number the engine is built from is registered with what it rests on -
+documented, measured, derived, borrowed from another model, or provisional -
+and the span it could plausibly take; `docs/PROVENANCE.md` is the table.
+`sensitivity` moves each unmeasured constant to both ends of its span, renders
+the calibration phrases again and ranks the constants by how far the sound
+moved, in decibels of level, spectral shape and envelope, which is where a
+measurement would be worth the most:
+
+```text
+cargo run --release -p rf-organ-lab -- sensitivity artifacts/sensitivity
+```
+
+`wheel-levels` derives the wheel and key tapers the engine ships from Kon
+Zissis's tonewheel generator data, reduced by `tools/kon-wheel-levels.py`,
+writes the tables for `taper.rs`, and reports how far the engine is from the
+readings taken straight off a busbar and from those taken through the keys,
+which are not used to derive anything. The same data checks the manuals'
+wiring: every contact has to reach the wheel five measured manuals wire it to.
+
+```text
+cargo run --release -p rf-organ-lab -- wheel-levels artifacts/wheel-levels
+```
 
 The output includes scalar measurements, expression, tone-control and
 transformer-intermodulation response, percussion envelopes, scanner sidebands,

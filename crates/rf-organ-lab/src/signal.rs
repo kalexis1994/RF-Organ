@@ -61,9 +61,98 @@ pub fn decay_time(curve: &[(f64, f64)], ratio: f64) -> Option<f64> {
         .map(|(time, _)| time - curve[peak_index].0)
 }
 
+/// In-place radix-2 transform. Both slices have the same power-of-two length.
+pub fn fft(real: &mut [f64], imaginary: &mut [f64]) {
+    let count = real.len();
+    assert!(count.is_power_of_two() && imaginary.len() == count);
+    let mut j = 0;
+    for i in 1..count {
+        let mut bit = count >> 1;
+        while j & bit != 0 {
+            j ^= bit;
+            bit >>= 1;
+        }
+        j |= bit;
+        if i < j {
+            real.swap(i, j);
+            imaginary.swap(i, j);
+        }
+    }
+    let mut length = 2;
+    while length <= count {
+        let angle = -TAU / length as f64;
+        for start in (0..count).step_by(length) {
+            for k in 0..length / 2 {
+                let (sine, cosine) = (angle * k as f64).sin_cos();
+                let (a, b) = (start + k, start + k + length / 2);
+                let twiddled_real = real[b] * cosine - imaginary[b] * sine;
+                let twiddled_imaginary = real[b] * sine + imaginary[b] * cosine;
+                real[b] = real[a] - twiddled_real;
+                imaginary[b] = imaginary[a] - twiddled_imaginary;
+                real[a] += twiddled_real;
+                imaginary[a] += twiddled_imaginary;
+            }
+        }
+        length <<= 1;
+    }
+}
+
+/// Mean power per bin over Hann-windowed frames that overlap by half, as
+/// Welch averages them. Bin `k` is `k * sample_rate / size` hertz.
+pub fn welch_power(samples: &[f64], size: usize) -> Vec<f64> {
+    let window = (0..size)
+        .map(|index| 0.5 - 0.5 * (TAU * index as f64 / size as f64).cos())
+        .collect::<Vec<_>>();
+    let mut power = vec![0.0; size / 2 + 1];
+    let mut frames = 0;
+    let mut start = 0;
+    while start + size <= samples.len() {
+        let mut real = samples[start..start + size]
+            .iter()
+            .zip(&window)
+            .map(|(sample, weight)| sample * weight)
+            .collect::<Vec<_>>();
+        let mut imaginary = vec![0.0; size];
+        fft(&mut real, &mut imaginary);
+        for (bin, slot) in power.iter_mut().enumerate() {
+            *slot += real[bin] * real[bin] + imaginary[bin] * imaginary[bin];
+        }
+        frames += 1;
+        start += size / 2;
+    }
+    if frames > 0 {
+        for slot in &mut power {
+            *slot /= f64::from(frames);
+        }
+    }
+    power
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_transform_finds_a_tone_in_its_bin() {
+        let size = 1024;
+        let mut real = (0..size)
+            .map(|index| (TAU * 37.0 * index as f64 / size as f64).cos())
+            .collect::<Vec<_>>();
+        let mut imaginary = vec![0.0; size];
+        fft(&mut real, &mut imaginary);
+        let magnitude = |bin: usize| real[bin].hypot(imaginary[bin]);
+        assert!((magnitude(37) - size as f64 / 2.0).abs() < 1.0e-6);
+        assert!(magnitude(36) < 1.0e-6 && magnitude(38) < 1.0e-6);
+
+        let tone = (0..48_000)
+            .map(|index| (TAU * 1_000.0 * index as f64 / 48_000.0).sin())
+            .collect::<Vec<_>>();
+        let power = welch_power(&tone, 4_096);
+        let loudest = (0..power.len())
+            .max_by(|left, right| power[*left].total_cmp(&power[*right]))
+            .expect("bins");
+        assert_eq!(loudest, 85);
+    }
 
     #[test]
     fn a_projection_recovers_the_amplitude_of_a_tone_at_any_rate() {

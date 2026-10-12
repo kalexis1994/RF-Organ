@@ -269,6 +269,33 @@ So `crates/rf-organ-dsp/src/taper.rs` holds 91 unity entries and says why, and
 console. A real generator is not flat here; RF-Organ is, and says so rather
 than inventing a curve that would sound like a measurement.
 
+It is no longer flat: the wheel levels and the manuals' key tapering are now
+derived from published console readings, as the next section describes, and
+the comparator remains the way to replace them with a recording.
+
+## Kon Zissis's tonewheel generator data
+
+`crates/rf-organ-lab/data/busbar-levels.csv`, `manual-levels.csv`,
+`key-tapering.csv` and `source-impedance.csv` are reduced by `tools/kon-wheel-levels.py` from the
+spreadsheet Kon Zissis compiled and published at
+https://hammond-leslie.info/KonsTGandTaperingData/ (KonsData-20171011.xls,
+site by Jeff Dairiki). Kon credits about fifty people for sending their
+organs' readings and twelve for letting him measure theirs; the readings
+taken here are listed by organ at the top of each file. The page states no
+licence. What is carried here is not the spreadsheet but statistics of it -
+per-wheel medians and ranges, per-contact median resistances and per-wheel
+impedances - with the source named, and the script that derives them reads the published file
+rather than shipping it.
+
+Two of the curves are Hammond's own, as transcribed in that workbook: the
+B-3 service manual's Table V of generator output voltages, and the chart
+"Approximate output voltage readings of organ generator frequencies 1 to 91"
+for consoles with manual tapering.
+
+The busbar readings, the tapering wires and the impedances set the wheel
+and key tapers in `crates/rf-organ-dsp/src/taper.rs`; the readings taken
+through the keys are kept out of that and check it.
+
 ## Leakage rate documentation
 
 Version 0.34.0 takes the growth of the leakage from the XK-7 manual, which
@@ -303,6 +330,21 @@ same proportion. RF-Organ models that structure. How far the shaft strays,
 how fast the motor's coupling lets it swing, and where the coil springs
 resonate are not figures Hammond publishes, so all of them are provisional
 and the laboratory reports the pitch deviation they come to.
+
+## Rotary cabinet amplifier schematic
+
+The cabinet amplifier and crossover in `crates/rf-organ-dsp/src/leslie_amp.rs`
+and `rotary.rs` take their component values - input network, 12AU7 plate
+loads and bias, coupling capacitors and grid leaks, the 6550 plate-to-grid
+networks and bias, and the crossover's coils and capacitors - from the
+schematic of the 122 main amplifier titled "117V Type 122 rotor and reverb
+amplifiers", a redrawing dated 25 October 1995 of Electro Music's original,
+as published at https://synthfool.com/docs/Leslie/. Values were read from it;
+nothing of the drawing is carried. The valves' gain, plate resistance and
+cutoff are from their published characteristic curves and are provisional.
+The figures quoted in the forum threads consulted - about 40 W at 1 kHz,
+0.16 V sensitivity, 16-ohm drivers, an 800 Hz crossover - agree with the
+schematic where they overlap and are not otherwise used.
 
 ## Rotary cabinet documentation
 

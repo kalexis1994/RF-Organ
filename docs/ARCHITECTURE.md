@@ -150,6 +150,28 @@ path reads it every sample.
 
 ## Rotary cabinet
 
+The cabinet has its own amplifier, and the organ reaches the rotors through
+it: a balanced input, a 12AU7 pair driving two 6550s in push-pull with no
+feedback around the output transformer, and a passive crossover after it, as
+the schematic of the 122's main amplifier draws them. The input's 0.001 uF
+against its series resistors and volume rheostat rolls the top off near
+9 kHz; each 6550's plate is fed back to its own grid through 390 k and
+0.0047 uF, which lifts the bass about three and a half decibels below 60 Hz;
+and driven past the 25 V its cathodes bias the grids at, the grids conduct,
+the pair clips symmetrically - the third harmonic leads, the second all but
+cancels - and the 0.1 uF coupling capacitors charge and push both tubes
+towards cutoff, letting go over the 22 ms they and the 220 k grid leaks set.
+The crossover is the schematic's two second-order sections, the woofer's near
+620 Hz and the horn's near 1 kHz, into drivers taken as their nominal
+16 ohms.
+
+How hard the console drives it is a control, as it is on a cabinet, where the
+amplifier's volume rheostat and the connector kit set it. At its middle, the
+calibration's 888 chord at full expression reaches the grids' conduction and
+no further; louder registrations go past it. The host's output level now
+comes after the cabinet, so it no longer changes how hard the amplifier is
+driven.
+
 The horn turns counter-clockwise and the drum clockwise, at 400 and 340 rpm
 fast and 40 rpm slow. Each rotor has its own rise, fall and brake time, and a
 time means what Hammond says it means: the seconds needed to cross the whole
@@ -292,13 +314,35 @@ copy of it; a range that moves in the DSP moves there too.
   that character and the comparator fits the three separately - again the
   arrangement the matching transformers use, and again the answer is only as
   separate as the measurement was.
-- The generator's per-wheel taper is every wheel at unity, which no real
-  generator is. It is a table rather than a constant because what replaces it
-  is a measurement: the laboratory renders a chromatic sweep, the comparator
-  reads a reference recording of the same sweep against it, and the fit it
-  emits is the table. Fitting the model against itself returns unity exactly,
-  which is what keeps the console's own frequency response out of a table that
-  is supposed to describe 91 wheels.
+- The wheels' levels and the manuals' key tapering come from published
+  readings of real consoles rather than from this project. A busbar sits on a
+  matching-transformer tap of a fraction of an ohm, so a wheel drives a
+  current into it - V / Z straight onto it, V / (Z + R) through a tapering
+  wire of R ohms - and that is the whole model. Each wheel's V / Z is fitted
+  to Hammond's B-3 Table V and six consoles read straight off a busbar, with
+  the engine's own console response measured and taken out; each contact's
+  Z / (Z + R) comes from the tapering wires of five measured manuals and the
+  impedance three consoles show when the same wheel is read open-circuit,
+  onto a busbar and through a key. That impedance scale is the one fitted
+  number, and it comes out at 45, 49 and 53 ohms on the three, and predicts
+  each one's key readings as well from the other two's as from its own.
+- The check is the readings that were not fitted: Hammond's second chart and
+  six consoles read through one key and drawbar per wheel. Played through the
+  same keys and drawbars, the engine lands 2.2 dB rms from their median, about
+  the spread between the consoles themselves; with every wheel and contact at
+  unity it stood 4.5 dB away. A test holds it under 2.5 dB. The same readings
+  settled the wiring: all 549 manual contacts reach the wheel five measured
+  manuals wire them to, foldback included.
+- What the model leaves out: the impedance is a magnitude, not a phase; each
+  wheel's is the median of three consoles; and the levels say how the wheels
+  and contacts stand against each other, not how loud anything is. So the
+  wheel taper is scaled to give the pedals' 16' fundamentals, which have no
+  key taper, the power they had before, and the key taper to give an 888
+  registration the power it had; the stages after them were set by those
+  levels. The percussion, which leaves through the same key contacts, came out
+  2.2 dB stronger, and is left there because that is where its path puts it.
+- The comparator can still fit the wheel taper from a chromatic recording of a
+  console; fitting the model against itself returns the shipped table.
 - Leakage grows faster than what is played, at a rate that is a control of
   its own, which is how Hammond describes it. Measured against the notes that
   caused it, the leakage climbs 7.2 dB between one note and eight; with the
@@ -378,6 +422,17 @@ copy of it; a range that moves in the DSP moves there too.
   the third, which is the dominant and better conditioned of the two, and the
   laboratory reports the spacing between them for a bench to contradict. See
   `docs/CALIBRATION.md`.
+- The cabinet amplifier's component values are the schematic's; the valves'
+  gains, plate resistance and cutoff come from their published curves and are
+  provisional, as are the console's source impedance into the cabinet and the
+  drivers' impedance. The sensitivity survey puts every one of those under
+  0.4 dB except the drivers' (2.3 dB, through the crossover's Q) and the
+  6550's cutoff (1.7 dB); the drive itself moves the sound by 8.5 dB across
+  its span, which is why it is a control. The output transformer, the plate
+  supply's sag and the drivers' own responses are not modelled; this
+  schematic's supply is a diode bridge with a choke and an OC3-held screen
+  rail, so there is little sag to leave out. The drive control is the
+  engine's; the plugin does not yet expose it.
 - Cabinet reflections and angle-dependent filters are present, but
   their coefficients are not yet fitted to multi-angle cabinet measurements.
 - The microphones are placed geometrically, in centimetres, and the delay,

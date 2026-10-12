@@ -56,8 +56,12 @@ pub struct ScannerVibrato {
 
 impl ScannerVibrato {
     pub fn new(sample_rate: f32) -> Self {
+        Self::with_model(sample_rate, &crate::model::Model::BASELINE)
+    }
+
+    pub fn with_model(sample_rate: f32, model: &crate::model::Model) -> Self {
         Self {
-            line: VibratoLine::new(sample_rate),
+            line: VibratoLine::with_rotor(sample_rate, model[crate::model::Knob::ScannerRotorHz]),
             mode: ScannerMode::Off,
         }
     }

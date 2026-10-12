@@ -2,7 +2,8 @@
 
 use core::f32::consts::TAU;
 
-use crate::manual::KEY_CLICK_SOFT_S;
+use crate::manual::Keying;
+use crate::model::{Knob, Model};
 use crate::tonewheel::TONEWHEEL_COUNT;
 
 pub const PEDAL_DRAWBAR_COUNT: usize = 2;
@@ -11,6 +12,16 @@ pub const PEDAL_KEY_COUNT: usize = 25;
 const PEDAL_LAST_NOTE: u8 = PEDAL_FIRST_NOTE + PEDAL_KEY_COUNT as u8 - 1;
 const PEDAL_CONTACT_COUNT: usize = 8;
 const PEDAL_BUS_COUNT: usize = 4;
+/// The release velocity a pedal key is treated as having when the controller
+/// sends a softer one, which almost none send at all. The manuals no longer
+/// read a release this way; the pedals still do. Provisional.
+pub(crate) const RELEASE_VELOCITY_FLOOR: f32 = 0.25;
+/// Corner of the one-pole that stands for L20, which takes high-frequency
+/// switching energy off the low pedal bus. Provisional until L20 is measured.
+pub(crate) const L20_CORNER_HZ: f32 = 700.0;
+/// What the pedal mixtures hand the matching transformer. Provisional, as the
+/// manuals' bus gain is.
+pub(crate) const PEDAL_BUS_GAIN: f32 = 0.028;
 const DRAWBAR_LEVELS: [f32; 9] = [0.0, 0.089, 0.126, 0.178, 0.251, 0.355, 0.501, 0.708, 1.0];
 
 // Physical spring order from the late 25-note console pedal switch: 10th,
@@ -153,10 +164,18 @@ pub struct Pedalboard {
     event_counter: u32,
     low_bus_state: f32,
     low_bus_step: f32,
+    keying: Keying,
+    release_velocity_floor: f32,
+    bus_gain: f32,
 }
 
 impl Pedalboard {
+    #[cfg(test)]
     pub fn new(sample_rate: f32) -> Self {
+        Self::with_model(sample_rate, &Model::BASELINE)
+    }
+
+    pub fn with_model(sample_rate: f32, model: &Model) -> Self {
         let mut pedals = Self {
             keys: [PedalKey::EMPTY; PEDAL_KEY_COUNT],
             drawbars: [8, 0],
@@ -168,7 +187,10 @@ impl Pedalboard {
             low_bus_state: 0.0,
             // L20 removes high-frequency switching energy from the low pedal
             // bus. This bounded one-pole is provisional until L20 is measured.
-            low_bus_step: (TAU * 700.0 / sample_rate).min(1.0),
+            low_bus_step: (TAU * model[Knob::L20CornerHz] / sample_rate).min(1.0),
+            keying: Keying::of(model),
+            release_velocity_floor: model[Knob::ReleaseVelocityFloor],
+            bus_gain: model[Knob::PedalBusGain],
         };
         for key in 0..PEDAL_KEY_COUNT {
             for contact in 0..PEDAL_CONTACT_COUNT {
@@ -242,19 +264,22 @@ impl Pedalboard {
             return true;
         }
         self.keys[key].active = false;
-        self.schedule_key(key, false, velocity.max(0.25));
+        self.schedule_key(key, false, velocity.max(self.release_velocity_floor));
         true
     }
 
     fn schedule_key(&mut self, key: usize, target: bool, velocity: f32) {
         self.event_counter = self.event_counter.wrapping_add(1);
         self.keys[key].settling = true;
-        let spread_seconds = self.contact_spread * (0.0004 + 0.008 * (1.0 - velocity));
+        let spread_seconds = self.contact_spread
+            * (self.keying.press_spread_brisk_s
+                + self.keying.press_spread_gentle_s * (1.0 - velocity));
         let spread_samples = (spread_seconds * self.sample_rate) as u32;
-        let bounce_samples =
-            (self.contact_bounce * (0.0015 + 0.004 * velocity) * self.sample_rate) as u32;
-        let period = (self.sample_rate / 2_600.0).max(1.0) as u16;
-        let softest = 1.0 / (KEY_CLICK_SOFT_S * self.sample_rate).max(1.0);
+        let bounce_samples = (self.contact_bounce
+            * (self.keying.bounce_gentle_s + self.keying.bounce_hard_s * velocity)
+            * self.sample_rate) as u32;
+        let period = (self.sample_rate / self.keying.bounce_redraw_hz).max(1.0) as u16;
+        let softest = 1.0 / (self.keying.key_click_soft_s * self.sample_rate).max(1.0);
         let click = self.key_click * self.key_click * self.key_click;
         let rise = click.max(softest).min(1.0);
         for contact in 0..PEDAL_CONTACT_COUNT {
@@ -308,7 +333,7 @@ impl Pedalboard {
             output += buses[bus]
                 * (sixteen_level * SIXTEEN_BUS_GAINS[bus] + eight_level * EIGHT_BUS_GAINS[bus]);
         }
-        output * 0.028
+        output * self.bus_gain
     }
 
     pub fn reset(&mut self) {

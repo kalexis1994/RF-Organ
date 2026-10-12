@@ -2731,10 +2731,15 @@ mod tests {
             .unwrap()
     }
 
-    /// The taper is flat until a console is measured, and the eccentricity
-    /// shows up as a sideband a revolution away from each tone.
+    /// How far the 8' may sit from the shipped tables: the console's own
+    /// response across that range, which measured 0.58 dB when this was set.
+    const TABLE_TOLERANCE_DB: f64 = 1.0;
+
+    /// What the probe reads key by key along the 8' is what the shipped wheel
+    /// and key tapers say it should be, and the eccentricity shows up as a
+    /// sideband a revolution away from each tone.
     #[test]
-    fn generator_taper_is_flat_and_eccentricity_is_audible_in_the_sidebands() {
+    fn generator_taper_follows_the_tables_and_eccentricity_is_audible_in_the_sidebands() {
         let (measurements, csv) = with_analysis_stack(|| generator_taper_probe().unwrap());
         assert_eq!(csv.lines().count(), MANUAL_KEY_COUNT + 1);
         let value = |probe| {
@@ -2744,13 +2749,28 @@ mod tests {
                 .expect("probe")
                 .value
         };
-        // Foldback makes several keys share a wheel, but no wheel may sit far
-        // from its neighbours while the taper is flat.
-        assert!(
-            value("generator-taper") < 1.0,
-            "{}",
-            value("generator-taper")
-        );
+        let rows = csv
+            .lines()
+            .skip(1)
+            .map(|line| {
+                let fields = line.split(',').collect::<Vec<_>>();
+                let key = fields[0].parse::<usize>().expect("key") - 1;
+                let wheel = fields[2].parse::<usize>().expect("wheel") - 1;
+                let measured = fields[6].parse::<f64>().expect("relative level");
+                let expected = decibels(
+                    f64::from(rf_organ_dsp::TAPER[wheel])
+                        * f64::from(rf_organ_dsp::KEY_TAPER[key][2]),
+                );
+                measured - expected
+            })
+            .collect::<Vec<_>>();
+        let mean = rows.iter().sum::<f64>() / rows.len() as f64;
+        let worst = rows
+            .iter()
+            .map(|difference| (difference - mean).abs())
+            .fold(0.0, f64::max);
+        // What is left is the console's own response across the 8' range.
+        assert!(worst < TABLE_TOLERANCE_DB, "{worst} dB from the tables");
         let sideband = value("generator-eccentricity");
         assert!(
             (-60.0..-20.0).contains(&sideband),
@@ -2824,6 +2844,13 @@ mod tests {
     fn the_leakage_rate_can_be_turned_off_body() {
         let level = |boost: f32, notes: &[u8]| {
             let mut engine = clean_engine().unwrap();
+            // What is under test is how the leakage grows, not how loud the
+            // companions are against the wheels played: with the generator's
+            // taper in, a companion stands at its own level and the ratio
+            // moves with which wheels the chord happens to use.
+            for wheel in 0..rf_organ_dsp::TONEWHEEL_COUNT {
+                assert!(engine.set_wheel_level(wheel, 1.0));
+            }
             assert!(engine.set_leakage(0.2));
             assert!(engine.set_leakage_boost(boost));
             assert!(engine.set_manual_drawbar(OrganPart::Upper, Registration::AdjustB, 2, 8));

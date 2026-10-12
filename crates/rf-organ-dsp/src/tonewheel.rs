@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 use core::f32::consts::{PI, TAU};
 
+use crate::model::{Knob, Model};
+
 pub const TONEWHEEL_COUNT: usize = 91;
 
 // Translated from the 60 Hz generator table in setBfree, which in turn models
@@ -56,7 +58,15 @@ const fn gearing(index: usize) -> Option<(u16, u16, u16)> {
 /// slightly louder and softer at that rate. The depth of it differs from
 /// organ to organ; this default is provisional and the laboratory measures
 /// the sidebands it produces.
-const ECCENTRICITY_DEPTH: f32 = 0.015;
+pub(crate) const ECCENTRICITY_DEPTH: f32 = 0.015;
+
+/// How far the lowest wheels stray from a sine, as the share of third and
+/// fifth harmonic in their profile: the bottom octave carries both, the
+/// octave above it a smaller third only, and every wheel above that is a
+/// sine. Provisional pending wheel recordings.
+pub(crate) const LOW_OCTAVE_THIRD: f32 = 0.12;
+pub(crate) const SECOND_OCTAVE_THIRD: f32 = 0.045;
+pub(crate) const LOW_OCTAVE_FIFTH: f32 = 0.035;
 
 /// The speed of the one shaft everything hangs off.
 ///
@@ -65,8 +75,8 @@ const ECCENTRICITY_DEPTH: f32 = 0.015;
 /// 1500 rpm on fifty. The wheels are geared to it so that the organ plays at
 /// pitch either way, which is why the supply moves what follows and not the
 /// tuning.
-const SHAFT_RPM_SIXTY: f32 = 1200.0;
-const SHAFT_RPM_FIFTY: f32 = 1500.0;
+pub(crate) const SHAFT_RPM_SIXTY: f32 = 1200.0;
+pub(crate) const SHAFT_RPM_FIFTY: f32 = 1500.0;
 
 /// How steady that shaft is not.
 ///
@@ -85,19 +95,19 @@ const SHAFT_RPM_FIFTY: f32 = 1500.0;
 /// flutter at the speed above. How far it strays in each, and at what rate it
 /// swings, are not numbers Hammond publishes, so they are provisional and the
 /// laboratory reports the pitch deviation they come to.
-const WOW_RATE_HZ: f32 = 2.7;
-const WOW_DEPTH: f32 = 6.0e-4;
-const FLUTTER_DEPTH: f32 = 4.0e-4;
+pub(crate) const WOW_RATE_HZ: f32 = 2.7;
+pub(crate) const WOW_DEPTH: f32 = 6.0e-4;
+pub(crate) const FLUTTER_DEPTH: f32 = 4.0e-4;
 
 /// The coil springs between each bakelite gear and its assembly, as one
 /// resonance. Every assembly is built the same way, so they are modelled as
 /// one filter rather than 48 identical ones; what the springs do to the shaft
 /// before it reaches the wheels is a low pass with a rise at its corner, and
 /// where that corner sits is provisional.
-const COUPLING_HZ: f32 = 34.0;
+pub(crate) const COUPLING_HZ: f32 = 34.0;
 /// Samples between readings of the drive's speed.
 const RETIME_INTERVAL: u32 = 64;
-const COUPLING_DAMPING: f32 = 0.6;
+pub(crate) const COUPLING_DAMPING: f32 = 0.6;
 
 /// The drive shaft, and the springs between it and the wheels.
 #[derive(Clone, Copy)]
@@ -111,10 +121,14 @@ struct Driveshaft {
     band: f32,
     coupling_f: f32,
     depth: f32,
+    wow_rate_hz: f32,
+    wow_depth: f32,
+    flutter_depth: f32,
+    coupling_damping: f32,
 }
 
 impl Driveshaft {
-    fn new(sample_rate: f32) -> Self {
+    fn new(sample_rate: f32, model: &Model) -> Self {
         let mut shaft = Self {
             wow: (0.0, 1.0),
             wow_step: (0.0, 1.0),
@@ -122,15 +136,19 @@ impl Driveshaft {
             flutter_step: (0.0, 1.0),
             low: 0.0,
             band: 0.0,
-            coupling_f: 2.0 * (PI * COUPLING_HZ / sample_rate).min(0.4),
+            coupling_f: 2.0 * (PI * model[Knob::CouplingHz] / sample_rate).min(0.4),
             depth: 1.0,
+            wow_rate_hz: model[Knob::WowRateHz],
+            wow_depth: model[Knob::WowDepth],
+            flutter_depth: model[Knob::FlutterDepth],
+            coupling_damping: model[Knob::CouplingDamping],
         };
         shaft.retune(sample_rate, SHAFT_RPM_SIXTY);
         shaft
     }
 
     fn retune(&mut self, sample_rate: f32, shaft_rpm: f32) {
-        self.wow_step = sin_cos_pair(TAU * WOW_RATE_HZ / sample_rate);
+        self.wow_step = sin_cos_pair(TAU * self.wow_rate_hz / sample_rate);
         self.flutter_step = sin_cos_pair(TAU * (shaft_rpm / 60.0) / sample_rate);
     }
 
@@ -139,11 +157,11 @@ impl Driveshaft {
     fn tick(&mut self) -> f32 {
         advance(&mut self.wow, self.wow_step);
         advance(&mut self.flutter, self.flutter_step);
-        let drive = WOW_DEPTH * self.wow.0 + FLUTTER_DEPTH * self.flutter.0;
+        let drive = self.wow_depth * self.wow.0 + self.flutter_depth * self.flutter.0;
         // One state-variable step: the springs pass the slow part and ring a
         // little where they resonate.
         self.low += self.coupling_f * self.band;
-        let high = drive - self.low - COUPLING_DAMPING * self.band;
+        let high = drive - self.low - self.coupling_damping * self.band;
         self.band += self.coupling_f * high;
         self.depth * self.low
     }
@@ -216,7 +234,7 @@ impl Tonewheel {
         self.rotation_cosine = cosine * correction;
     }
 
-    fn tick(&mut self, sample_rate: f32, index: usize, eccentricity: f32) -> f32 {
+    fn tick(&mut self, sample_rate: f32, index: usize, eccentricity: f32, profile: Profile) -> f32 {
         let sine = self.sine * self.rotation_cosine + self.cosine * self.rotation_sine;
         let cosine = self.cosine * self.rotation_cosine - self.sine * self.rotation_sine;
         let correction = 1.5 - 0.5 * (sine * sine + cosine * cosine);
@@ -229,12 +247,16 @@ impl Tonewheel {
         let squared = sine * sine;
         let fifth = sine * (16.0 * squared * squared - 20.0 * squared + 5.0);
         let third_gain = if index < 24 && self.frequency * 3.0 < sample_rate * 0.48 {
-            if index < 12 { 0.12 } else { 0.045 }
+            if index < 12 {
+                profile.low_octave_third
+            } else {
+                profile.second_octave_third
+            }
         } else {
             0.0
         };
         let fifth_gain = if index < 12 && self.frequency * 5.0 < sample_rate * 0.48 {
-            0.035
+            profile.low_octave_fifth
         } else {
             0.0
         };
@@ -254,17 +276,31 @@ impl Tonewheel {
     }
 }
 
+/// How far the low wheels stray from a sine.
+#[derive(Clone, Copy)]
+struct Profile {
+    low_octave_third: f32,
+    second_octave_third: f32,
+    low_octave_fifth: f32,
+}
+
 pub struct TonewheelBank {
     wheels: [Tonewheel; TONEWHEEL_COUNT],
     samples: [f32; TONEWHEEL_COUNT],
     sample_rate: f32,
     eccentricity: f32,
+    profile: Profile,
     shaft: Driveshaft,
     since_retime: u32,
 }
 
 impl TonewheelBank {
+    #[cfg(test)]
     pub fn new(sample_rate: f32) -> Self {
+        Self::with_model(sample_rate, &Model::BASELINE)
+    }
+
+    pub fn with_model(sample_rate: f32, model: &Model) -> Self {
         let mut wheels = [Tonewheel::EMPTY; TONEWHEEL_COUNT];
         for (index, wheel) in wheels.iter_mut().enumerate() {
             let frequency = gear_frequency(index).expect("bounded wheel index");
@@ -305,8 +341,13 @@ impl TonewheelBank {
             wheels,
             samples: [0.0; TONEWHEEL_COUNT],
             sample_rate,
-            eccentricity: ECCENTRICITY_DEPTH,
-            shaft: Driveshaft::new(sample_rate),
+            eccentricity: model[Knob::EccentricityDepth],
+            profile: Profile {
+                low_octave_third: model[Knob::LowOctaveThird],
+                second_octave_third: model[Knob::SecondOctaveThird],
+                low_octave_fifth: model[Knob::LowOctaveFifth],
+            },
+            shaft: Driveshaft::new(sample_rate, model),
             since_retime: 0,
         }
     }
@@ -363,7 +404,7 @@ impl TonewheelBank {
             .zip(self.samples.iter_mut())
             .enumerate()
         {
-            *sample = wheel.tick(self.sample_rate, index, self.eccentricity);
+            *sample = wheel.tick(self.sample_rate, index, self.eccentricity, self.profile);
         }
     }
 

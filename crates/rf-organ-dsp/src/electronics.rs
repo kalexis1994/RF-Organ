@@ -2,12 +2,24 @@
 
 use core::f32::consts::TAU;
 
-const EXPRESSION_SECTION_CAPACITANCE_PF: f32 = 60.0;
-const EXPRESSION_GRID_RESISTANCE_OHM: f32 = 15_000_000.0;
-const EXPRESSION_LOW_HZ: f32 =
+use crate::model::{Knob, Model};
+
+pub(crate) const EXPRESSION_SECTION_CAPACITANCE_PF: f32 = 60.0;
+pub(crate) const EXPRESSION_GRID_RESISTANCE_OHM: f32 = 15_000_000.0;
+pub(crate) const EXPRESSION_LOW_HZ: f32 =
     1.0 / (TAU * EXPRESSION_GRID_RESISTANCE_OHM * EXPRESSION_SECTION_CAPACITANCE_PF * 1.0e-12);
-const EXPRESSION_HIGH_HZ: f32 = 4_000.0;
-const TONE_CONTROL_HZ: f32 = 200.0;
+pub(crate) const EXPRESSION_HIGH_HZ: f32 = 4_000.0;
+/// How much of the pedal's attenuation the low and the high band are spared
+/// at full expression character, against the middle band's. Provisional: the
+/// transfer between the moving and fixed plates is a calibration target.
+pub(crate) const EXPRESSION_LOW_SHARE: f32 = 0.72;
+pub(crate) const EXPRESSION_HIGH_SHARE: f32 = 0.48;
+/// How long the swell takes to follow the pedal, as a one-pole time constant.
+/// Provisional: it stands for the pedal's mechanical travel.
+pub(crate) const EXPRESSION_SLEW_S: f32 = 0.008;
+pub(crate) const TONE_CONTROL_HZ: f32 = 200.0;
+/// Corner of the bass trim's shelf. Provisional.
+pub(crate) const BASS_SHELF_HZ: f32 = 310.0;
 /// How asymmetric each single-ended stage is. The stages differ in operating
 /// point, so they differ here; all three values are provisional and the
 /// laboratory reports the harmonic structure they produce.
@@ -18,9 +30,23 @@ const TONE_CONTROL_HZ: f32 = 200.0;
 /// them. Telling them apart needs an injection at each stage, and until there
 /// is one the ratios between these three stay where they are and only their
 /// common size moves.
-const V4A_ASYMMETRY: f32 = 0.45;
-const V4B_ASYMMETRY: f32 = 0.30;
-const V3B_ASYMMETRY: f32 = 0.22;
+pub(crate) const V4A_ASYMMETRY: f32 = 0.45;
+pub(crate) const V4B_ASYMMETRY: f32 = 0.30;
+pub(crate) const V3B_ASYMMETRY: f32 = 0.22;
+/// How the drive control divides between the three stages. Provisional, for
+/// the same reason the asymmetries are: from outside the preamplifier only the
+/// chain is visible.
+pub(crate) const V4A_DRIVE_SHARE: f32 = 0.45;
+pub(crate) const V4B_DRIVE_SHARE: f32 = 0.35;
+pub(crate) const V3B_DRIVE_SHARE: f32 = 0.20;
+/// How hard a stage's drive pushes the signal into its curve, and the make-up
+/// gain that keeps a driven stage near its clean level. Provisional.
+pub(crate) const STAGE_DRIVE_GAIN: f32 = 7.0;
+pub(crate) const STAGE_MAKEUP: f32 = 3.2;
+/// Corner at which the coupling capacitors after V3B take off the bias the
+/// asymmetric stages leave. Provisional: the capacitor values are not
+/// legible in the available scan.
+pub(crate) const DC_BLOCK_HZ: f32 = 18.0;
 /// The range that character may take, with one meaning the values above.
 pub const STAGE_CHARACTER_RANGE: (f32, f32) = (0.0, 3.0);
 pub const STAGE_CHARACTER_DEFAULT: f32 = 1.0;
@@ -63,24 +89,6 @@ impl ConsoleStage {
             Self::V3B => "v3b",
         }
     }
-
-    /// How lopsided this stage is before the character and its trim, and how
-    /// hard the drive control pushes it.
-    const fn asymmetry(self) -> f32 {
-        match self {
-            Self::V4A => V4A_ASYMMETRY,
-            Self::V4B => V4B_ASYMMETRY,
-            Self::V3B => V3B_ASYMMETRY,
-        }
-    }
-
-    const fn drive_share(self) -> f32 {
-        match self {
-            Self::V4A => 0.45,
-            Self::V4B => 0.35,
-            Self::V3B => 0.20,
-        }
-    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -112,10 +120,24 @@ pub struct ConsoleElectronics {
     tone_state: f32,
     dc_input: f32,
     dc_output: f32,
+    asymmetries: [f32; 3],
+    drive_shares: [f32; 3],
+    stage_drive_gain: f32,
+    stage_makeup: f32,
+    expression_high_hz: f32,
+    expression_low_share: f32,
+    expression_high_share: f32,
+    expression_slew_s: f32,
+    bass_shelf_hz: f32,
+    dc_block_hz: f32,
 }
 
 impl ConsoleElectronics {
-    pub const fn new(sample_rate: f32) -> Self {
+    pub fn new(sample_rate: f32) -> Self {
+        Self::with_model(sample_rate, &Model::BASELINE)
+    }
+
+    pub fn with_model(sample_rate: f32, model: &Model) -> Self {
         Self {
             sample_rate,
             drive: 0.32,
@@ -131,6 +153,24 @@ impl ConsoleElectronics {
             tone_state: 0.0,
             dc_input: 0.0,
             dc_output: 0.0,
+            asymmetries: [
+                model[Knob::V4aAsymmetry],
+                model[Knob::V4bAsymmetry],
+                model[Knob::V3bAsymmetry],
+            ],
+            drive_shares: [
+                model[Knob::V4aDriveShare],
+                model[Knob::V4bDriveShare],
+                model[Knob::V3bDriveShare],
+            ],
+            stage_drive_gain: model[Knob::StageDriveGain],
+            stage_makeup: model[Knob::StageMakeup],
+            expression_high_hz: model[Knob::ExpressionHighHz],
+            expression_low_share: model[Knob::ExpressionLowShare],
+            expression_high_share: model[Knob::ExpressionHighShare],
+            expression_slew_s: model[Knob::ExpressionSlewS],
+            bass_shelf_hz: model[Knob::BassShelfHz],
+            dc_block_hz: model[Knob::DcBlockHz],
         }
     }
 
@@ -167,7 +207,9 @@ impl ConsoleElectronics {
 
     /// How lopsided one stage is as it currently stands.
     fn stage_asymmetry(&self, stage: ConsoleStage) -> f32 {
-        stage.asymmetry() * self.stage_character * trim_gain(self.stage_trims[stage.index()])
+        self.asymmetries[stage.index()]
+            * self.stage_character
+            * trim_gain(self.stage_trims[stage.index()])
     }
 
     /// One stage on its own, as a probe at its grid and another at its plate
@@ -176,8 +218,9 @@ impl ConsoleElectronics {
     pub fn stage_sample(&self, stage: ConsoleStage, input: f32) -> f32 {
         tube_stage(
             input,
-            self.drive * stage.drive_share(),
+            self.drive * self.drive_shares[stage.index()],
             self.stage_asymmetry(stage),
+            (self.stage_drive_gain, self.stage_makeup),
         )
     }
 
@@ -200,10 +243,10 @@ impl ConsoleElectronics {
     }
 
     pub fn process(&mut self, input: f32, expression: f32) -> f32 {
-        let expression_rate = 1.0 / (0.008 * self.sample_rate).max(1.0);
+        let expression_rate = 1.0 / (self.expression_slew_s * self.sample_rate).max(1.0);
         self.expression_state += expression_rate * (expression - self.expression_state);
 
-        let bass_coefficient = one_pole(310.0, self.sample_rate);
+        let bass_coefficient = one_pole(self.bass_shelf_hz, self.sample_rate);
         self.bass_state += bass_coefficient * (input - self.bass_state);
         let bass_gain = trim_gain(self.bass_trim);
         let equalized = input + (bass_gain - 1.0) * self.bass_state;
@@ -219,7 +262,7 @@ impl ConsoleElectronics {
         // transfer between the moving and fixed plates, and the C17/C22/C24
         // high shoulder, remain calibration targets.
         let low_coefficient = one_pole(EXPRESSION_LOW_HZ, self.sample_rate);
-        let high_coefficient = one_pole(EXPRESSION_HIGH_HZ, self.sample_rate);
+        let high_coefficient = one_pole(self.expression_high_hz, self.sample_rate);
         self.expression_low_state += low_coefficient * (pre_expression - self.expression_low_state);
         self.expression_high_state +=
             high_coefficient * (pre_expression - self.expression_high_state);
@@ -231,8 +274,8 @@ impl ConsoleElectronics {
         let mid_gain =
             linear_gain * (1.0 - self.expression_character * (1.0 - self.expression_state));
         let compensation = linear_gain - mid_gain;
-        let low_gain = mid_gain + 0.72 * compensation;
-        let high_gain = mid_gain + 0.48 * compensation;
+        let low_gain = mid_gain + self.expression_low_share * compensation;
+        let high_gain = mid_gain + self.expression_high_share * compensation;
         let expressed = low * low_gain + mid * mid_gain + high * high_gain;
 
         // V4B follows the passive expression network. The AO-28 tone control
@@ -249,7 +292,7 @@ impl ConsoleElectronics {
         let amplified = self.stage_sample(ConsoleStage::V3B, toned);
 
         // Coupling capacitors remove the small asymmetric-stage bias.
-        let dc_coefficient = 1.0 - one_pole(18.0, self.sample_rate);
+        let dc_coefficient = 1.0 - one_pole(self.dc_block_hz, self.sample_rate);
         let high_pass = dc_coefficient * (self.dc_output + amplified - self.dc_input);
         self.dc_input = amplified;
         self.dc_output = high_pass;
@@ -286,8 +329,8 @@ impl ConsoleElectronics {
 /// contribute, and it is why a symmetric soft clipper is the wrong shape for
 /// them. `asymmetry` is how much harder the positive half compresses, and is
 /// provisional per stage.
-fn tube_stage(input: f32, drive: f32, asymmetry: f32) -> f32 {
-    let driven = input * (1.0 + 7.0 * drive);
+fn tube_stage(input: f32, drive: f32, asymmetry: f32, (gain, makeup): (f32, f32)) -> f32 {
+    let driven = input * (1.0 + gain * drive);
     // Two shapes in series, and the order matters for which harmonic leads.
     // The symmetric part is a cubic soft clip, whose lowest distortion term is
     // third order and therefore grows with the square of level. The asymmetric
@@ -307,7 +350,7 @@ fn tube_stage(input: f32, drive: f32, asymmetry: f32) -> f32 {
         driven - driven * driven * driven / 3.0
     };
     let saturated = clipped / (1.0 + asymmetry * clipped);
-    let makeup = 1.0 / (1.0 + 3.2 * drive);
+    let makeup = 1.0 / (1.0 + makeup * drive);
     (input * (1.0 - drive) + saturated * drive) * makeup
 }
 
