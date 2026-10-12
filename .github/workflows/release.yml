@@ -37,13 +37,6 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: "0"
-  # Keep this in step with the same name in ci.yml: both pin the SDK to the
-  # revision Cargo.lock records, and a release must be built against the host
-  # the branch was tested against.
-  RACKFORGE_REF: 8e8991b67ddcb55507911abd93dcf52dfd6b5ef6
-  # Must match the wasm-bindgen version in Cargo.lock, or the generated surface
-  # will not load against the built module.
-  WASM_BINDGEN_VERSION: 0.2.127
 
 jobs:
   publish:
@@ -60,11 +53,22 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Check out the RackForge SDK
+      # Both come from Cargo.lock, as they do in ci.yml: a release is built
+      # against the host the branch was tested against, and the wasm-bindgen
+      # CLI has to match the library or the generated surface will not load.
+      - name: Read the pins from the lockfile
+        id: pins
+        shell: bash
+        working-directory: RF-Organ
+        run: |
+          echo "rackforge=$(bash tools/pins.sh rackforge)" >> "$GITHUB_OUTPUT"
+          echo "wasm_bindgen=$(bash tools/pins.sh wasm-bindgen)" >> "$GITHUB_OUTPUT"
+
+      - name: Check out the RackForge host tools
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: kalexis1994/rackforge
-          ref: ${{ env.RACKFORGE_REF }}
+          ref: ${{ steps.pins.outputs.rackforge }}
           path: rackforge
           persist-credentials: false
 
@@ -107,6 +111,8 @@ jobs:
 
       - name: Install the matching wasm-bindgen
         shell: bash
+        env:
+          WASM_BINDGEN_VERSION: ${{ steps.pins.outputs.wasm_bindgen }}
         run: cargo install wasm-bindgen-cli --version "$WASM_BINDGEN_VERSION" --locked
 
       - name: Validate, build and pack

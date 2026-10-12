@@ -94,6 +94,7 @@ dependencies = [
 [[package]]
 name = "rackforge-plugin-sdk"
 version = "0.1.21"
+source = "git+https://github.com/kalexis1994/rackforge?rev=8e8991b67ddcb55507911abd93dcf52dfd6b5ef6#8e8991b67ddcb55507911abd93dcf52dfd6b5ef6"
 
 [[package]]
 name = "rf-organ-dsp"
