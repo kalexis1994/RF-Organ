@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+use crate::model::{Knob, Model};
+
 /// How lopsided a magnetised core makes its own curve, before the control
 /// that scales it.
 ///
@@ -14,7 +16,16 @@ pub const ASYMMETRY_DEFAULT: f32 = 0.10;
 
 /// How much of the bend the lean may take before the weak half of the curve
 /// would stop bending at all. See `process`.
-const LEAN_CEILING: f32 = 0.9;
+pub(crate) const LEAN_CEILING: f32 = 0.9;
+/// The reduced core: how fast its magnetic memory follows the signal, how far
+/// the drive control pushes the signal into it and the memory biases it, and
+/// how the curve's bend grows with the memory control. All provisional; the
+/// laboratory fits drive and memory per unit from intermodulation captures.
+pub(crate) const MEMORY_HZ: f32 = 900.0;
+pub(crate) const DRIVE_GAIN: f32 = 5.0;
+pub(crate) const MEMORY_BIAS: f32 = 0.8;
+pub(crate) const BEND_FLOOR: f32 = 0.55;
+pub(crate) const BEND_SPAN: f32 = 0.35;
 
 /// Reduced magnetic model shared by the AO-28 T1/T2 input matching
 /// transformers and the T3 output transformer. Each instance owns its own
@@ -25,6 +36,11 @@ pub struct MatchingTransformer {
     hysteresis: f32,
     asymmetry: f32,
     magnetization: f32,
+    memory_hz: f32,
+    drive_gain: f32,
+    memory_bias: f32,
+    bend_floor: f32,
+    bend_span: f32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -35,13 +51,22 @@ pub struct TransformerDiagnostics {
 }
 
 impl MatchingTransformer {
-    pub const fn new(sample_rate: f32) -> Self {
+    pub fn new(sample_rate: f32) -> Self {
+        Self::with_model(sample_rate, &Model::BASELINE)
+    }
+
+    pub fn with_model(sample_rate: f32, model: &Model) -> Self {
         Self {
             sample_rate,
             drive: 0.35,
             hysteresis: 0.25,
             asymmetry: ASYMMETRY_DEFAULT,
             magnetization: 0.0,
+            memory_hz: model[Knob::CoreMemoryHz],
+            drive_gain: model[Knob::CoreDriveGain],
+            memory_bias: model[Knob::CoreMemoryBias],
+            bend_floor: model[Knob::CoreBendFloor],
+            bend_span: model[Knob::CoreBendSpan],
         }
     }
 
@@ -70,10 +95,10 @@ impl MatchingTransformer {
         // Provisional reduced model: a slow magnetic state biases a smooth
         // saturation. It is shared by all notes and therefore also produces
         // the expected inter-note interaction.
-        let memory_rate = (900.0 / self.sample_rate).clamp(0.001, 0.1);
+        let memory_rate = (self.memory_hz / self.sample_rate).clamp(0.001, 0.1);
         self.magnetization += memory_rate * (input - self.magnetization);
-        let driven =
-            input * (1.0 + 5.0 * self.drive) + self.magnetization * (0.8 * self.hysteresis);
+        let driven = input * (1.0 + self.drive_gain * self.drive)
+            + self.magnetization * (self.memory_bias * self.hysteresis);
         // A core does not sit at the middle of its own curve: it keeps some of
         // the magnetisation it has been given, and the two halves of a wave
         // then saturate differently. The lean is a property of the core rather
@@ -83,7 +108,7 @@ impl MatchingTransformer {
         // hundredths of a decibel and was no model at all. How far a real core
         // leans is provisional; that an odd curve has no even harmonics to
         // give is not.
-        let bend = 0.55 + 0.35 * self.hysteresis;
+        let bend = self.bend_floor + self.bend_span * self.hysteresis;
         // The lean is a perturbation on the bend and may not cancel it. Left
         // unbounded it could: `asymmetry` reaches one from the host, and
         // there the weak half's curve came out at exactly zero, its divisor
@@ -99,7 +124,7 @@ impl MatchingTransformer {
             bend - lean
         };
         let saturated = driven / (1.0 + driven.abs() * curve);
-        let clean_gain = 1.0 / (1.0 + 5.0 * self.drive);
+        let clean_gain = 1.0 / (1.0 + self.drive_gain * self.drive);
         input * (1.0 - self.drive) + saturated * clean_gain * self.drive
     }
 

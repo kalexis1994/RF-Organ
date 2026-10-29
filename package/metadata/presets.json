@@ -2,16 +2,31 @@
   "schema_version": 1,
   "banks": [
     {
-      "id": "registrations",
-      "name": "Registrations",
+      "id": "console",
+      "name": "Console",
       "order": 0
+    },
+    {
+      "id": "jazz-blues",
+      "name": "Jazz & Blues",
+      "order": 1
+    },
+    {
+      "id": "gospel-rock",
+      "name": "Gospel & Rock",
+      "order": 2
+    },
+    {
+      "id": "tone-colours",
+      "name": "Tone Colours",
+      "order": 3
     }
   ],
   "presets": [
     {
       "id": "straight-888",
       "name": "Straight 888",
-      "bank": "registrations",
+      "bank": "console",
       "editable": false,
       "category": "Organ",
       "order": 0,
@@ -24,7 +39,7 @@
     {
       "id": "chorale-888",
       "name": "Chorale 888",
-      "bank": "registrations",
+      "bank": "console",
       "editable": false,
       "category": "Organ",
       "order": 1,
@@ -36,175 +51,12 @@
       "description": "888 registration with C3 scanner chorus through the integrated slow rotary cabinet."
     },
     {
-      "id": "tremolo-jazz",
-      "name": "Tremolo Jazz",
-      "bank": "registrations",
+      "id": "percussion-switch",
+      "name": "Percussion Switch",
+      "bank": "console",
       "editable": false,
       "category": "Organ",
       "order": 2,
-      "tags": [
-        "tonewheel",
-        "rotary",
-        "tremolo"
-      ],
-      "description": "Third-harmonic single-trigger percussion with fast integrated rotary motion."
-    },
-    {
-      "id": "gospel-full",
-      "name": "Gospel Full",
-      "bank": "registrations",
-      "editable": false,
-      "category": "Organ",
-      "order": 3,
-      "tags": [
-        "tonewheel",
-        "rotary",
-        "full"
-      ],
-      "description": "Full drawbars, C3 scanner chorus, transformer drive and slow rotary motion."
-    },
-    {
-      "id": "jazz-comp",
-      "name": "Jazz Comp",
-      "bank": "registrations",
-      "editable": false,
-      "category": "Organ",
-      "order": 4,
-      "tags": [
-        "tonewheel",
-        "percussion",
-        "rotary"
-      ],
-      "description": "Hollow comping registration with third-harmonic percussion and slow rotary motion."
-    },
-    {
-      "id": "ballad-chorus",
-      "name": "Ballad Chorus",
-      "bank": "registrations",
-      "editable": false,
-      "category": "Organ",
-      "order": 5,
-      "tags": [
-        "tonewheel",
-        "chorus",
-        "direct"
-      ],
-      "description": "Fundamental registration through the C3 vibrato line, cabinet stationary."
-    },
-    {
-      "id": "pedal-bass",
-      "name": "Pedal Bass",
-      "bank": "registrations",
-      "editable": false,
-      "category": "Organ",
-      "order": 6,
-      "tags": [
-        "tonewheel",
-        "pedal",
-        "direct"
-      ],
-      "description": "Pedal clavier forward with a quiet lower manual, for left-hand and feet."
-    },
-    {
-      "id": "full-shout",
-      "name": "Full Shout",
-      "bank": "registrations",
-      "editable": false,
-      "category": "Organ",
-      "order": 7,
-      "tags": [
-        "tonewheel",
-        "rotary",
-        "tremolo",
-        "full"
-      ],
-      "description": "Every drawbar out on both manuals with fast rotary motion and console drive."
-    },
-    {
-      "id": "tibia-8",
-      "name": "Tibia 8'",
-      "bank": "registrations",
-      "editable": false,
-      "category": "Organ",
-      "order": 8,
-      "tags": [
-        "flute",
-        "theatre"
-      ],
-      "description": "The theatre flute, 00 7030 000 in the 2-4-3 notation, on a stationary cabinet."
-    },
-    {
-      "id": "flute-chorus-16",
-      "name": "Chorus of Flutes 16'",
-      "bank": "registrations",
-      "editable": false,
-      "category": "Organ",
-      "order": 9,
-      "tags": [
-        "flute",
-        "chorus"
-      ],
-      "description": "A flute chorus drawn from the 16', 80 8605 002, with slow cabinet motion."
-    },
-    {
-      "id": "open-diapason",
-      "name": "Open Diapason 8'",
-      "bank": "registrations",
-      "editable": false,
-      "category": "Organ",
-      "order": 10,
-      "tags": [
-        "diapason",
-        "church"
-      ],
-      "description": "The church voice, 01 8866 430, with the cabinet stationary."
-    },
-    {
-      "id": "clarinet-8",
-      "name": "Clarinet 8'",
-      "bank": "registrations",
-      "editable": false,
-      "category": "Organ",
-      "order": 11,
-      "tags": [
-        "reed",
-        "hollow"
-      ],
-      "description": "The hollow odd-harmonic reed, 00 6070 540."
-    },
-    {
-      "id": "salicional-8",
-      "name": "Salicional 8'",
-      "bank": "registrations",
-      "editable": false,
-      "category": "Organ",
-      "order": 12,
-      "tags": [
-        "string",
-        "vibrato"
-      ],
-      "description": "A quiet string, 00 2453 321, through V3 vibrato."
-    },
-    {
-      "id": "vox-humana",
-      "name": "Vox Humana 8'",
-      "bank": "registrations",
-      "editable": false,
-      "category": "Organ",
-      "order": 13,
-      "tags": [
-        "reed",
-        "vibrato"
-      ],
-      "description": "00 4720 123, which is a voice only once the vibrato is in."
-    },
-    {
-      "id": "percussion-switch",
-      "name": "Percussion Switch",
-      "bank": "registrations",
-      "editable": false,
-      "category": "Organ",
-      "order": 14,
       "tags": [
         "percussion",
         "jazz"
@@ -214,15 +66,254 @@
     {
       "id": "two-registrations",
       "name": "Two Registrations",
-      "bank": "registrations",
+      "bank": "console",
       "editable": false,
       "category": "Organ",
-      "order": 15,
+      "order": 3,
       "tags": [
         "drawbars",
         "adjust-keys"
       ],
       "description": "A flute on the A# adjust key and a full registration on B, to change with a key."
+    },
+    {
+      "id": "pedal-bass",
+      "name": "Pedal Bass",
+      "bank": "console",
+      "editable": false,
+      "category": "Organ",
+      "order": 4,
+      "tags": [
+        "tonewheel",
+        "pedal",
+        "direct"
+      ],
+      "description": "Pedal clavier forward with a quiet lower manual, for left-hand and feet."
+    },
+    {
+      "id": "jazz-trio",
+      "name": "Jazz Trio",
+      "bank": "jazz-blues",
+      "editable": false,
+      "category": "Organ",
+      "order": 0,
+      "tags": [
+        "tonewheel",
+        "percussion",
+        "jazz",
+        "bass"
+      ],
+      "description": "88 8000 000 with soft, fast third percussion and no scanner, over a left-hand bass of 80 8000 000 on the lower manual; cabinet slow."
+    },
+    {
+      "id": "jazz-comp",
+      "name": "Jazz Comp",
+      "bank": "jazz-blues",
+      "editable": false,
+      "category": "Organ",
+      "order": 1,
+      "tags": [
+        "tonewheel",
+        "percussion",
+        "rotary"
+      ],
+      "description": "Hollow comping registration with third-harmonic percussion and slow rotary motion."
+    },
+    {
+      "id": "lower-comp",
+      "name": "Lower Comp",
+      "bank": "jazz-blues",
+      "editable": false,
+      "category": "Organ",
+      "order": 2,
+      "tags": [
+        "tonewheel",
+        "percussion",
+        "jazz",
+        "comping"
+      ],
+      "description": "Third percussion on 88 8000 000 for the right hand over soft chords of 00 7600 000 on the lower manual, pedals off for a bass player."
+    },
+    {
+      "id": "tremolo-jazz",
+      "name": "Tremolo Jazz",
+      "bank": "jazz-blues",
+      "editable": false,
+      "category": "Organ",
+      "order": 3,
+      "tags": [
+        "tonewheel",
+        "percussion",
+        "rotary",
+        "jazz"
+      ],
+      "description": "The trio registration, 88 8000 000, with normal third percussion, more drive and the cabinet at speed for a climax."
+    },
+    {
+      "id": "ballad-chorus",
+      "name": "Ballad Chorus",
+      "bank": "jazz-blues",
+      "editable": false,
+      "category": "Organ",
+      "order": 4,
+      "tags": [
+        "tonewheel",
+        "chorus",
+        "ballad"
+      ],
+      "description": "Soft flutes, 00 8600 000, through the C3 chorus with the cabinet stationary, for ballads."
+    },
+    {
+      "id": "blues-shuffle",
+      "name": "Blues Shuffle",
+      "bank": "jazz-blues",
+      "editable": false,
+      "category": "Organ",
+      "order": 5,
+      "tags": [
+        "tonewheel",
+        "chorus",
+        "rotary",
+        "blues"
+      ],
+      "description": "88 8800 000 through the C3 chorus with a slow cabinet ready to speed up and a little drive."
+    },
+    {
+      "id": "gritty-blues",
+      "name": "Gritty Blues",
+      "bank": "jazz-blues",
+      "editable": false,
+      "category": "Organ",
+      "order": 6,
+      "tags": [
+        "tonewheel",
+        "drive",
+        "rotary",
+        "blues"
+      ],
+      "description": "88 8000 008 with no scanner and the cabinet amplifier pushed into breakup."
+    },
+    {
+      "id": "gospel-full",
+      "name": "Gospel Full",
+      "bank": "gospel-rock",
+      "editable": false,
+      "category": "Organ",
+      "order": 0,
+      "tags": [
+        "tonewheel",
+        "rotary",
+        "full"
+      ],
+      "description": "88 8888 000 on both manuals through the C3 chorus, transformer drive and slow rotary motion."
+    },
+    {
+      "id": "full-shout",
+      "name": "Full Shout",
+      "bank": "gospel-rock",
+      "editable": false,
+      "category": "Organ",
+      "order": 1,
+      "tags": [
+        "tonewheel",
+        "rotary",
+        "tremolo",
+        "full"
+      ],
+      "description": "Every drawbar out on both manuals with fast rotary motion and console drive."
+    },
+    {
+      "id": "rock-ballad",
+      "name": "Rock Ballad",
+      "bank": "gospel-rock",
+      "editable": false,
+      "category": "Organ",
+      "order": 2,
+      "tags": [
+        "tonewheel",
+        "chorus",
+        "rotary",
+        "ballad"
+      ],
+      "description": "68 8600 000 through the C3 chorus with a slow cabinet, the sustained organ under a rock ballad."
+    },
+    {
+      "id": "tibia-8",
+      "name": "Tibia 8'",
+      "bank": "tone-colours",
+      "editable": false,
+      "category": "Organ",
+      "order": 0,
+      "tags": [
+        "flute",
+        "theatre"
+      ],
+      "description": "The theatre flute, 00 7030 000 in the 2-4-3 notation, on a stationary cabinet."
+    },
+    {
+      "id": "flute-chorus-16",
+      "name": "Chorus of Flutes 16'",
+      "bank": "tone-colours",
+      "editable": false,
+      "category": "Organ",
+      "order": 1,
+      "tags": [
+        "flute",
+        "chorus"
+      ],
+      "description": "A flute chorus drawn from the 16', 80 8605 002, with slow cabinet motion."
+    },
+    {
+      "id": "open-diapason",
+      "name": "Open Diapason 8'",
+      "bank": "tone-colours",
+      "editable": false,
+      "category": "Organ",
+      "order": 2,
+      "tags": [
+        "diapason",
+        "church"
+      ],
+      "description": "The church voice, 01 8866 430, with the cabinet stationary."
+    },
+    {
+      "id": "clarinet-8",
+      "name": "Clarinet 8'",
+      "bank": "tone-colours",
+      "editable": false,
+      "category": "Organ",
+      "order": 3,
+      "tags": [
+        "reed",
+        "hollow"
+      ],
+      "description": "The hollow odd-harmonic reed, 00 6070 540."
+    },
+    {
+      "id": "salicional-8",
+      "name": "Salicional 8'",
+      "bank": "tone-colours",
+      "editable": false,
+      "category": "Organ",
+      "order": 4,
+      "tags": [
+        "string",
+        "vibrato"
+      ],
+      "description": "A quiet string, 00 2453 321, through V3 vibrato."
+    },
+    {
+      "id": "vox-humana",
+      "name": "Vox Humana 8'",
+      "bank": "tone-colours",
+      "editable": false,
+      "category": "Organ",
+      "order": 5,
+      "tags": [
+        "reed",
+        "vibrato"
+      ],
+      "description": "00 4720 123, which is a voice only once the vibrato is in."
     }
   ]
 }

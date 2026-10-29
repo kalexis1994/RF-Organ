@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+use crate::model::{Knob, Model};
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[repr(u8)]
 pub enum PercussionHarmonic {
@@ -57,15 +59,24 @@ impl PercussionDecay {
 /// Level the upper drawbars lose while percussion is on at Normal volume.
 /// Hammond documents the vintage console as reducing them by about 6 dB, and
 /// as leaving them alone at Soft.
-const NORMAL_DRAWBAR_ATTENUATION: f32 = 0.501_187_2;
+pub(crate) const NORMAL_DRAWBAR_ATTENUATION: f32 = 0.501_187_2;
 /// One-pole rise of the percussion envelope. The console charges its
 /// percussion capacitor through the key contact rather than switching a
 /// level, so the attack is fast but not instantaneous. Provisional.
-const ATTACK_SECONDS: f32 = 0.0015;
+pub(crate) const ATTACK_SECONDS: f32 = 0.0015;
 /// Time constant with which the percussion recovers once every key is up.
 /// A console played fast and detached does not deliver full percussion on
 /// every note; this is where that comes from. Provisional.
-const RECOVERY_SECONDS: f32 = 0.12;
+pub(crate) const RECOVERY_SECONDS: f32 = 0.12;
+/// Peak level of the percussion at each volume setting, against the harmonic
+/// bus it is taken from. Provisional: Hammond names the two settings and what
+/// Normal does to the drawbars, not the percussion's own level.
+pub(crate) const SOFT_LEVEL: f32 = 0.34;
+pub(crate) const NORMAL_LEVEL: f32 = 0.72;
+/// Time for the percussion to fall 60 dB at each decay setting. Provisional:
+/// Hammond publishes no figure in seconds for either.
+pub(crate) const SLOW_T60_S: f32 = 1.25;
+pub(crate) const FAST_T60_S: f32 = 0.28;
 
 pub struct Percussion {
     sample_rate: f32,
@@ -80,10 +91,21 @@ pub struct Percussion {
     envelope: f32,
     /// How much of the percussion supply is available, 0 to 1.
     charge: f32,
+    attack_s: f32,
+    recovery_s: f32,
+    soft_level: f32,
+    normal_level: f32,
+    slow_t60_s: f32,
+    fast_t60_s: f32,
 }
 
 impl Percussion {
-    pub const fn new(sample_rate: f32) -> Self {
+    #[cfg(test)]
+    pub fn new(sample_rate: f32) -> Self {
+        Self::with_model(sample_rate, &Model::BASELINE)
+    }
+
+    pub fn with_model(sample_rate: f32, model: &Model) -> Self {
         Self {
             sample_rate,
             enabled: false,
@@ -94,6 +116,12 @@ impl Percussion {
             attack: 0.0,
             envelope: 0.0,
             charge: 1.0,
+            attack_s: model[Knob::PercussionAttackS],
+            recovery_s: model[Knob::PercussionRecoveryS],
+            soft_level: model[Knob::PercussionSoftLevel],
+            normal_level: model[Knob::PercussionNormalLevel],
+            slow_t60_s: model[Knob::PercussionSlowT60S],
+            fast_t60_s: model[Knob::PercussionFastT60S],
         }
     }
 
@@ -141,8 +169,8 @@ impl Percussion {
     pub fn trigger(&mut self) {
         if self.enabled {
             let level = match self.volume {
-                PercussionVolume::Soft => 0.34,
-                PercussionVolume::Normal => 0.72,
+                PercussionVolume::Soft => self.soft_level,
+                PercussionVolume::Normal => self.normal_level,
             };
             self.peak = level * self.charge;
             self.charge = 0.0;
@@ -155,16 +183,16 @@ impl Percussion {
     /// only recovers once they are all up.
     pub fn process(&mut self, harmonic_signal: f32, keys_held: bool) -> f32 {
         let output = harmonic_signal * self.peak * self.attack * self.envelope;
-        let attack_rate = (1.0 / (ATTACK_SECONDS * self.sample_rate)).min(1.0);
+        let attack_rate = (1.0 / (self.attack_s * self.sample_rate)).min(1.0);
         self.attack += attack_rate * (1.0 - self.attack);
         let t60 = match self.decay {
-            PercussionDecay::Slow => 1.25,
-            PercussionDecay::Fast => 0.28,
+            PercussionDecay::Slow => self.slow_t60_s,
+            PercussionDecay::Fast => self.fast_t60_s,
         };
         let decrement = (6.907_755 / (t60 * self.sample_rate)).min(1.0);
         self.envelope *= 1.0 - decrement;
         if !keys_held {
-            let recovery = (1.0 / (RECOVERY_SECONDS * self.sample_rate)).min(1.0);
+            let recovery = (1.0 / (self.recovery_s * self.sample_rate)).min(1.0);
             self.charge += recovery * (1.0 - self.charge);
         }
         output

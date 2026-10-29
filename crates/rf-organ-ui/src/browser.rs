@@ -66,32 +66,6 @@ impl App {
                 select.set_disabled(!ready);
             }
         }
-        let programs = self.element("programs");
-        let signature = self
-            .client
-            .sounds
-            .iter()
-            .map(|sound| format!("{}:{}", sound.id, sound.name))
-            .collect::<Vec<_>>()
-            .join("|");
-        if programs.get_attribute("data-catalog").as_deref() != Some(&signature) {
-            programs.set_text_content(None);
-            for sound in &self.client.sounds {
-                let option = self.document.create_element("option").expect("option");
-                let _ = option.set_attribute("value", &sound.id);
-                option.set_text_content(Some(&sound.name));
-                let _ = programs.append_child(&option);
-            }
-            let _ = programs.set_attribute("data-catalog", &signature);
-        }
-        programs
-            .unchecked_ref::<HtmlSelectElement>()
-            .set_value(&self.client.selected);
-        if ready {
-            let _ = programs.remove_attribute("disabled");
-        } else {
-            let _ = programs.set_attribute("disabled", "");
-        }
         self.element("status")
             .set_text_content(Some(&self.client.status));
         let _ = self
@@ -289,23 +263,6 @@ fn control_events(app: &Shared) -> Result<(), JsValue> {
     Ok(())
 }
 
-fn program_events(app: &Shared) -> Result<(), JsValue> {
-    let element = app.borrow().element("programs");
-    let shared = app.clone();
-    let callback = Closure::<dyn FnMut(Event)>::new(move |_| {
-        let mut app = shared.borrow_mut();
-        let id = app
-            .element("programs")
-            .unchecked_ref::<HtmlSelectElement>()
-            .value();
-        app.client.select(&id);
-        app.pump(false);
-    });
-    element.add_event_listener_with_callback("change", callback.as_ref().unchecked_ref())?;
-    callback.forget();
-    Ok(())
-}
-
 #[wasm_bindgen(start)]
 pub fn start() -> Result<(), JsValue> {
     let window = web_sys::window().ok_or_else(|| JsValue::from_str("missing window"))?;
@@ -331,7 +288,6 @@ pub fn start() -> Result<(), JsValue> {
         drawn_at: None,
     }));
     control_events(&app)?;
-    program_events(&app)?;
 
     let messages = app.clone();
     let callback = Closure::<dyn FnMut(MessageEvent)>::new(move |event: MessageEvent| {

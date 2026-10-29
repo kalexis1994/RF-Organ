@@ -7,10 +7,13 @@
 //! establish a physically informed baseline and remain subject to measurement.
 
 mod electronics;
+mod leslie_amp;
 mod manual;
+mod model;
 mod pedal;
 mod percussion;
 mod preset;
+pub mod provenance;
 mod rotary;
 mod scanner;
 mod taper;
@@ -32,20 +35,25 @@ pub use preset::{
     LOWER_PRESET_NAMES, LOWER_PRESETS, PRESET_COUNT, UPPER_PRESET_NAMES, UPPER_PRESETS,
 };
 pub use rotary::{
-    DRUM_RADIUS_DEFAULT_M, DRUM_RADIUS_RANGE_M, HORN_RADIUS_DEFAULT_M, HORN_RADIUS_RANGE_M,
-    LEVEL_RANGE_DB, LEVEL_SILENT_DB, MIC_DISTANCE_DEFAULT_M, MIC_DISTANCE_RANGE_M,
-    MIC_OFFSET_MAX_M, MIC_PATTERN_DEFAULT, MIC_SPACING_DEFAULT_M, MIC_SPACING_MAX_M,
-    MainsFrequency, MicrophoneArray, MicrophonePair, MicrophoneType, Rotary, RotaryDiagnostics,
-    RotaryGeometry, RotaryMode, RotaryPlacement, SUB_LEVEL_DEFAULT_DB, StopAngle,
+    DRUM_MIC_SPACING_DEFAULT_M, DRUM_RADIUS_DEFAULT_M, DRUM_RADIUS_RANGE_M,
+    HORN_MIC_DISTANCE_DEFAULT_M, HORN_MIC_SIDES_DEFAULT, HORN_RADIUS_DEFAULT_M,
+    HORN_RADIUS_RANGE_M, LEVEL_RANGE_DB, LEVEL_SILENT_DB, MIC_DISTANCE_DEFAULT_M,
+    MIC_DISTANCE_RANGE_M, MIC_OFFSET_MAX_M, MIC_PATTERN_DEFAULT, MIC_SPACING_DEFAULT_M,
+    MIC_SPACING_MAX_M, MainsFrequency, MicrophoneArray, MicrophonePair, MicrophoneType, Rotary,
+    RotaryDiagnostics, RotaryGeometry, RotaryMode, RotaryPlacement, SUB_LEVEL_DEFAULT_DB,
+    StopAngle,
 };
 pub use scanner::{ScannerMode, ScannerVibrato};
-pub use taper::TAPER;
+pub use taper::{KEY_TAPER, TAPER};
 pub use tonewheel::{TONEWHEEL_COUNT, gear_frequency, gear_teeth};
 pub use transformer::{
     ASYMMETRY_DEFAULT as TRANSFORMER_ASYMMETRY_DEFAULT, MatchingTransformer,
     TransformerDiagnostics, TransformerUnit,
 };
 pub use vibrato_line::{CUTOFF_HZ as SCANNER_LINE_CUTOFF_HZ, ROTOR_HZ as SCANNER_ROTOR_HZ};
+
+pub use leslie_amp::{AMP_DRIVE_DEFAULT, LeslieAmp};
+pub use model::{Knob, Model};
 
 use manual::Manual;
 use pedal::Pedalboard;
@@ -90,31 +98,39 @@ pub struct OrganEngine {
     held_notes: u8,
     upper_scanner: bool,
     lower_scanner: bool,
+    leakage_ceiling: f32,
 }
 
 impl OrganEngine {
     pub fn new(sample_rate: f32) -> Result<Self, ModelError> {
+        Self::with_model(sample_rate, &Model::BASELINE)
+    }
+
+    /// An engine built from a model other than the shipped one. The plugin
+    /// never does this; the laboratory does, to find out what each of the
+    /// unmeasured constants is worth.
+    pub fn with_model(sample_rate: f32, model: &Model) -> Result<Self, ModelError> {
         if !sample_rate.is_finite() || !(SAMPLE_RATE_MIN..=SAMPLE_RATE_MAX).contains(&sample_rate) {
             return Err(ModelError(
                 "sample rate must be finite and between 32 and 192 kHz",
             ));
         }
         Ok(Self {
-            tonewheels: TonewheelBank::new(sample_rate),
+            tonewheels: TonewheelBank::with_model(sample_rate, model),
             // The panel is "divided into two sets of nine bars, each
             // connected to a separate matching transformer", so each manual
             // gets its own half of it.
-            upper: Manual::new(sample_rate, &preset::UPPER_PRESETS),
-            lower: Manual::new(sample_rate, &preset::LOWER_PRESETS),
-            pedals: Pedalboard::new(sample_rate),
-            upper_transformer: MatchingTransformer::new(sample_rate),
-            lower_pedal_transformer: MatchingTransformer::new(sample_rate),
-            electronics: ConsoleElectronics::new(sample_rate),
-            output_transformer: MatchingTransformer::new(sample_rate),
-            scanner: ScannerVibrato::new(sample_rate),
-            percussion: Percussion::new(sample_rate),
+            upper: Manual::with_model(sample_rate, &preset::UPPER_PRESETS, model),
+            lower: Manual::with_model(sample_rate, &preset::LOWER_PRESETS, model),
+            pedals: Pedalboard::with_model(sample_rate, model),
+            upper_transformer: MatchingTransformer::with_model(sample_rate, model),
+            lower_pedal_transformer: MatchingTransformer::with_model(sample_rate, model),
+            electronics: ConsoleElectronics::with_model(sample_rate, model),
+            output_transformer: MatchingTransformer::with_model(sample_rate, model),
+            scanner: ScannerVibrato::with_model(sample_rate, model),
+            percussion: Percussion::with_model(sample_rate, model),
             percussion_armed: false,
-            rotary: Rotary::new(sample_rate),
+            rotary: Rotary::with_model(sample_rate, model),
             transformer_character: (0.35, 0.25),
             transformer_trims: [(0.0, 0.0); 3],
             output_level: 0.72,
@@ -123,6 +139,7 @@ impl OrganEngine {
             held_notes: 0,
             upper_scanner: true,
             lower_scanner: false,
+            leakage_ceiling: model[Knob::LeakageCeiling],
         })
     }
 
@@ -266,6 +283,12 @@ impl OrganEngine {
         true
     }
 
+    /// Where the expression pedal was last set, before the swell network's
+    /// own slew.
+    pub const fn expression(&self) -> f32 {
+        self.expression
+    }
+
     pub fn set_contact_spread(&mut self, value: f32) -> bool {
         self.upper.set_contact_spread(value)
             && self.lower.set_contact_spread(value)
@@ -348,7 +371,7 @@ impl OrganEngine {
         if !unit(value) {
             return false;
         }
-        self.leakage = value * 0.12;
+        self.leakage = value * self.leakage_ceiling;
         true
     }
 
@@ -489,6 +512,11 @@ impl OrganEngine {
             .set_shaft_rpm_for_fifty(mains == MainsFrequency::Fifty);
     }
 
+    /// Which capsule the horn's pair is, and which the drum's.
+    pub fn set_rotary_microphone_types(&mut self, horn: MicrophoneType, drum: MicrophoneType) {
+        self.rotary.set_microphone_types(horn, drum);
+    }
+
     pub fn set_rotary_microphone_type(&mut self, capsule: MicrophoneType) {
         self.rotary.set_microphone_type(capsule);
     }
@@ -547,8 +575,19 @@ impl OrganEngine {
         );
         let console = self.route_ao28_inputs(upper, lower, pedals, percussion);
         let console = self.electronics.process(console, self.expression);
-        let organ = self.output_transformer.process(console) * self.output_level;
-        self.rotary.process(organ)
+        // The cabinet's amplifier is driven by what the console sends it, so
+        // the host's output level, which is no part of the instrument, comes
+        // after it.
+        let organ = self.output_transformer.process(console);
+        self.rotary
+            .process(organ)
+            .map(|side| side * self.output_level)
+    }
+
+    /// How hard the console drives the rotary cabinet's amplifier, from
+    /// clean at zero to well into clipping at one.
+    pub fn set_rotary_drive(&mut self, value: f32) -> bool {
+        self.rotary.set_drive(value)
     }
 
     /// Routes the generator buses into the AO-28 input channels. T2 receives

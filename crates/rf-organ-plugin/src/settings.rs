@@ -1,16 +1,19 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 use rf_organ_dsp::{
-    ConsoleStage, DRAWBAR_COUNT, DRUM_RADIUS_DEFAULT_M, DRUM_RADIUS_RANGE_M, HORN_RADIUS_DEFAULT_M,
-    HORN_RADIUS_RANGE_M, LEAKAGE_BOOST_DEFAULT, LEVEL_RANGE_DB, LEVEL_SILENT_DB,
-    MIC_DISTANCE_DEFAULT_M, MIC_DISTANCE_RANGE_M, MIC_OFFSET_MAX_M, MIC_PATTERN_DEFAULT,
-    MIC_SPACING_DEFAULT_M, MIC_SPACING_MAX_M, MainsFrequency, MicrophoneArray, MicrophonePair,
-    MicrophoneType, OrganEngine, OrganPart, PEDAL_DRAWBAR_COUNT, PercussionDecay,
-    PercussionHarmonic, PercussionVolume, Registration, RotaryMode, STAGE_CHARACTER_DEFAULT,
-    STAGE_CHARACTER_RANGE, SUB_LEVEL_DEFAULT_DB, ScannerMode, StopAngle,
-    TRANSFORMER_ASYMMETRY_DEFAULT, TransformerUnit,
+    AMP_DRIVE_DEFAULT, ConsoleStage, DRAWBAR_COUNT, DRUM_MIC_SPACING_DEFAULT_M,
+    DRUM_RADIUS_DEFAULT_M, DRUM_RADIUS_RANGE_M, HORN_MIC_DISTANCE_DEFAULT_M,
+    HORN_MIC_SIDES_DEFAULT, HORN_RADIUS_DEFAULT_M, HORN_RADIUS_RANGE_M, LEAKAGE_BOOST_DEFAULT,
+    LEVEL_RANGE_DB, LEVEL_SILENT_DB, MIC_DISTANCE_DEFAULT_M, MIC_DISTANCE_RANGE_M,
+    MIC_OFFSET_MAX_M, MIC_PATTERN_DEFAULT, MIC_SPACING_DEFAULT_M, MIC_SPACING_MAX_M,
+    MainsFrequency, MicrophoneArray, MicrophonePair, MicrophoneType, OrganEngine, OrganPart,
+    PEDAL_DRAWBAR_COUNT, PercussionDecay, PercussionHarmonic, PercussionVolume, Registration,
+    RotaryMode, STAGE_CHARACTER_DEFAULT, STAGE_CHARACTER_RANGE, SUB_LEVEL_DEFAULT_DB, ScannerMode,
+    StopAngle, TRANSFORMER_ASYMMETRY_DEFAULT, TransformerUnit,
 };
 
-pub const PARAMETER_COUNT: usize = 95;
+use crate::pedal::SustainPedal;
+
+pub const PARAMETER_COUNT: usize = 98;
 /// Per-stage offsets from the shared console character, ordered V4A, V4B, V3B.
 pub const CONSOLE_STAGE_TRIM_FIRST: u32 = 69;
 /// Bipolar per-transformer calibration trims, ordered T1, T2, T3.
@@ -30,7 +33,14 @@ pub const LOWER_ADJUST_A_DRAWBAR_LAST: u32 =
     LOWER_ADJUST_A_DRAWBAR_FIRST + DRAWBAR_COUNT as u32 - 1;
 pub const REGISTRATION: u32 = 93;
 pub const LOWER_REGISTRATION: u32 = 94;
+/// How hard the console drives the rotary cabinet's amplifier.
+pub const ROTARY_DRIVE: u32 = 95;
+/// The drum's pair's capsule; parameter 59 is the horn's.
+pub const DRUM_MICROPHONE_TYPE: u32 = 96;
+/// What the sustain pedal does to the cabinet's speed.
+pub const SUSTAIN_PEDAL: u32 = 97;
 pub const PEDAL_DRAWBAR_LAST: u32 = PEDAL_DRAWBAR_FIRST + PEDAL_DRAWBAR_COUNT as u32 - 1;
+pub const ROTARY_MODE: u32 = 16;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Settings {
@@ -118,6 +128,14 @@ pub struct Settings {
     pub rotary_horn_level: f64,
     pub rotary_drum_level: f64,
     pub transformer_trims: [[f64; 2]; 3],
+    /// How hard the console drives the cabinet's amplifier: at the middle an
+    /// 888 chord at full expression reaches the edge of breakup.
+    pub rotary_drive: f64,
+    /// The drum's pair's capsule; `rotary_microphone_type` is the horn's.
+    pub rotary_drum_microphone_type: MicrophoneType,
+    /// What the sustain pedal does: the console has no sustain, so it is
+    /// the cabinet's speed switch.
+    pub sustain_pedal: SustainPedal,
 }
 
 impl Default for Settings {
@@ -158,12 +176,12 @@ impl Default for Settings {
             console_bass: 0.0,
             console_treble: 0.0,
             expression_character: 0.55,
-            rotary_horn_mic_distance: MIC_DISTANCE_DEFAULT_M as f64,
+            rotary_horn_mic_distance: HORN_MIC_DISTANCE_DEFAULT_M as f64,
             rotary_horn_mic_spacing: MIC_SPACING_DEFAULT_M as f64,
             rotary_horn_mic_offset: 0.0,
-            rotary_horn_mic_sides: false,
+            rotary_horn_mic_sides: HORN_MIC_SIDES_DEFAULT,
             rotary_drum_mic_distance: MIC_DISTANCE_DEFAULT_M as f64,
-            rotary_drum_mic_spacing: MIC_SPACING_DEFAULT_M as f64,
+            rotary_drum_mic_spacing: DRUM_MIC_SPACING_DEFAULT_M as f64,
             rotary_drum_mic_offset: 0.0,
             rotary_drum_mic_sides: false,
             rotary_mic_pattern: MIC_PATTERN_DEFAULT as f64,
@@ -178,6 +196,9 @@ impl Default for Settings {
             rotary_horn_level: 0.0,
             rotary_drum_level: 0.0,
             transformer_trims: [[0.0; 2]; 3],
+            rotary_drive: AMP_DRIVE_DEFAULT as f64,
+            rotary_drum_microphone_type: MicrophoneType::Dynamic,
+            sustain_pedal: SustainPedal::Alternate,
         }
     }
 }
@@ -238,6 +259,7 @@ impl Settings {
             && finite_range(self.rotary_drum_stop_angle, 0.0, 360.0)
             && level(self.rotary_sub_level)
             && unit(self.rotary_reflections)
+            && unit(self.rotary_drive)
             && level(self.rotary_horn_level)
             && level(self.rotary_drum_level)
             && self
@@ -259,7 +281,7 @@ impl Settings {
             13 => self.leakage,
             14 => self.transformer_drive,
             15 => self.transformer_hysteresis,
-            16 => f64::from(self.rotary_mode as u8),
+            ROTARY_MODE => f64::from(self.rotary_mode as u8),
             17 => self.rotary_mix,
             18 => self.rotary_acceleration,
             19 => f64::from(self.scanner_mode as u8),
@@ -314,6 +336,9 @@ impl Settings {
             }
             REGISTRATION => f64::from(self.registration.index()),
             LOWER_REGISTRATION => f64::from(self.lower_registration.index()),
+            ROTARY_DRIVE => self.rotary_drive,
+            DRUM_MICROPHONE_TYPE => f64::from(self.rotary_drum_microphone_type as u8),
+            SUSTAIN_PEDAL => f64::from(self.sustain_pedal as u8),
             52 => self.rotary_mic_pattern,
             53 => self.rotary_horn_radius,
             54 => self.rotary_drum_radius,
@@ -344,7 +369,7 @@ impl Settings {
             13 => self.leakage = value,
             14 => self.transformer_drive = value,
             15 => self.transformer_hysteresis = value,
-            16 if value.fract() == 0.0 => {
+            ROTARY_MODE if value.fract() == 0.0 => {
                 self.rotary_mode = RotaryMode::from_index(value as u8)?;
             }
             17 => self.rotary_mix = value,
@@ -381,6 +406,13 @@ impl Settings {
             41 => self.rotary_horn_mic_distance = value,
             42 => self.rotary_horn_mic_spacing = value,
             43 => self.rotary_reflections = value,
+            ROTARY_DRIVE => self.rotary_drive = value,
+            DRUM_MICROPHONE_TYPE if value.fract() == 0.0 => {
+                self.rotary_drum_microphone_type = MicrophoneType::from_index(value as u8)?;
+            }
+            SUSTAIN_PEDAL if value.fract() == 0.0 => {
+                self.sustain_pedal = SustainPedal::from_index(value as u8)?;
+            }
             44 => self.rotary_horn_level = value,
             45..=50 => {
                 let trim = (index - TRANSFORMER_TRIM_FIRST) as usize;
@@ -436,121 +468,334 @@ impl Settings {
         self.valid().then_some(self)
     }
 
+    /// Puts every setting on the engine, as a program or a restored state
+    /// does.
     pub fn apply(self, engine: &mut OrganEngine) {
         debug_assert!(self.valid());
-        let _ = engine.set_output_level(self.output_level as f32);
-        let _ = engine.set_expression(self.expression as f32);
-        for (part, groups) in [
-            (OrganPart::Upper, [self.drawbars_a, self.drawbars_b]),
-            (
-                OrganPart::Lower,
-                [self.lower_drawbars_a, self.lower_drawbars_b],
-            ),
-        ] {
-            for (key, group) in [Registration::AdjustA, Registration::AdjustB]
-                .into_iter()
-                .zip(groups)
-            {
-                for (index, position) in group.into_iter().enumerate() {
-                    let _ = engine.set_manual_drawbar(part, key, index, position);
+        for group in Group::ALL {
+            self.apply_group(group, engine);
+        }
+    }
+
+    /// Puts on the engine only what one parameter reaches.
+    ///
+    /// A player moving one drawbar has not asked for the rest of the console
+    /// to be set again. Re-applying everything put the expression and the
+    /// cabinet speed back to what the parameters said, so a pedal held on
+    /// CC 11 or a speed thrown on CC 1 was undone by the next control anyone
+    /// touched.
+    pub fn apply_parameter(self, index: u32, engine: &mut OrganEngine) {
+        debug_assert!(self.valid());
+        if let Some(group) = Group::of(index) {
+            self.apply_group(group, engine);
+        }
+    }
+
+    fn apply_group(self, group: Group, engine: &mut OrganEngine) {
+        match group {
+            Group::OutputLevel => {
+                let _ = engine.set_output_level(self.output_level as f32);
+            }
+            Group::Expression => {
+                let _ = engine.set_expression(self.expression as f32);
+            }
+            Group::ManualDrawbars => {
+                for (part, groups) in [
+                    (OrganPart::Upper, [self.drawbars_a, self.drawbars_b]),
+                    (
+                        OrganPart::Lower,
+                        [self.lower_drawbars_a, self.lower_drawbars_b],
+                    ),
+                ] {
+                    for (key, group) in [Registration::AdjustA, Registration::AdjustB]
+                        .into_iter()
+                        .zip(groups)
+                    {
+                        for (index, position) in group.into_iter().enumerate() {
+                            let _ = engine.set_manual_drawbar(part, key, index, position);
+                        }
+                    }
                 }
             }
+            Group::Registrations => {
+                let _ = engine.set_manual_registration(OrganPart::Upper, self.registration);
+                let _ = engine.set_manual_registration(OrganPart::Lower, self.lower_registration);
+            }
+            Group::PedalDrawbars => {
+                for (index, position) in self.pedal_drawbars.into_iter().enumerate() {
+                    let _ = engine.set_manual_drawbar(
+                        OrganPart::Pedal,
+                        Registration::AdjustB,
+                        index,
+                        position,
+                    );
+                }
+            }
+            Group::ContactSpread => {
+                let _ = engine.set_contact_spread(self.contact_spread as f32);
+            }
+            Group::ContactBounce => {
+                let _ = engine.set_contact_bounce(self.contact_bounce as f32);
+            }
+            Group::ContactDelay => {
+                let _ = engine.set_contact_delay(self.contact_delay as f32);
+            }
+            Group::KeyClick => {
+                let _ = engine.set_key_click(self.key_click as f32);
+            }
+            Group::Leakage => {
+                let _ = engine.set_leakage(self.leakage as f32);
+            }
+            Group::DriveWobble => {
+                let _ = engine.set_drive_wobble(self.drive_wobble as f32);
+            }
+            Group::LeakageBoost => {
+                let _ = engine.set_leakage_boost(self.leakage_boost as f32);
+            }
+            Group::ConsoleStages => {
+                let _ = engine.set_console_stage_character(self.console_stage_character as f32);
+                for (stage, trim) in ConsoleStage::ALL.into_iter().zip(self.console_stage_trims) {
+                    let _ = engine.set_console_stage_trim(stage, trim as f32);
+                }
+            }
+            Group::Transformers => {
+                let _ = engine.set_transformer(
+                    self.transformer_drive as f32,
+                    self.transformer_hysteresis as f32,
+                );
+                let _ = engine.set_transformer_asymmetry(self.transformer_asymmetry as f32);
+                for (unit, [drive, hysteresis]) in
+                    TransformerUnit::ALL.into_iter().zip(self.transformer_trims)
+                {
+                    let _ = engine.set_transformer_trim(unit, drive as f32, hysteresis as f32);
+                }
+            }
+            Group::Console => {
+                let _ = engine.set_console(
+                    self.console_drive as f32,
+                    self.console_bass as f32,
+                    self.console_treble as f32,
+                );
+            }
+            Group::ExpressionCharacter => {
+                let _ = engine.set_expression_character(self.expression_character as f32);
+            }
+            Group::RotaryMode => engine.set_rotary_mode(self.rotary_mode),
+            Group::RotaryMix => {
+                let _ = engine.set_rotary_mix(self.rotary_mix as f32);
+            }
+            Group::RotaryAcceleration => {
+                let _ = engine.set_rotary_acceleration(self.rotary_acceleration as f32);
+            }
+            Group::RotaryCabinet => {
+                let _ = engine.set_rotary_cabinet(self.rotary_reflections as f32);
+            }
+            Group::RotaryLevels => {
+                let _ = engine.set_rotary_levels(
+                    self.rotary_horn_level as f32,
+                    self.rotary_drum_level as f32,
+                    self.rotary_sub_level as f32,
+                );
+            }
+            Group::RotaryMicrophones => {
+                let _ = engine.set_rotary_microphones(MicrophoneArray {
+                    horn: MicrophonePair {
+                        distance_m: self.rotary_horn_mic_distance as f32,
+                        spacing_m: self.rotary_horn_mic_spacing as f32,
+                        offset_m: self.rotary_horn_mic_offset as f32,
+                        at_the_sides: self.rotary_horn_mic_sides,
+                    },
+                    drum: MicrophonePair {
+                        distance_m: self.rotary_drum_mic_distance as f32,
+                        spacing_m: self.rotary_drum_mic_spacing as f32,
+                        offset_m: self.rotary_drum_mic_offset as f32,
+                        at_the_sides: self.rotary_drum_mic_sides,
+                    },
+                    pattern: self.rotary_mic_pattern as f32,
+                });
+            }
+            Group::RotaryRadii => {
+                let _ = engine.set_rotary_rotor_radii(
+                    self.rotary_horn_radius as f32,
+                    self.rotary_drum_radius as f32,
+                );
+            }
+            Group::RotaryStopAngles => {
+                if let (Some(horn), Some(drum)) = (
+                    StopAngle::from_degrees(self.rotary_horn_stop_angle as f32),
+                    StopAngle::from_degrees(self.rotary_drum_stop_angle as f32),
+                ) {
+                    let _ = engine.set_rotary_stop_angles(horn, drum);
+                }
+            }
+            Group::Mains => engine.set_mains(self.rotary_mains),
+            Group::MicrophoneType => {
+                engine.set_rotary_microphone_types(
+                    self.rotary_microphone_type,
+                    self.rotary_drum_microphone_type,
+                );
+            }
+            Group::Scanner => {
+                engine.set_scanner_mode(self.scanner_mode);
+                engine.set_scanner_manuals(self.upper_scanner, self.lower_scanner);
+            }
+            Group::RotaryDrive => {
+                let _ = engine.set_rotary_drive(self.rotary_drive as f32);
+            }
+            // The processor reads the pedal; the engine never sees it.
+            Group::SustainPedal => {}
+            Group::Percussion => {
+                engine.set_percussion_enabled(self.percussion_enabled);
+                engine.set_percussion_harmonic(self.percussion_harmonic);
+                engine.set_percussion_volume(self.percussion_volume);
+                engine.set_percussion_decay(self.percussion_decay);
+            }
         }
-        let _ = engine.set_manual_registration(OrganPart::Upper, self.registration);
-        let _ = engine.set_manual_registration(OrganPart::Lower, self.lower_registration);
-        for (index, position) in self.pedal_drawbars.into_iter().enumerate() {
-            let _ =
-                engine.set_manual_drawbar(OrganPart::Pedal, Registration::AdjustB, index, position);
-        }
-        let _ = engine.set_contact_spread(self.contact_spread as f32);
-        let _ = engine.set_contact_bounce(self.contact_bounce as f32);
-        let _ = engine.set_contact_delay(self.contact_delay as f32);
-        let _ = engine.set_key_click(self.key_click as f32);
-        let _ = engine.set_leakage(self.leakage as f32);
-        let _ = engine.set_drive_wobble(self.drive_wobble as f32);
-        let _ = engine.set_leakage_boost(self.leakage_boost as f32);
-        let _ = engine.set_console_stage_character(self.console_stage_character as f32);
-        for (stage, trim) in ConsoleStage::ALL.into_iter().zip(self.console_stage_trims) {
-            let _ = engine.set_console_stage_trim(stage, trim as f32);
-        }
-        let _ = engine.set_transformer(
-            self.transformer_drive as f32,
-            self.transformer_hysteresis as f32,
-        );
-        let _ = engine.set_transformer_asymmetry(self.transformer_asymmetry as f32);
-        for (unit, [drive, hysteresis]) in
-            TransformerUnit::ALL.into_iter().zip(self.transformer_trims)
-        {
-            let _ = engine.set_transformer_trim(unit, drive as f32, hysteresis as f32);
-        }
-        let _ = engine.set_console(
-            self.console_drive as f32,
-            self.console_bass as f32,
-            self.console_treble as f32,
-        );
-        let _ = engine.set_expression_character(self.expression_character as f32);
-        engine.set_rotary_mode(self.rotary_mode);
-        let _ = engine.set_rotary_mix(self.rotary_mix as f32);
-        let _ = engine.set_rotary_acceleration(self.rotary_acceleration as f32);
-        let _ = engine.set_rotary_cabinet(self.rotary_reflections as f32);
-        let _ = engine.set_rotary_levels(
-            self.rotary_horn_level as f32,
-            self.rotary_drum_level as f32,
-            self.rotary_sub_level as f32,
-        );
-        let _ = engine.set_rotary_microphones(MicrophoneArray {
-            horn: MicrophonePair {
-                distance_m: self.rotary_horn_mic_distance as f32,
-                spacing_m: self.rotary_horn_mic_spacing as f32,
-                offset_m: self.rotary_horn_mic_offset as f32,
-                at_the_sides: self.rotary_horn_mic_sides,
-            },
-            drum: MicrophonePair {
-                distance_m: self.rotary_drum_mic_distance as f32,
-                spacing_m: self.rotary_drum_mic_spacing as f32,
-                offset_m: self.rotary_drum_mic_offset as f32,
-                at_the_sides: self.rotary_drum_mic_sides,
-            },
-            pattern: self.rotary_mic_pattern as f32,
-        });
-        let _ = engine.set_rotary_rotor_radii(
-            self.rotary_horn_radius as f32,
-            self.rotary_drum_radius as f32,
-        );
-        if let (Some(horn), Some(drum)) = (
-            StopAngle::from_degrees(self.rotary_horn_stop_angle as f32),
-            StopAngle::from_degrees(self.rotary_drum_stop_angle as f32),
-        ) {
-            let _ = engine.set_rotary_stop_angles(horn, drum);
-        }
-        engine.set_mains(self.rotary_mains);
-        engine.set_rotary_microphone_type(self.rotary_microphone_type);
-        engine.set_scanner_mode(self.scanner_mode);
-        engine.set_scanner_manuals(self.upper_scanner, self.lower_scanner);
-        engine.set_percussion_enabled(self.percussion_enabled);
-        engine.set_percussion_harmonic(self.percussion_harmonic);
-        engine.set_percussion_volume(self.percussion_volume);
-        engine.set_percussion_decay(self.percussion_decay);
     }
 }
 
-/// The programs the plugin ships with.
+/// What one call on the engine sets. Some parameters reach the engine
+/// together - the three console controls are one call - so a change to one
+/// of them puts the whole group on again, and the rest of the console is left
+/// alone.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Group {
+    OutputLevel,
+    Expression,
+    ManualDrawbars,
+    Registrations,
+    PedalDrawbars,
+    ContactSpread,
+    ContactBounce,
+    ContactDelay,
+    KeyClick,
+    Leakage,
+    DriveWobble,
+    LeakageBoost,
+    ConsoleStages,
+    Transformers,
+    Console,
+    ExpressionCharacter,
+    RotaryMode,
+    RotaryMix,
+    RotaryAcceleration,
+    RotaryCabinet,
+    RotaryLevels,
+    RotaryMicrophones,
+    RotaryRadii,
+    RotaryStopAngles,
+    Mains,
+    MicrophoneType,
+    Scanner,
+    Percussion,
+    RotaryDrive,
+    SustainPedal,
+}
+
+impl Group {
+    /// In the order a whole program is put on the engine.
+    const ALL: [Self; 30] = [
+        Self::OutputLevel,
+        Self::Expression,
+        Self::ManualDrawbars,
+        Self::Registrations,
+        Self::PedalDrawbars,
+        Self::ContactSpread,
+        Self::ContactBounce,
+        Self::ContactDelay,
+        Self::KeyClick,
+        Self::Leakage,
+        Self::DriveWobble,
+        Self::LeakageBoost,
+        Self::ConsoleStages,
+        Self::Transformers,
+        Self::Console,
+        Self::ExpressionCharacter,
+        Self::RotaryMode,
+        Self::RotaryMix,
+        Self::RotaryAcceleration,
+        Self::RotaryCabinet,
+        Self::RotaryLevels,
+        Self::RotaryMicrophones,
+        Self::RotaryRadii,
+        Self::RotaryStopAngles,
+        Self::Mains,
+        Self::MicrophoneType,
+        Self::Scanner,
+        Self::Percussion,
+        Self::RotaryDrive,
+        Self::SustainPedal,
+    ];
+
+    const fn of(index: u32) -> Option<Self> {
+        Some(match index {
+            0 => Self::OutputLevel,
+            1 => Self::Expression,
+            DRAWBAR_FIRST..=DRAWBAR_LAST
+            | LOWER_DRAWBAR_FIRST..=LOWER_DRAWBAR_LAST
+            | ADJUST_A_DRAWBAR_FIRST..=ADJUST_A_DRAWBAR_LAST
+            | LOWER_ADJUST_A_DRAWBAR_FIRST..=LOWER_ADJUST_A_DRAWBAR_LAST => Self::ManualDrawbars,
+            REGISTRATION | LOWER_REGISTRATION => Self::Registrations,
+            PEDAL_DRAWBAR_FIRST..=PEDAL_DRAWBAR_LAST => Self::PedalDrawbars,
+            11 => Self::ContactSpread,
+            12 => Self::ContactBounce,
+            72 => Self::ContactDelay,
+            74 => Self::KeyClick,
+            13 => Self::Leakage,
+            66 => Self::DriveWobble,
+            67 => Self::LeakageBoost,
+            68..=71 => Self::ConsoleStages,
+            14 | 15 | 45..=50 | 73 => Self::Transformers,
+            37..=39 => Self::Console,
+            40 => Self::ExpressionCharacter,
+            ROTARY_MODE => Self::RotaryMode,
+            17 => Self::RotaryMix,
+            18 => Self::RotaryAcceleration,
+            43 => Self::RotaryCabinet,
+            44 | 58 | 60 => Self::RotaryLevels,
+            41 | 42 | 51 | 52 | 61..=65 => Self::RotaryMicrophones,
+            53 | 54 => Self::RotaryRadii,
+            55 | 56 => Self::RotaryStopAngles,
+            57 => Self::Mains,
+            59 | DRUM_MICROPHONE_TYPE => Self::MicrophoneType,
+            19 | 35 | 36 => Self::Scanner,
+            20..=23 => Self::Percussion,
+            ROTARY_DRIVE => Self::RotaryDrive,
+            SUSTAIN_PEDAL => Self::SustainPedal,
+            _ => return None,
+        })
+    }
+}
+
+/// The programs the plugin ships with, in the order the catalogue lists them.
 ///
-/// The first eight are console setups: a registration together with the
-/// percussion, vibrato, cabinet and drive that go with a way of playing. The
-/// eight after them are tone colours, and their registrations are not
-/// invented: they are quoted digit for digit from the published table of
-/// drawbar registration patterns for the four families a pipe organ is built
-/// from, in the 2-4-3 notation that table uses. The stop names are the pipe
-/// organ's own and are centuries older than any tonewheel instrument; the
-/// provenance of the figures is in THIRD_PARTY_NOTICES.md, which is where
-/// this project keeps trademarks. What surrounds each registration is this
-/// plugin's arrangement and not the table's: which cabinet speed, how much
-/// drive, whether the scanner is in, what the lower manual and the pedals
-/// carry.
-pub fn presets() -> [(&'static str, &'static str, &'static str, Settings); 16] {
+/// They come in four banks. The console's own setups come first: a
+/// registration with the percussion, vibrato, cabinet and drive that show
+/// what the instrument does. Then two banks of ways of playing it, jazz and
+/// blues, then gospel and rock, whose registrations are the ones players
+/// commonly quote for those styles rather than figures from a document; what
+/// surrounds each one is this plugin's arrangement. Last are the tone
+/// colours, and their registrations are not invented: they are quoted digit
+/// for digit from the published table of drawbar registration patterns for
+/// the four families a pipe organ is built from, in the 2-4-3 notation that
+/// table uses. The stop names are the pipe organ's own and are centuries
+/// older than any tonewheel instrument; the provenance of the figures is in
+/// THIRD_PARTY_NOTICES.md, which is where this project keeps trademarks.
+///
+/// A program that places the horn's microphones itself was voiced on a
+/// spaced pair in front of the cabinet, and says so; every other one takes
+/// the studio placement that is the default.
+pub fn presets() -> [(&'static str, &'static str, &'static str, Settings); 21] {
     let straight = Settings::default();
+    let third_percussion = |volume| Settings {
+        percussion_enabled: true,
+        percussion_harmonic: PercussionHarmonic::Third,
+        percussion_volume: volume,
+        percussion_decay: PercussionDecay::Fast,
+        ..straight
+    };
     [
+        // Console.
         (
             "straight-888",
             "Straight 888",
@@ -567,55 +812,30 @@ pub fn presets() -> [(&'static str, &'static str, &'static str, Settings); 16] {
                 upper_scanner: true,
                 rotary_horn_mic_distance: 0.9,
                 rotary_horn_mic_spacing: 0.24,
+                rotary_horn_mic_sides: false,
                 ..straight
             },
         ),
         (
-            "tremolo-jazz",
-            "Tremolo Jazz",
-            "Third-harmonic single-trigger percussion with fast integrated rotary motion.",
+            "percussion-switch",
+            "Percussion Switch",
+            "The 1' drawbar left out so the percussion tablet swaps the registration.",
             Settings {
-                drawbars_b: [8, 8, 8, 0, 0, 0, 0, 8, 0],
-                rotary_mode: RotaryMode::Tremolo,
-                transformer_drive: 0.52,
-                console_drive: 0.44,
-                percussion_enabled: true,
-                percussion_harmonic: PercussionHarmonic::Third,
-                percussion_volume: PercussionVolume::Normal,
-                percussion_decay: PercussionDecay::Fast,
-                rotary_horn_mic_distance: 0.25,
-                rotary_horn_mic_spacing: 0.38,
-                rotary_reflections: 0.16,
-                rotary_drum_level: -1.1,
-                ..straight
-            },
-        ),
-        (
-            "jazz-comp",
-            "Jazz Comp",
-            "Hollow comping registration with third-harmonic percussion and slow rotary motion.",
-            Settings {
-                drawbars_b: [8, 0, 8, 0, 0, 0, 0, 0, 0],
+                drawbars_b: [8, 8, 8, 0, 0, 0, 0, 0, 8],
                 rotary_mode: RotaryMode::Chorale,
-                percussion_enabled: true,
-                percussion_harmonic: PercussionHarmonic::Third,
-                percussion_volume: PercussionVolume::Normal,
-                percussion_decay: PercussionDecay::Fast,
-                rotary_horn_mic_distance: 0.5,
-                rotary_horn_mic_spacing: 0.28,
-                ..straight
+                ..third_percussion(PercussionVolume::Normal)
             },
         ),
         (
-            "ballad-chorus",
-            "Ballad Chorus",
-            "Fundamental registration through the C3 vibrato line, cabinet stationary.",
+            "two-registrations",
+            "Two Registrations",
+            "A flute on the A# adjust key and a full registration on B, to change with a key.",
             Settings {
-                drawbars_b: [8, 8, 8, 0, 0, 0, 0, 0, 0],
-                scanner_mode: ScannerMode::Chorus3,
-                upper_scanner: true,
-                rotary_mode: RotaryMode::Off,
-                output_level: 0.66,
+                drawbars_a: [0, 0, 8, 0, 0, 0, 0, 0, 0],
+                drawbars_b: [8, 8, 8, 8, 0, 0, 0, 0, 0],
+                lower_drawbars_a: [0, 0, 6, 0, 0, 0, 0, 0, 0],
+                lower_drawbars_b: [8, 6, 8, 0, 0, 0, 0, 0, 0],
+                rotary_mode: RotaryMode::Chorale,
                 ..straight
             },
         ),
@@ -632,6 +852,129 @@ pub fn presets() -> [(&'static str, &'static str, &'static str, Settings); 16] {
                 ..straight
             },
         ),
+        // Jazz and blues.
+        (
+            "jazz-trio",
+            "Jazz Trio",
+            "88 8000 000 with soft, fast third percussion and no scanner, over a left-hand bass of 80 8000 000 on the lower manual; cabinet slow.",
+            Settings {
+                lower_drawbars_b: [8, 0, 8, 0, 0, 0, 0, 0, 0],
+                pedal_drawbars: [8, 0],
+                rotary_mode: RotaryMode::Chorale,
+                ..third_percussion(PercussionVolume::Soft)
+            },
+        ),
+        (
+            "jazz-comp",
+            "Jazz Comp",
+            "Hollow comping registration with third-harmonic percussion and slow rotary motion.",
+            Settings {
+                drawbars_b: [8, 0, 8, 0, 0, 0, 0, 0, 0],
+                rotary_mode: RotaryMode::Chorale,
+                rotary_horn_mic_distance: 0.5,
+                rotary_horn_mic_spacing: 0.28,
+                rotary_horn_mic_sides: false,
+                ..third_percussion(PercussionVolume::Normal)
+            },
+        ),
+        (
+            "lower-comp",
+            "Lower Comp",
+            "Third percussion on 88 8000 000 for the right hand over soft chords of 00 7600 000 on the lower manual, pedals off for a bass player.",
+            Settings {
+                lower_drawbars_b: [0, 0, 7, 6, 0, 0, 0, 0, 0],
+                pedal_drawbars: [0, 0],
+                rotary_mode: RotaryMode::Chorale,
+                ..third_percussion(PercussionVolume::Soft)
+            },
+        ),
+        (
+            "tremolo-jazz",
+            "Tremolo Jazz",
+            "The trio registration, 88 8000 000, with normal third percussion, more drive and the cabinet at speed for a climax.",
+            Settings {
+                rotary_mode: RotaryMode::Tremolo,
+                transformer_drive: 0.52,
+                console_drive: 0.44,
+                rotary_horn_mic_distance: 0.25,
+                rotary_horn_mic_spacing: 0.38,
+                rotary_horn_mic_sides: false,
+                rotary_reflections: 0.16,
+                rotary_drum_level: -1.1,
+                ..third_percussion(PercussionVolume::Normal)
+            },
+        ),
+        (
+            "ballad-chorus",
+            "Ballad Chorus",
+            "Soft flutes, 00 8600 000, through the C3 chorus with the cabinet stationary, for ballads.",
+            Settings {
+                drawbars_b: [0, 0, 8, 6, 0, 0, 0, 0, 0],
+                lower_drawbars_b: [0, 0, 6, 4, 0, 0, 0, 0, 0],
+                scanner_mode: ScannerMode::Chorus3,
+                upper_scanner: true,
+                lower_scanner: true,
+                rotary_mode: RotaryMode::Off,
+                output_level: 0.8,
+                ..straight
+            },
+        ),
+        (
+            "blues-shuffle",
+            "Blues Shuffle",
+            "88 8800 000 through the C3 chorus with a slow cabinet ready to speed up and a little drive.",
+            Settings {
+                drawbars_b: [8, 8, 8, 8, 0, 0, 0, 0, 0],
+                lower_drawbars_b: [0, 0, 8, 8, 0, 0, 0, 0, 0],
+                pedal_drawbars: [8, 4],
+                scanner_mode: ScannerMode::Chorus3,
+                upper_scanner: true,
+                rotary_mode: RotaryMode::Chorale,
+                transformer_drive: 0.48,
+                console_drive: 0.42,
+                ..straight
+            },
+        ),
+        (
+            "gritty-blues",
+            "Gritty Blues",
+            "88 8000 008 with no scanner and the cabinet amplifier pushed into breakup.",
+            Settings {
+                drawbars_b: [8, 8, 8, 0, 0, 0, 0, 0, 8],
+                pedal_drawbars: [8, 4],
+                rotary_mode: RotaryMode::Chorale,
+                transformer_drive: 0.55,
+                console_drive: 0.55,
+                rotary_drive: 0.8,
+                ..straight
+            },
+        ),
+        // Gospel and rock.
+        (
+            "gospel-full",
+            "Gospel Full",
+            "88 8888 000 on both manuals through the C3 chorus, transformer drive and slow rotary motion.",
+            Settings {
+                drawbars_b: [8, 8, 8, 8, 8, 8, 0, 0, 0],
+                rotary_mode: RotaryMode::Chorale,
+                transformer_drive: 0.62,
+                console_drive: 0.48,
+                console_bass: 0.18,
+                console_treble: -0.08,
+                leakage: 0.28,
+                scanner_mode: ScannerMode::Chorus3,
+                lower_drawbars_b: [8, 8, 8, 8, 0, 0, 0, 0, 0],
+                pedal_drawbars: [8, 8],
+                upper_scanner: true,
+                lower_scanner: true,
+                rotary_horn_mic_distance: 0.45,
+                rotary_horn_mic_spacing: 0.32,
+                rotary_horn_mic_sides: false,
+                rotary_reflections: 0.3,
+                rotary_horn_level: -0.7,
+                ..straight
+            },
+        ),
         (
             "full-shout",
             "Full Shout",
@@ -645,34 +988,25 @@ pub fn presets() -> [(&'static str, &'static str, &'static str, Settings); 16] {
                 console_drive: 0.52,
                 rotary_horn_mic_distance: 0.22,
                 rotary_horn_mic_spacing: 0.36,
+                rotary_horn_mic_sides: false,
                 rotary_reflections: 0.26,
                 ..straight
             },
         ),
         (
-            "gospel-full",
-            "Gospel Full",
-            "Full drawbars, C3 scanner chorus, transformer drive and slow rotary motion.",
+            "rock-ballad",
+            "Rock Ballad",
+            "68 8600 000 through the C3 chorus with a slow cabinet, the sustained organ under a rock ballad.",
             Settings {
-                drawbars_b: [8, 8, 8, 8, 6, 8, 4, 8, 6],
-                rotary_mode: RotaryMode::Chorale,
-                transformer_drive: 0.62,
-                console_drive: 0.48,
-                console_bass: 0.18,
-                console_treble: -0.08,
-                leakage: 0.28,
+                drawbars_b: [6, 8, 8, 6, 0, 0, 0, 0, 0],
                 scanner_mode: ScannerMode::Chorus3,
-                lower_drawbars_b: [8, 8, 8, 8, 6, 0, 0, 0, 0],
-                pedal_drawbars: [8, 8],
                 upper_scanner: true,
-                lower_scanner: true,
-                rotary_horn_mic_distance: 0.45,
-                rotary_horn_mic_spacing: 0.32,
-                rotary_reflections: 0.3,
-                rotary_horn_level: -0.7,
+                rotary_mode: RotaryMode::Chorale,
+                transformer_drive: 0.45,
                 ..straight
             },
         ),
+        // Tone colours.
         (
             "tibia-8",
             "Tibia 8'",
@@ -694,6 +1028,7 @@ pub fn presets() -> [(&'static str, &'static str, &'static str, Settings); 16] {
                 pedal_drawbars: [8, 4],
                 rotary_mode: RotaryMode::Chorale,
                 rotary_horn_mic_distance: 0.8,
+                rotary_horn_mic_sides: false,
                 ..straight
             },
         ),
@@ -745,33 +1080,6 @@ pub fn presets() -> [(&'static str, &'static str, &'static str, Settings); 16] {
                 scanner_mode: ScannerMode::Vibrato3,
                 upper_scanner: true,
                 output_level: 0.8,
-                ..straight
-            },
-        ),
-        (
-            "percussion-switch",
-            "Percussion Switch",
-            "The 1' drawbar left out so the percussion tablet swaps the registration.",
-            Settings {
-                drawbars_b: [8, 8, 8, 0, 0, 0, 0, 0, 8],
-                rotary_mode: RotaryMode::Chorale,
-                percussion_enabled: true,
-                percussion_harmonic: PercussionHarmonic::Third,
-                percussion_volume: PercussionVolume::Normal,
-                percussion_decay: PercussionDecay::Fast,
-                ..straight
-            },
-        ),
-        (
-            "two-registrations",
-            "Two Registrations",
-            "A flute on the A# adjust key and a full registration on B, to change with a key.",
-            Settings {
-                drawbars_a: [0, 0, 8, 0, 0, 0, 0, 0, 0],
-                drawbars_b: [8, 8, 8, 8, 0, 0, 0, 0, 0],
-                lower_drawbars_a: [0, 0, 6, 0, 0, 0, 0, 0, 0],
-                lower_drawbars_b: [8, 6, 8, 0, 0, 0, 0, 0, 0],
-                rotary_mode: RotaryMode::Chorale,
                 ..straight
             },
         ),
@@ -840,10 +1148,16 @@ mod tests {
                 "{id} has a different description in the catalogue"
             );
         }
-        assert_eq!(
-            catalogue.matches("\"bank\": \"registrations\"").count(),
-            presets().len()
-        );
+        assert_eq!(catalogue.matches("\"bank\": ").count(), presets().len());
+        // The catalogue lists them in the engine's order, bank by bank, so
+        // the host shows them the way this file arranges them.
+        let mut cursor = 0;
+        for (id, ..) in presets() {
+            let at = catalogue[cursor..]
+                .find(&format!("\"id\": \"{id}\""))
+                .unwrap_or_else(|| panic!("{id} is out of order in the catalogue"));
+            cursor += at + 1;
+        }
     }
 
     /// A program that makes no sound is the one failure a catalogue of them
@@ -928,6 +1242,62 @@ mod tests {
             .expect("thread")
             .join()
             .expect("the programs all sound");
+    }
+
+    #[test]
+    fn every_parameter_reaches_the_engine_through_a_group() {
+        for index in 0..PARAMETER_COUNT as u32 {
+            assert!(Group::of(index).is_some(), "parameter {index} has no group");
+        }
+        assert_eq!(Group::of(PARAMETER_COUNT as u32), None);
+    }
+
+    /// Setting one parameter has to leave the engine exactly where setting
+    /// all of them would have, or a program loaded and a control moved would
+    /// sound different from the same values arrived at the other way.
+    #[test]
+    fn one_parameter_lands_where_the_whole_program_would() {
+        const CANDIDATES: [f64; 11] = [0.0, 1.0, 0.5, 0.25, 0.15, 2.0, 3.0, -0.5, -6.0, 90.0, 8.0];
+        const FRAMES: usize = 960;
+        std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(|| {
+                let (_, _, _, base) = presets()
+                    .into_iter()
+                    .find(|preset| preset.0 == "gospel-full")
+                    .expect("program");
+                for index in 0..PARAMETER_COUNT as u32 {
+                    let changed = CANDIDATES
+                        .into_iter()
+                        .filter_map(|value| base.with_parameter(index, value))
+                        .find(|changed| *changed != base)
+                        .unwrap_or_else(|| panic!("no other value for parameter {index}"));
+                    let render = |apply: &dyn Fn(&mut OrganEngine)| {
+                        let mut engine = OrganEngine::new(48_000.0).expect("engine");
+                        base.apply(&mut engine);
+                        assert!(engine.note_on_part(OrganPart::Upper, 60, 1.0));
+                        assert!(engine.note_on_part(OrganPart::Pedal, 36, 1.0));
+                        let mut frames = Vec::with_capacity(2 * FRAMES);
+                        for _ in 0..FRAMES {
+                            frames.push(engine.next_sample());
+                        }
+                        apply(&mut engine);
+                        for _ in 0..FRAMES {
+                            frames.push(engine.next_sample());
+                        }
+                        frames
+                    };
+                    let whole = render(&|engine| changed.apply(engine));
+                    let one = render(&|engine| changed.apply_parameter(index, engine));
+                    assert!(
+                        whole == one,
+                        "parameter {index} lands somewhere else on its own"
+                    );
+                }
+            })
+            .expect("thread")
+            .join()
+            .expect("every parameter lands where the program would");
     }
 
     #[test]

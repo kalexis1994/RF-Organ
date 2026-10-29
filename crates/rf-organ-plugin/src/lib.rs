@@ -1,42 +1,63 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 //! RackForge adapter for the RF-Organ physical-model instrument.
 
+mod pedal;
 mod settings;
 
+use pedal::{HOLD_TO_BRAKE_S, SpeedPedal, Switch};
 use rackforge_plugin_sdk::{
     MIDI_FAMILY_CONTROL, MIDI_FAMILY_NOTE, MIDI2_FLAG_ORIGIN_7BIT, MIDI2_KIND_CONTROL_CHANGE,
     MIDI2_KIND_NOTE_OFF, MIDI2_KIND_NOTE_ON, MidiEvent, MidiEvent2, ParameterEvent, Processor,
     export_processor,
 };
 use rf_organ_dsp::{
-    LEVEL_SILENT_DB, MIC_DISTANCE_RANGE_M, MIC_SPACING_MAX_M, OrganEngine, OrganPart, RotaryMode,
+    LEVEL_SILENT_DB, MIC_DISTANCE_DEFAULT_M, MIC_DISTANCE_RANGE_M, MIC_SPACING_DEFAULT_M,
+    MIC_SPACING_MAX_M, OrganEngine, OrganPart, RotaryMode,
 };
+use settings::ROTARY_MODE;
 pub use settings::{PARAMETER_COUNT, Settings, presets};
 
 pub const MAX_FRAMES: u32 = 4096;
 pub const MAX_EVENTS: usize = 256;
-pub const STATE_VERSION: u32 = 21;
-pub const STATE_BYTES_V1: usize = 8 + 19 * 8;
-pub const STATE_BYTES_V2: usize = 8 + 24 * 8;
-pub const STATE_BYTES_V3: usize = 8 + 37 * 8;
-pub const STATE_BYTES_V4: usize = 8 + 41 * 8;
-pub const STATE_BYTES_V5: usize = 8 + 45 * 8;
-pub const STATE_BYTES_V6: usize = 8 + 51 * 8;
-pub const STATE_BYTES_V7: usize = 8 + 55 * 8;
-pub const STATE_BYTES_V8: usize = 8 + 57 * 8;
-pub const STATE_BYTES_V9: usize = 8 + 58 * 8;
-pub const STATE_BYTES_V10: usize = 8 + 60 * 8;
-pub const STATE_BYTES_V11: usize = 8 + 61 * 8;
-pub const STATE_BYTES_V12: usize = 8 + 64 * 8;
-pub const STATE_BYTES_V13: usize = 8 + 66 * 8;
-pub const STATE_BYTES_V14: usize = 8 + 67 * 8;
-pub const STATE_BYTES_V15: usize = 8 + 68 * 8;
-pub const STATE_BYTES_V16: usize = 8 + 69 * 8;
-pub const STATE_BYTES_V17: usize = 8 + 72 * 8;
-pub const STATE_BYTES_V18: usize = 8 + 73 * 8;
-pub const STATE_BYTES_V19: usize = 8 + 74 * 8;
-pub const STATE_BYTES_V20: usize = 8 + 75 * 8;
-pub const STATE_BYTES: usize = 8 + PARAMETER_COUNT * 8;
+pub const STATE_VERSION: u32 = 24;
+pub const STATE_BYTES: usize = state_bytes(PARAMETER_COUNT);
+
+/// Every state this plugin has written, as its version and how many
+/// parameters it carried. Each version only ever appended parameters, so an
+/// older state is the first that many of today's, converted where a meaning
+/// changed. A new version is one more row here.
+const STATE_LAYOUTS: [(u32, usize); STATE_VERSION as usize] = [
+    (1, 19),
+    (2, 24),
+    (3, 37),
+    (4, 41),
+    (5, 45),
+    (6, 51),
+    (7, 55),
+    (8, 57),
+    (9, 58),
+    (10, 60),
+    (11, 61),
+    (12, 64),
+    (13, 66),
+    (14, 67),
+    (15, 68),
+    (16, 69),
+    (17, 72),
+    (18, 73),
+    (19, 74),
+    (20, 75),
+    (21, 95),
+    (22, 96),
+    (23, 97),
+    (STATE_VERSION, PARAMETER_COUNT),
+];
+
+/// The size of a state carrying `fields` parameters: a magic, a version and
+/// one `f64` each.
+const fn state_bytes(fields: usize) -> usize {
+    8 + fields * 8
+}
 
 /// A gain as decibels, with nothing at all reported as the silence the
 /// volumes bottom out at.
@@ -51,6 +72,16 @@ fn decibels_of(gain: f64) -> f64 {
 pub struct RfOrganProcessor {
     engine: Option<Box<OrganEngine>>,
     settings: Settings,
+    /// The speed the rotors go back to when CC 4 lets them go: the program's,
+    /// until CC 1 throws the switch to another one.
+    rotary_speed: RotaryMode,
+    /// The mode the cabinet was last put in, by a program, a control or
+    /// MIDI: the sustain pedal needs to know whether the rotors are stopped.
+    rotary_engaged: RotaryMode,
+    pedal: SpeedPedal,
+    /// How many frames an alternating press has to be held to stop the
+    /// rotors, at the rate the engine was prepared for.
+    hold_frames: u32,
     maximum_frames: u32,
     channels: u32,
 }
@@ -61,10 +92,58 @@ impl RfOrganProcessor {
             return false;
         }
         self.settings = settings;
+        self.rotary_speed = settings.rotary_mode;
+        self.rotary_engaged = settings.rotary_mode;
+        self.pedal.cancel_hold();
         if let Some(engine) = &mut self.engine {
             settings.apply(engine);
         }
         true
+    }
+
+    /// Puts the cabinet in `mode`, remembering it for the sustain pedal.
+    fn engage_rotary(&mut self, mode: RotaryMode) {
+        self.rotary_engaged = mode;
+        if let Some(engine) = &mut self.engine {
+            engine.set_rotary_mode(mode);
+        }
+    }
+
+    /// The speed switch on CC 1: below the middle is Chorale.
+    fn select_rotary_speed(&mut self, fast: bool) {
+        self.rotary_speed = if fast {
+            RotaryMode::Tremolo
+        } else {
+            RotaryMode::Chorale
+        };
+        self.engage_rotary(self.rotary_speed);
+    }
+
+    /// The rotor stop on CC 4: releasing it returns to the selected speed.
+    fn stop_rotors(&mut self, stop: bool) {
+        self.engage_rotary(if stop {
+            RotaryMode::Brake
+        } else {
+            self.rotary_speed
+        });
+    }
+
+    /// The sustain pedal on CC 64, down at or past the middle.
+    fn sustain_pedal(&mut self, down: bool) {
+        let change = self.pedal.set(
+            down,
+            self.settings.sustain_pedal,
+            self.rotary_speed,
+            self.rotary_engaged,
+        );
+        self.switch_rotary(change);
+    }
+
+    fn switch_rotary(&mut self, change: Option<Switch>) {
+        if let Some(Switch { selected, engaged }) = change {
+            self.rotary_speed = selected;
+            self.engage_rotary(engaged);
+        }
     }
 
     fn midi1(&mut self, event: &MidiEvent) {
@@ -85,18 +164,11 @@ impl RfOrganProcessor {
                 }
             }
             0xb0 => match index {
-                1 => engine.set_rotary_mode(if value < 64 {
-                    RotaryMode::Chorale
-                } else {
-                    RotaryMode::Tremolo
-                }),
+                1 => self.select_rotary_speed(value >= 64),
                 // Rotor stop, the third position a cabinet's switch has.
                 // Releasing it returns the rotors to the selected speed.
-                4 => engine.set_rotary_mode(if value < 64 {
-                    RotaryMode::Brake
-                } else {
-                    self.settings.rotary_mode
-                }),
+                4 => self.stop_rotors(value < 64),
+                64 => self.sustain_pedal(value >= 64),
                 11 => {
                     let _ = engine.set_expression(f32::from(value) / 127.0);
                 }
@@ -143,16 +215,9 @@ impl RfOrganProcessor {
                     event.value as f32 / u32::MAX as f32
                 };
                 match event.index {
-                    1 => engine.set_rotary_mode(if value < 0.5 {
-                        RotaryMode::Chorale
-                    } else {
-                        RotaryMode::Tremolo
-                    }),
-                    4 => engine.set_rotary_mode(if value < 0.5 {
-                        RotaryMode::Brake
-                    } else {
-                        self.settings.rotary_mode
-                    }),
+                    1 => self.select_rotary_speed(value >= 0.5),
+                    4 => self.stop_rotors(value < 0.5),
+                    64 => self.sustain_pedal(value >= 0.5),
                     11 => {
                         let _ = engine.set_expression(value);
                     }
@@ -179,6 +244,7 @@ impl Processor for RfOrganProcessor {
         };
         self.settings.apply(&mut engine);
         self.engine = Some(Box::new(engine));
+        self.hold_frames = (rate * HOLD_TO_BRAKE_S).round().max(1.0) as u32;
         self.maximum_frames = frames;
         self.channels = outputs;
         true
@@ -188,7 +254,16 @@ impl Processor for RfOrganProcessor {
         let Some(settings) = self.settings.with_parameter(index, value) else {
             return false;
         };
-        self.apply_settings(settings)
+        self.settings = settings;
+        if index == ROTARY_MODE {
+            self.rotary_speed = settings.rotary_mode;
+            self.rotary_engaged = settings.rotary_mode;
+            self.pedal.cancel_hold();
+        }
+        if let Some(engine) = &mut self.engine {
+            settings.apply_parameter(index, engine);
+        }
+        true
     }
 
     fn get_parameter(&self, index: u32) -> Option<f64> {
@@ -200,6 +275,9 @@ impl Processor for RfOrganProcessor {
             engine.reset();
             self.settings.apply(engine);
         }
+        self.rotary_speed = self.settings.rotary_mode;
+        self.rotary_engaged = self.settings.rotary_mode;
+        self.pedal = SpeedPedal::default();
     }
 
     fn load_preset(&mut self, id: &str) -> bool {
@@ -225,63 +303,38 @@ impl Processor for RfOrganProcessor {
     }
 
     fn load_state(&mut self, state: &[u8]) -> bool {
-        if ![
-            STATE_BYTES_V1,
-            STATE_BYTES_V2,
-            STATE_BYTES_V3,
-            STATE_BYTES_V4,
-            STATE_BYTES_V5,
-            STATE_BYTES_V6,
-            STATE_BYTES_V7,
-            STATE_BYTES_V8,
-            STATE_BYTES_V9,
-            STATE_BYTES_V10,
-            STATE_BYTES_V11,
-            STATE_BYTES_V12,
-            STATE_BYTES_V13,
-            STATE_BYTES_V14,
-            STATE_BYTES_V15,
-            STATE_BYTES_V16,
-            STATE_BYTES_V17,
-            STATE_BYTES_V18,
-            STATE_BYTES_V19,
-            STATE_BYTES_V20,
-            STATE_BYTES,
-        ]
-        .contains(&state.len())
-            || &state[..4] != b"RFOR"
-        {
+        if state.get(..4) != Some(b"RFOR".as_slice()) {
             return false;
         }
-        let version = u32::from_le_bytes(state[4..8].try_into().expect("validated state"));
-        let fields = match (version, state.len()) {
-            (1, STATE_BYTES_V1) => 19,
-            (2, STATE_BYTES_V2) => 24,
-            (3, STATE_BYTES_V3) => 37,
-            (4, STATE_BYTES_V4) => 41,
-            (5, STATE_BYTES_V5) => 45,
-            (6, STATE_BYTES_V6) => 51,
-            (7, STATE_BYTES_V7) => 55,
-            (8, STATE_BYTES_V8) => 57,
-            (9, STATE_BYTES_V9) => 58,
-            (10, STATE_BYTES_V10) => 60,
-            (11, STATE_BYTES_V11) => 61,
-            (12, STATE_BYTES_V12) => 64,
-            (13, STATE_BYTES_V13) => 66,
-            (14, STATE_BYTES_V14) => 67,
-            (15, STATE_BYTES_V15) => 68,
-            (16, STATE_BYTES_V16) => 69,
-            (17, STATE_BYTES_V17) => 72,
-            (18, STATE_BYTES_V18) => 73,
-            (19, STATE_BYTES_V19) => 74,
-            (20, STATE_BYTES_V20) => 75,
-            (STATE_VERSION, STATE_BYTES) => PARAMETER_COUNT,
-            _ => return false,
+        let Some(version) = state
+            .get(4..8)
+            .map(|bytes| u32::from_le_bytes(bytes.try_into().expect("four bytes")))
+        else {
+            return false;
         };
-        if fields > PARAMETER_COUNT {
+        let Some(&(_, fields)) = STATE_LAYOUTS
+            .iter()
+            .find(|(written, fields)| *written == version && state_bytes(*fields) == state.len())
+        else {
             return false;
-        }
+        };
         let mut settings = Settings::default();
+        // Up to version twenty-two the defaults stood a spaced pair in front
+        // of each rotor. A state is read over the placement it was saved
+        // against, so that what it is too old to carry does not move to the
+        // studio placement that is the default now.
+        if version <= 22 {
+            for (index, earlier) in [
+                (41, f64::from(MIC_DISTANCE_DEFAULT_M)),
+                (62, f64::from(MIC_SPACING_DEFAULT_M)),
+                (64, 0.0),
+            ] {
+                let Some(updated) = settings.with_parameter(index, earlier) else {
+                    return false;
+                };
+                settings = updated;
+            }
+        }
         // Up to version ten the horn and the drum shared one bipolar balance
         // between them. They have a volume each now, as Hammond documents
         // them, so the old control has to be split rather than read.
@@ -335,6 +388,17 @@ impl Processor for RfOrganProcessor {
                 continue;
             };
             let Some(updated) = settings.with_parameter(index, value) else {
+                return false;
+            };
+            settings = updated;
+        }
+        // Up to version twenty-two every microphone was one capsule, so the
+        // drum's pair takes the capsule the state had.
+        if version <= 22 {
+            let shared_capsule = settings.parameter(59).expect("fixed parameter schema");
+            let Some(updated) =
+                settings.with_parameter(settings::DRUM_MICROPHONE_TYPE, shared_capsule)
+            else {
                 return false;
             };
             settings = updated;
@@ -423,6 +487,8 @@ impl Processor for RfOrganProcessor {
                 self.midi2(&midi2[midi2_index]);
                 midi2_index += 1;
             }
+            let held = self.pedal.tick(self.hold_frames);
+            self.switch_rotary(held);
             let [left, right] = self.engine.as_mut().expect("prepared engine").next_sample();
             let offset = frame as usize * outputs as usize;
             output[offset] = if outputs == 1 {
@@ -481,6 +547,56 @@ export_processor!(RfOrganProcessor,
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rf_organ_dsp::MicrophoneType;
+
+    /// The size of the state `version` wrote, as a constant a test can size
+    /// an array with.
+    const fn written_bytes(version: u32) -> usize {
+        let mut row = 0;
+        while row < STATE_LAYOUTS.len() {
+            if STATE_LAYOUTS[row].0 == version {
+                return state_bytes(STATE_LAYOUTS[row].1);
+            }
+            row += 1;
+        }
+        panic!("no state was written at that version");
+    }
+
+    /// Reading an old state relies on every version having appended to the
+    /// one before it, and on the last row being what `save_state` writes.
+    #[test]
+    fn every_state_version_appends_to_the_one_before() {
+        let mut previous = (0, 0);
+        for (version, fields) in STATE_LAYOUTS {
+            assert_eq!(version, previous.0 + 1, "version {version} is out of turn");
+            assert!(fields > previous.1, "version {version} carries no more");
+            previous = (version, fields);
+        }
+        assert_eq!(previous, (STATE_VERSION, PARAMETER_COUNT));
+        assert_eq!(written_bytes(STATE_VERSION), STATE_BYTES);
+    }
+
+    /// A state that names one version and has the size of another, or is
+    /// cut short, or is not ours, is refused rather than half read.
+    #[test]
+    fn a_state_that_does_not_match_its_version_is_refused() {
+        let source = RfOrganProcessor::default();
+        let mut current = [0_u8; STATE_BYTES];
+        assert_eq!(source.save_state(&mut current), Some(STATE_BYTES));
+
+        let mut mislabelled = current;
+        mislabelled[4..8].copy_from_slice(&20_u32.to_le_bytes());
+        let mut restored = RfOrganProcessor::default();
+        assert!(!restored.load_state(&mislabelled));
+        assert!(!restored.load_state(&current[..written_bytes(20)]));
+        assert!(!restored.load_state(&current[..6]));
+        assert!(!restored.load_state(&[]));
+
+        let mut foreign = current;
+        foreign[..4].copy_from_slice(b"XXXX");
+        assert!(!restored.load_state(&foreign));
+        assert!(restored.load_state(&current));
+    }
 
     #[test]
     fn state_round_trip_and_factory_presets() {
@@ -512,8 +628,8 @@ mod tests {
             (-1.0, f64::from(LEVEL_SILENT_DB), 0.0),
             (1.0, 0.0, f64::from(LEVEL_SILENT_DB)),
         ] {
-            let mut legacy = [0_u8; STATE_BYTES_V10];
-            legacy.copy_from_slice(&current[..STATE_BYTES_V10]);
+            let mut legacy = [0_u8; written_bytes(10)];
+            legacy.copy_from_slice(&current[..written_bytes(10)]);
             legacy[4..8].copy_from_slice(&10_u32.to_le_bytes());
             let offset = 8 + 44 * 8;
             legacy[offset..offset + 8].copy_from_slice(&balance.to_le_bytes());
@@ -541,30 +657,37 @@ mod tests {
         let source = RfOrganProcessor::default();
         let mut current = [0_u8; STATE_BYTES];
         assert_eq!(source.save_state(&mut current), Some(STATE_BYTES));
-        let mut legacy = [0_u8; STATE_BYTES_V1];
-        legacy.copy_from_slice(&current[..STATE_BYTES_V1]);
+        let saved_against = Settings {
+            rotary_horn_mic_distance: f64::from(MIC_DISTANCE_DEFAULT_M),
+            rotary_horn_mic_sides: false,
+            rotary_drum_mic_spacing: f64::from(MIC_SPACING_DEFAULT_M),
+            rotary_drum_microphone_type: Settings::default().rotary_microphone_type,
+            ..Settings::default()
+        };
+        let mut legacy = [0_u8; written_bytes(1)];
+        legacy.copy_from_slice(&current[..written_bytes(1)]);
         legacy[4..8].copy_from_slice(&1_u32.to_le_bytes());
         let mut restored = RfOrganProcessor::default();
         assert!(restored.load_state(&legacy));
-        assert_eq!(restored.settings, Settings::default());
+        assert_eq!(restored.settings, saved_against);
 
-        let mut version_two = [0_u8; STATE_BYTES_V2];
-        version_two.copy_from_slice(&current[..STATE_BYTES_V2]);
+        let mut version_two = [0_u8; written_bytes(2)];
+        version_two.copy_from_slice(&current[..written_bytes(2)]);
         version_two[4..8].copy_from_slice(&2_u32.to_le_bytes());
         assert!(restored.load_state(&version_two));
-        assert_eq!(restored.settings, Settings::default());
+        assert_eq!(restored.settings, saved_against);
 
-        let mut version_three = [0_u8; STATE_BYTES_V3];
-        version_three.copy_from_slice(&current[..STATE_BYTES_V3]);
+        let mut version_three = [0_u8; written_bytes(3)];
+        version_three.copy_from_slice(&current[..written_bytes(3)]);
         version_three[4..8].copy_from_slice(&3_u32.to_le_bytes());
         assert!(restored.load_state(&version_three));
-        assert_eq!(restored.settings, Settings::default());
+        assert_eq!(restored.settings, saved_against);
 
-        let mut version_four = [0_u8; STATE_BYTES_V4];
-        version_four.copy_from_slice(&current[..STATE_BYTES_V4]);
+        let mut version_four = [0_u8; written_bytes(4)];
+        version_four.copy_from_slice(&current[..written_bytes(4)]);
         version_four[4..8].copy_from_slice(&4_u32.to_le_bytes());
         assert!(restored.load_state(&version_four));
-        assert_eq!(restored.settings, Settings::default());
+        assert_eq!(restored.settings, saved_against);
 
         // Every version up to six placed the microphones with two numbers
         // from zero to one, which this version reads as metres, so those
@@ -584,19 +707,19 @@ mod tests {
             rotary_horn_mic_spacing: spacing,
             rotary_drum_mic_distance: distance,
             rotary_drum_mic_spacing: spacing,
-            ..Settings::default()
+            ..saved_against
         };
 
-        let mut version_five = [0_u8; STATE_BYTES_V5];
-        version_five.copy_from_slice(&current[..STATE_BYTES_V5]);
+        let mut version_five = [0_u8; written_bytes(5)];
+        version_five.copy_from_slice(&current[..written_bytes(5)]);
         version_five[4..8].copy_from_slice(&5_u32.to_le_bytes());
         place_in_units(&mut version_five);
         assert!(restored.load_state(&version_five));
         assert_eq!(restored.settings, migrated);
         assert_eq!(restored.settings.transformer_trims, [[0.0; 2]; 3]);
 
-        let mut version_six = [0_u8; STATE_BYTES_V6];
-        version_six.copy_from_slice(&current[..STATE_BYTES_V6]);
+        let mut version_six = [0_u8; written_bytes(6)];
+        version_six.copy_from_slice(&current[..written_bytes(6)]);
         version_six[4..8].copy_from_slice(&6_u32.to_le_bytes());
         place_in_units(&mut version_six);
         assert!(restored.load_state(&version_six));
@@ -657,6 +780,252 @@ mod tests {
         processor.process(&[], &mut output, &release, &[], 64, 0, 2);
         let engine = processor.engine.as_ref().expect("prepared engine");
         assert_eq!(engine.rotary_mode(), RotaryMode::Chorale);
+    }
+
+    /// A state saved before the cabinet amplifier had a drive control comes
+    /// back with the drive where the control starts.
+    #[test]
+    fn a_state_from_before_the_drive_starts_at_its_default() {
+        let source = RfOrganProcessor::default();
+        let mut current = [0_u8; STATE_BYTES];
+        assert_eq!(source.save_state(&mut current), Some(STATE_BYTES));
+        let mut older = [0_u8; written_bytes(21)];
+        older.copy_from_slice(&current[..written_bytes(21)]);
+        older[4..8].copy_from_slice(&21_u32.to_le_bytes());
+        let mut restored = RfOrganProcessor::default();
+        assert!(restored.load_state(&older));
+        assert_eq!(
+            restored.settings.rotary_drive,
+            f64::from(rf_organ_dsp::AMP_DRIVE_DEFAULT)
+        );
+    }
+
+    /// Before version twenty-three one capsule stood for every microphone,
+    /// so the drum's pair takes whatever that capsule was.
+    #[test]
+    fn a_shared_capsule_becomes_both_pairs() {
+        let mut source = RfOrganProcessor::default();
+        assert!(source.set_parameter(59, f64::from(MicrophoneType::Dynamic as u8)));
+        assert!(source.set_parameter(
+            settings::DRUM_MICROPHONE_TYPE,
+            f64::from(MicrophoneType::Condenser as u8)
+        ));
+        let mut current = [0_u8; STATE_BYTES];
+        assert_eq!(source.save_state(&mut current), Some(STATE_BYTES));
+        let mut older = [0_u8; written_bytes(22)];
+        older.copy_from_slice(&current[..written_bytes(22)]);
+        older[4..8].copy_from_slice(&22_u32.to_le_bytes());
+        let mut restored = RfOrganProcessor::default();
+        assert!(restored.load_state(&older));
+        assert_eq!(
+            restored.settings.rotary_microphone_type,
+            MicrophoneType::Dynamic
+        );
+        assert_eq!(
+            restored.settings.rotary_drum_microphone_type,
+            MicrophoneType::Dynamic
+        );
+    }
+
+    /// A state too old to carry where the microphones stood comes back with
+    /// them where they stood when it was saved - a spaced pair in front of
+    /// each rotor - and not at the studio placement that is the default now.
+    #[test]
+    fn an_old_state_keeps_the_placement_it_was_saved_against() {
+        let source = RfOrganProcessor::default();
+        let mut current = [0_u8; STATE_BYTES];
+        assert_eq!(source.save_state(&mut current), Some(STATE_BYTES));
+        // Version twelve carried both distances and the drum's spacing, but
+        // not whether the horn's pair stood at the sides.
+        let mut older = [0_u8; written_bytes(12)];
+        older.copy_from_slice(&current[..written_bytes(12)]);
+        older[4..8].copy_from_slice(&12_u32.to_le_bytes());
+        let mut restored = RfOrganProcessor::default();
+        assert!(restored.load_state(&older));
+        assert!(!restored.settings.rotary_horn_mic_sides);
+        // What the old state did carry is its own.
+        assert_eq!(
+            restored.settings.rotary_horn_mic_distance,
+            source.settings.rotary_horn_mic_distance
+        );
+        assert_eq!(
+            restored.settings.rotary_drum_mic_spacing,
+            source.settings.rotary_drum_mic_spacing
+        );
+    }
+
+    /// The drive reaches the cabinet: a chord through the rotary speaker
+    /// with the amplifier driven hard comes out flatter-topped than the
+    /// same chord with it clean.
+    #[test]
+    fn the_drive_reaches_the_cabinet_amplifier() {
+        let render = |drive: f64| {
+            let mut processor = RfOrganProcessor::default();
+            assert!(processor.load_preset("chorale-888"));
+            assert!(processor.set_parameter(settings::ROTARY_DRIVE, drive));
+            assert!(processor.prepare(48_000.0, 512, 0, 2));
+            let chord = [48, 52, 55, 60, 64, 67].map(|note| MidiEvent {
+                frame: 0,
+                data: [0x90, note, 127],
+                length: 3,
+            });
+            let mut output = [0.0_f32; 1024];
+            let (mut peak, mut power) = (0.0_f32, 0.0_f64);
+            for block in 0..60 {
+                let midi: &[MidiEvent] = if block == 0 { &chord } else { &[] };
+                processor.process(&[], &mut output, midi, &[], 512, 0, 2);
+                if block >= 20 {
+                    for sample in output {
+                        peak = peak.max(sample.abs());
+                        power += f64::from(sample) * f64::from(sample);
+                    }
+                }
+            }
+            f64::from(peak) / (power / (40.0 * 1024.0)).sqrt()
+        };
+        let clean = render(0.0);
+        let driven = render(1.0);
+        assert!(
+            driven < clean * 0.9,
+            "crest {clean:.3} clean, {driven:.3} driven"
+        );
+    }
+
+    fn controller(frame: u32, index: u8, value: u8) -> MidiEvent {
+        MidiEvent {
+            frame,
+            data: [0xb0, index, value],
+            length: 3,
+        }
+    }
+
+    /// The speed the rotors return to is the one last chosen, and CC 1 is
+    /// one way of choosing it: a player who throws the cabinet to fast and
+    /// then stops it expects it to come back fast.
+    #[test]
+    fn releasing_the_stop_returns_to_the_speed_last_chosen() {
+        let mut processor = RfOrganProcessor::default();
+        assert!(processor.load_preset("chorale-888"));
+        assert!(processor.prepare(48_000.0, 64, 0, 2));
+        let mut output = [0.0_f32; 128];
+
+        let fast_then_stop = [controller(0, 1, 127), controller(8, 4, 0)];
+        processor.process(&[], &mut output, &fast_then_stop, &[], 64, 0, 2);
+        let engine = processor.engine.as_ref().expect("prepared engine");
+        assert_eq!(engine.rotary_mode(), RotaryMode::Brake);
+
+        processor.process(&[], &mut output, &[controller(0, 4, 127)], &[], 64, 0, 2);
+        let engine = processor.engine.as_ref().expect("prepared engine");
+        assert_eq!(engine.rotary_mode(), RotaryMode::Tremolo);
+
+        // The parameter is the other way of choosing it.
+        let chorale = ParameterEvent {
+            frame: 0,
+            index: ROTARY_MODE,
+            value: f64::from(RotaryMode::Chorale as u8),
+        };
+        let stop_then_release = [controller(8, 4, 0), controller(16, 4, 127)];
+        processor.process(&[], &mut output, &stop_then_release, &[chorale], 64, 0, 2);
+        let engine = processor.engine.as_ref().expect("prepared engine");
+        assert_eq!(engine.rotary_mode(), RotaryMode::Chorale);
+    }
+
+    /// The sustain pedal is the cabinet's speed switch: a tap throws it, a
+    /// second of holding stops the rotors, and the next tap lets them go at
+    /// the speed they had. The hold is counted across blocks, in frames.
+    #[test]
+    fn the_sustain_pedal_switches_speed_and_a_hold_stops_the_rotors() {
+        const BLOCK: u32 = 512;
+        let mut processor = RfOrganProcessor::default();
+        assert!(processor.load_preset("chorale-888"));
+        assert!(processor.prepare(48_000.0, BLOCK, 0, 2));
+        let mut output = [0.0_f32; 2 * BLOCK as usize];
+        let mut play = |processor: &mut RfOrganProcessor, midi: &[MidiEvent]| {
+            processor.process(&[], &mut output, midi, &[], BLOCK, 0, 2);
+            processor
+                .engine
+                .as_ref()
+                .expect("prepared engine")
+                .rotary_mode()
+        };
+
+        let tap = [controller(0, 64, 127), controller(100, 64, 0)];
+        assert_eq!(play(&mut processor, &tap), RotaryMode::Tremolo);
+        assert_eq!(play(&mut processor, &tap), RotaryMode::Chorale);
+
+        // Held: fast at once, and stopped once a second has gone by.
+        assert_eq!(
+            play(&mut processor, &[controller(0, 64, 127)]),
+            RotaryMode::Tremolo
+        );
+        let second = processor.hold_frames.div_ceil(BLOCK);
+        for _ in 1..second - 1 {
+            assert_eq!(play(&mut processor, &[]), RotaryMode::Tremolo);
+        }
+        assert_eq!(play(&mut processor, &[]), RotaryMode::Brake);
+        assert_eq!(
+            play(&mut processor, &[controller(0, 64, 0)]),
+            RotaryMode::Brake
+        );
+        // The press that became a stop did not change the speed.
+        assert_eq!(play(&mut processor, &tap), RotaryMode::Chorale);
+    }
+
+    #[test]
+    fn the_sustain_pedal_can_be_momentary_or_ignored() {
+        let mut processor = RfOrganProcessor::default();
+        assert!(processor.load_preset("chorale-888"));
+        assert!(processor.prepare(48_000.0, 64, 0, 2));
+        let mut output = [0.0_f32; 128];
+        let mode = |processor: &RfOrganProcessor| {
+            processor
+                .engine
+                .as_ref()
+                .expect("prepared engine")
+                .rotary_mode()
+        };
+
+        assert!(processor.set_parameter(settings::SUSTAIN_PEDAL, 2.0));
+        processor.process(&[], &mut output, &[controller(0, 64, 127)], &[], 64, 0, 2);
+        assert_eq!(mode(&processor), RotaryMode::Tremolo);
+        processor.process(&[], &mut output, &[controller(0, 64, 0)], &[], 64, 0, 2);
+        assert_eq!(mode(&processor), RotaryMode::Chorale);
+
+        assert!(processor.set_parameter(settings::SUSTAIN_PEDAL, 0.0));
+        processor.process(&[], &mut output, &[controller(0, 64, 127)], &[], 64, 0, 2);
+        assert_eq!(mode(&processor), RotaryMode::Chorale);
+
+        // A program with the cabinet switched out is not switched in by it.
+        assert!(processor.load_preset("straight-888"));
+        assert!(processor.set_parameter(settings::SUSTAIN_PEDAL, 1.0));
+        let tap = [controller(0, 64, 0), controller(8, 64, 127)];
+        processor.process(&[], &mut output, &tap, &[], 64, 0, 2);
+        assert_eq!(mode(&processor), RotaryMode::Off);
+    }
+
+    /// Moving a drawbar is not a request to set the rest of the console
+    /// again. Before this, any parameter put the expression and the cabinet
+    /// speed back to what the parameters held, so a pedal on CC 11 jumped
+    /// open and a speed thrown on CC 1 fell back whenever a control moved.
+    #[test]
+    fn a_control_moved_leaves_what_midi_set_alone() {
+        let mut processor = RfOrganProcessor::default();
+        assert!(processor.load_preset("chorale-888"));
+        assert!(processor.prepare(48_000.0, 64, 0, 2));
+        let mut output = [0.0_f32; 128];
+
+        let midi = [controller(0, 11, 0), controller(0, 1, 127)];
+        let drawbar = ParameterEvent {
+            frame: 16,
+            index: settings::DRAWBAR_FIRST,
+            value: 4.0,
+        };
+        processor.process(&[], &mut output, &midi, &[drawbar], 64, 0, 2);
+
+        assert_eq!(processor.settings.drawbars_b[0], 4);
+        let engine = processor.engine.as_ref().expect("prepared engine");
+        assert_eq!(engine.expression(), 0.0);
+        assert_eq!(engine.rotary_mode(), RotaryMode::Tremolo);
     }
 
     /// The manifest tells the host what state format the plugin writes, and

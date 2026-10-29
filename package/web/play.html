@@ -9,8 +9,9 @@
   <body>
     <main>
       <header>
-        <div class="wordmark"><p class="eyebrow">RACKFORGE ELECTROMECHANICAL</p><h1>RF<span>–</span>ORGAN</h1></div>
-        <label class="program">Program<select id="programs" disabled></select></label>
+        <div class="wordmark"><p class="eyebrow">RACKFORGE INSTRUMENTS</p><h1>RF<span>–</span>ORGAN</h1></div>
+        <!-- RackForge supplies this element and the programs it lists. -->
+        <div class="program"><span class="caption">Program</span><rf-program-select id="program-selector" placeholder="Search programs"></rf-program-select></div>
         <p id="status" role="status">Connecting to RackForge…</p>
       </header>
 
@@ -181,6 +182,8 @@
               <label>Horn Level<input id="horn-level" data-parameter="44" type="range" min="-80" max="0" step="0.5" disabled /></label>
               <label>Drum Level<input id="drum-level" data-parameter="60" type="range" min="-80" max="0" step="0.5" disabled /></label>
               <label>Sub Bass<input id="sub-level" data-parameter="58" type="range" min="-80" max="0" step="0.5" disabled /></label>
+              <label>Amp Drive<input id="amp-drive" data-parameter="95" type="range" min="0" max="1" step="0.001" disabled /></label>
+              <label>Sustain Pedal<select id="sustain-pedal" data-parameter="97" disabled><option value="0">Off</option><option value="1">Speed, Hold to Stop</option><option value="2">Fast While Held</option></select></label>
             </div>
           </div>
           <figure class="rotary-figure">
@@ -224,7 +227,8 @@
             <label class="switch">Horn Mics at Sides<input id="horn-mic-sides" data-parameter="64" type="checkbox" disabled /></label>
             <label class="switch">Drum Mics at Sides<input id="drum-mic-sides" data-parameter="65" type="checkbox" disabled /></label>
             <label>Mic Pattern<input id="mic-pattern" data-parameter="52" type="range" min="0" max="1" step="0.01" disabled /></label>
-            <label>Mic Type<select id="mic-type" data-parameter="59" disabled><option value="0">Dynamic</option><option value="1">Condenser</option></select></label>
+            <label>Horn Mic Type<select id="mic-type" data-parameter="59" disabled><option value="0">Dynamic</option><option value="1">Condenser</option></select></label>
+            <label>Drum Mic Type<select id="drum-mic-type" data-parameter="96" disabled><option value="0">Dynamic</option><option value="1">Condenser</option></select></label>
             <label>Horn Stop Angle<input id="horn-stop-angle" data-parameter="55" type="range" min="0" max="360" step="1" disabled /></label>
             <label>Drum Stop Angle<input id="drum-stop-angle" data-parameter="56" type="range" min="0" max="360" step="1" disabled /></label>
             <label>Horn Radius<input id="horn-radius" data-parameter="53" type="range" min="0.05" max="0.4" step="0.001" disabled /></label>
