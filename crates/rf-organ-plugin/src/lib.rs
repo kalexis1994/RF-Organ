@@ -12,9 +12,9 @@ use rackforge_plugin_sdk::{
 };
 use rf_organ_dsp::{
     LEVEL_SILENT_DB, MIC_DISTANCE_DEFAULT_M, MIC_DISTANCE_RANGE_M, MIC_SPACING_DEFAULT_M,
-    MIC_SPACING_MAX_M, OrganEngine, OrganPart, RotaryMode,
+    MIC_SPACING_MAX_M, OrganEngine, OrganPart, Registration, RotaryMode,
 };
-use settings::ROTARY_MODE;
+use settings::{LOWER_REGISTRATION, REGISTRATION, ROTARY_MODE};
 pub use settings::{PARAMETER_COUNT, Settings, presets};
 
 pub const MAX_FRAMES: u32 = 4096;
@@ -139,6 +139,22 @@ impl RfOrganProcessor {
         self.switch_rotary(change);
     }
 
+    /// Presses one of the twelve reverse-colour keys from the keyboard.
+    ///
+    /// This is the drop-down, reached from MIDI rather than from the screen:
+    /// the same parameter, set through the same door, so the engine changes
+    /// in this block, the surface reads the new key back on its next poll,
+    /// and a saved project keeps it. Nothing else is applied, so whatever CC 1
+    /// or CC 11 last set is left where it was.
+    fn press_preset_key(&mut self, (part, key): (OrganPart, Registration)) {
+        let index = match part {
+            OrganPart::Upper => REGISTRATION,
+            OrganPart::Lower => LOWER_REGISTRATION,
+            OrganPart::Pedal => return,
+        };
+        let _ = self.set_parameter(index, f64::from(key.index()));
+    }
+
     fn switch_rotary(&mut self, change: Option<Switch>) {
         if let Some(Switch { selected, engaged }) = change {
             self.rotary_speed = selected;
@@ -147,11 +163,21 @@ impl RfOrganProcessor {
     }
 
     fn midi1(&mut self, event: &MidiEvent) {
+        let [status, index, value] = event.data;
+        let part = part_from_channel(status & 0x0f);
+        if matches!(status & 0xf0, 0x80 | 0x90)
+            && let Some(key) = part.and_then(|part| preset_key(part, index))
+        {
+            // A note-on with no velocity is a release, and a preset key
+            // ignores its release: it stays down until another is pressed.
+            if status & 0xf0 == 0x90 && value != 0 {
+                self.press_preset_key(key);
+            }
+            return;
+        }
         let Some(engine) = &mut self.engine else {
             return;
         };
-        let [status, index, value] = event.data;
-        let part = part_from_channel(status & 0x0f);
         match status & 0xf0 {
             0x90 if value != 0 => {
                 if let Some(part) = part {
@@ -184,10 +210,18 @@ impl RfOrganProcessor {
     }
 
     fn midi2(&mut self, event: &MidiEvent2) {
+        let part = part_from_channel(event.channel);
+        if matches!(event.kind, MIDI2_KIND_NOTE_ON | MIDI2_KIND_NOTE_OFF)
+            && let Some(key) = part.and_then(|part| preset_key(part, event.index))
+        {
+            if event.kind == MIDI2_KIND_NOTE_ON {
+                self.press_preset_key(key);
+            }
+            return;
+        }
         let Some(engine) = &mut self.engine else {
             return;
         };
-        let part = part_from_channel(event.channel);
         match event.kind {
             MIDI2_KIND_NOTE_ON => {
                 let velocity = if event.flags & MIDI2_FLAG_ORIGIN_7BIT != 0 {
@@ -527,6 +561,28 @@ fn valid_midi1(event: &MidiEvent) -> bool {
         return false;
     }
     !matches!(event.data[0] & 0xf0, 0x80 | 0x90 | 0xb0) || event.length == 3
+}
+
+/// The lowest of the twelve reverse-colour keys, as MIDI sees it.
+///
+/// On the console they sit at the left end of each manual, the octave below
+/// its sixty-one playing keys. The manuals here start at MIDI 36, so the
+/// preset octave is 24 to 35 - the bottom full octave of an eighty-eight-key
+/// controller - and it runs in the order the keys are laid out: the cancel
+/// key at C, the nine presets from C sharp to A, the two adjust keys at A
+/// sharp and B. The pedal clavier has no preset keys and its notes start at
+/// 24 too, on its own channel, so it is not affected.
+const PRESET_KEY_FIRST: u8 = 24;
+
+/// Which preset key a note on a manual's channel presses, if it presses one.
+fn preset_key(part: OrganPart, note: u8) -> Option<(OrganPart, Registration)> {
+    if part == OrganPart::Pedal {
+        return None;
+    }
+    let position = note.checked_sub(PRESET_KEY_FIRST)?;
+    Registration::KEYBOARD
+        .get(usize::from(position))
+        .map(|key| (part, *key))
 }
 
 fn part_from_channel(channel: u8) -> Option<OrganPart> {
@@ -1085,6 +1141,157 @@ mod tests {
             .trim()
             .trim_matches('"');
         assert_eq!(declared, env!("CARGO_PKG_VERSION"));
+    }
+
+    fn note(status: u8, note: u8, velocity: u8) -> MidiEvent {
+        MidiEvent {
+            frame: 0,
+            data: [status, note, velocity],
+            length: 3,
+        }
+    }
+
+    fn play(processor: &mut RfOrganProcessor, midi: &[MidiEvent]) -> f32 {
+        let mut output = [0.0_f32; 512];
+        processor.process(&[], &mut output, midi, &[], 256, 0, 2);
+        output
+            .iter()
+            .fold(0.0_f32, |peak, sample| peak.max(sample.abs()))
+    }
+
+    fn prepared() -> RfOrganProcessor {
+        let mut processor = RfOrganProcessor::default();
+        assert!(processor.prepare(48_000.0, 256, 0, 2));
+        processor
+    }
+
+    /// The twelve reverse-colour keys sit in the octave below each manual,
+    /// MIDI 24 to 35 in the order they are laid out, and a note there on a
+    /// manual's channel presses that manual's key - reported back through the
+    /// same parameter the drop-down sets, which is what the surface reads.
+    #[test]
+    fn the_bottom_octave_presses_the_twelve_preset_keys_of_its_manual() {
+        for (offset, key) in Registration::KEYBOARD.into_iter().enumerate() {
+            let note_number = PRESET_KEY_FIRST + offset as u8;
+            for (status, index) in [(0x90, REGISTRATION), (0x91, LOWER_REGISTRATION)] {
+                let mut processor = prepared();
+                play(&mut processor, &[note(status, note_number, 100)]);
+                assert_eq!(
+                    processor.get_parameter(index),
+                    Some(f64::from(key.index())),
+                    "note {note_number} on status {status:#x} did not press {}",
+                    key.label()
+                );
+            }
+        }
+    }
+
+    /// Each manual has its own twelve: a key on one leaves the other alone.
+    #[test]
+    fn a_preset_key_presses_only_its_own_manual() {
+        let mut processor = prepared();
+        let lower_before = processor.get_parameter(LOWER_REGISTRATION);
+        play(&mut processor, &[note(0x90, 25, 100)]);
+        assert_eq!(
+            processor.get_parameter(REGISTRATION),
+            Some(f64::from(Registration::PresetCSharp.index()))
+        );
+        assert_eq!(processor.get_parameter(LOWER_REGISTRATION), lower_before);
+    }
+
+    /// "When a preset key is depressed it locks down and is released only
+    /// when another is depressed." Letting go of the key on the controller
+    /// does not let go of the registration - neither by a note-off nor by the
+    /// note-on with no velocity that many controllers send instead.
+    #[test]
+    fn a_preset_key_stays_down_when_it_is_released() {
+        let mut processor = prepared();
+        let pressed = Some(f64::from(Registration::PresetCSharp.index()));
+        play(&mut processor, &[note(0x90, 25, 100)]);
+        play(&mut processor, &[note(0x80, 25, 0)]);
+        assert_eq!(processor.get_parameter(REGISTRATION), pressed);
+        play(&mut processor, &[note(0x90, 25, 0)]);
+        assert_eq!(processor.get_parameter(REGISTRATION), pressed);
+        // The next key is what releases it.
+        play(&mut processor, &[note(0x90, 35, 100)]);
+        assert_eq!(
+            processor.get_parameter(REGISTRATION),
+            Some(f64::from(Registration::AdjustB.index()))
+        );
+    }
+
+    /// A release that was never pressed selects nothing.
+    #[test]
+    fn a_preset_key_released_without_being_pressed_selects_nothing() {
+        let mut processor = prepared();
+        let before = processor.get_parameter(REGISTRATION);
+        play(&mut processor, &[note(0x80, 25, 0), note(0x90, 26, 0)]);
+        assert_eq!(processor.get_parameter(REGISTRATION), before);
+    }
+
+    /// The pedal clavier has no preset keys, and its notes start at 24 on its
+    /// own channel: a pedal there still sounds, and no registration moves.
+    #[test]
+    fn the_pedal_clavier_has_no_preset_keys() {
+        let mut processor = prepared();
+        let upper = processor.get_parameter(REGISTRATION);
+        let lower = processor.get_parameter(LOWER_REGISTRATION);
+        let mut peak = play(&mut processor, &[note(0x92, 24, 127)]);
+        for _ in 0..8 {
+            peak = peak.max(play(&mut processor, &[]));
+        }
+        assert!(peak > 1.0e-6, "the pedal at 24 did not sound");
+        assert_eq!(processor.get_parameter(REGISTRATION), upper);
+        assert_eq!(processor.get_parameter(LOWER_REGISTRATION), lower);
+    }
+
+    /// The playing keys above the preset octave still play.
+    #[test]
+    fn the_playing_keys_still_play() {
+        let mut processor = prepared();
+        let mut peak = play(&mut processor, &[note(0x90, 36, 110)]);
+        for _ in 0..8 {
+            peak = peak.max(play(&mut processor, &[]));
+        }
+        assert!(peak > 1.0e-6, "the lowest playing key did not sound");
+    }
+
+    /// The key chosen from the keyboard is the parameter's value, so a saved
+    /// project keeps it.
+    #[test]
+    fn the_preset_key_chosen_from_the_keyboard_is_saved() {
+        let mut processor = prepared();
+        play(&mut processor, &[note(0x91, 30, 100)]);
+        let mut state = [0_u8; 4096];
+        let length = processor.save_state(&mut state).expect("state");
+        let mut restored = prepared();
+        assert!(restored.load_state(&state[..length]));
+        assert_eq!(
+            restored.get_parameter(LOWER_REGISTRATION),
+            Some(f64::from(Registration::KEYBOARD[6].index()))
+        );
+    }
+
+    /// The same keys answer a MIDI 2 controller, whose notes arrive on the
+    /// other path.
+    #[test]
+    fn the_preset_keys_answer_midi_2_as_well() {
+        let mut processor = prepared();
+        let event = MidiEvent2 {
+            frame: 0,
+            kind: MIDI2_KIND_NOTE_ON,
+            channel: 0,
+            index: 33,
+            flags: 0,
+            value: 40_000,
+            extra: 0,
+        };
+        let mut output = [0.0_f32; 512];
+        processor.process_wide(&[], &mut output, &[], &[event], &[], 256, 0, 2);
+        assert_eq!(
+            processor.get_parameter(REGISTRATION),
+            Some(f64::from(Registration::PresetA.index()))
+        );
     }
 
     #[test]
