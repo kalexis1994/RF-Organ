@@ -239,7 +239,7 @@ microphones, so moving them back zooms out instead of pushing them off the
 edge. The parameter table the surface validates against is the engine's, not a
 copy of it; a range that moves in the DSP moves there too.
 
-## Version 0.52.0 limitations
+## Version 0.53.0 limitations
 
 - The sustain pedal stops the rotors after one second held, which is the
   figure Hammond documents for one of its own clones; another of its

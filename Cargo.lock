@@ -98,18 +98,18 @@ source = "git+https://github.com/kalexis1994/rackforge?rev=8e8991b67ddcb55507911
 
 [[package]]
 name = "rf-organ-dsp"
-version = "0.52.0"
+version = "0.53.0"
 
 [[package]]
 name = "rf-organ-lab"
-version = "0.52.0"
+version = "0.53.0"
 dependencies = [
  "rf-organ-dsp",
 ]
 
 [[package]]
 name = "rf-organ-plugin"
-version = "0.52.0"
+version = "0.53.0"
 dependencies = [
  "rackforge-plugin-sdk",
  "rf-organ-dsp",
@@ -117,7 +117,7 @@ dependencies = [
 
 [[package]]
 name = "rf-organ-ui"
-version = "0.52.0"
+version = "0.53.0"
 dependencies = [
  "js-sys",
  "rf-organ-dsp",
