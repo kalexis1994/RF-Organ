@@ -71,6 +71,12 @@ testable scaffold for measurement and calibration, not a finished clone.
 
 - Channel 1 notes: upper manual, MIDI notes 36 through 96.
 - Channel 2 notes: lower manual, MIDI notes 36 through 96.
+- Channel 1 and 2 notes 24 through 35: that manual's twelve preset keys, in
+  the order they sit on the console, the octave below its playing keys -
+  cancel at C, the nine presets from C sharp to A, the adjust keys at A sharp
+  and B. On an eighty-eight-key controller that is the bottom full octave. A
+  key stays down until another is pressed, as on the console, and the Preset
+  Key control on the surface follows it.
 - Channel 3 notes: pedal clavier, MIDI notes 24 through 48.
 - CC 1: rotary speed, Chorale below 64 and Tremolo at or above 64.
 - CC 4: rotor stop, braking below 64 and returning at or above 64 to the speed
@@ -81,11 +87,14 @@ testable scaffold for measurement and calibration, not a finished clone.
   for a second stops the rotors, as Hammond's own clones do it; the Sustain
   Pedal parameter makes it fast-while-held instead, or turns it off. It does
   nothing while the cabinet is switched out.
+- CC 120/123: all notes off for the addressed channel/part.
 
 What MIDI sets stays set when a control moves: a parameter change reaches only
 the part of the engine that parameter drives, so the pedal and the cabinet
-speed hold until the next controller or a change to their own parameters.
-- CC 120/123: all notes off for the addressed channel/part.
+speed hold until the next controller or a change to their own parameters. The
+preset keys are not a controller beside a parameter but the parameter itself,
+pressed from the keyboard: the surface reads the key back, and a saved project
+keeps it.
 
 ## Installing a build
 

@@ -309,6 +309,19 @@ copy of it; a range that moves in the DSP moves there too.
   a hundred and sixty-two more values, which belong in a stored panel rather
   than in automatable parameters, and that is a choice about what a plugin's
   parameters are for rather than a claim about the instrument.
+- The twelve keys can be played as well as chosen. On the console they sit in
+  the octave below each manual's sixty-one, so on a controller long enough to
+  reach them they are MIDI 24 to 35 on that manual's channel, in the order they
+  are laid out. A note there is the Preset Key parameter set from the keyboard
+  rather than a controller beside it: the same parameter through the same
+  door, so the registration changes in the block it arrives in, the surface
+  reads the key back on its next poll - the host builds what the surface shows
+  from the plugin's own parameter values - and a saved project keeps it. A key
+  latches, as the service manual says one does, "released only when another is
+  depressed", so its note-off is ignored. What the host cannot do yet is hear
+  the change as it happens: the plugin interface carries parameter values in
+  but not out, so a key pressed from the keyboard is not written into an
+  automation lane.
 - The key click is Hammond's own control and not an added noise: the contact
   gate ramps instead of stepping, so turning the click down slows the attack
   with it, which is what the XK-7 manual describes. Both ends are documented
