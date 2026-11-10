@@ -2,7 +2,7 @@
 
 ![RF-Organ instrument](package/branding/banner.png)
 
-RF-Organ is a tonewheel organ for RackForge with upper and lower manuals, a pedalboard and a rotary cabinet. The drawbars set the mixture of harmonics. Scanner vibrato and chorus add motion before the sound reaches the cabinet.
+RF-Organ is a tonewheel organ for RackForge inspired by the Hammond B-3 and Leslie rotary speakers. It has upper and lower manuals, a pedalboard and a rotary cabinet. The drawbars set the mixture of harmonics. Scanner vibrato and chorus add motion before the sound reaches the cabinet.
 
 ## Install
 
