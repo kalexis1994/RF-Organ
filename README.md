@@ -1,237 +1,36 @@
 # RF-Organ
 
-[![CI](https://github.com/kalexis1994/RF-Organ/actions/workflows/ci.yml/badge.svg)](https://github.com/kalexis1994/RF-Organ/actions/workflows/ci.yml)
+![RF-Organ instrument](package/branding/banner.png)
 
-RF-Organ is a physically informed tonewheel-organ instrument for RackForge.
-It is written in Rust and licensed under GPL-2.0-or-later.
+RF-Organ is a tonewheel organ for RackForge with upper and lower manuals, a pedalboard and a rotary cabinet. The drawbars set the mixture of harmonics. Scanner vibrato and chorus add motion before the sound reaches the cabinet.
 
-The current `0.53.0` baseline establishes the real-time architecture:
+## Install
 
-- one continuously rotating bank of 91 shared tonewheels;
-- 60 Hz gear-ratio tuning instead of ideal equal temperament;
-- two 61-key manuals with nine independently timed contacts per key;
-- a 25-note pedal clavier with eight contacts per key, four harmonic buses,
-  and resistor-weighted 16' and 8' drawbar mixtures;
-- a key click that is the contact arrival itself, so turning it down slows
-  the attack rather than muting a separate noise;
-- the console's twelve reverse-colour keys per manual: cancel, the nine
-  preset-panel registrations, and the A# and B adjust keys that reach the two
-  sets of nine adjustable drawbars;
-- a play surface in four tabs with drawbars drawn as drawbars, and package
-  artwork of the instrument itself;
-- twenty-one programs in four banks - the console's own setups, jazz and
-  blues, gospel and rock, and six tone colours quoted from a published table
-  of drawbar registration patterns for the four pipe-organ tone families;
-- B-3-style drawbar wiring and foldback;
-- compartment leakage following the service manual's four-wheel compartments,
-  and a once-per-revolution level change for wheel eccentricity;
-- separate AO-28 matching-transformer paths for upper (T2) and lower+pedal
-  (T1), ahead of the vibrato routing;
-- one shared transformer character control plus independent calibration trims
-  for T1, T2 and T3, so a measurement of one unit does not move the others;
-- an AO-28-derived console path with separate pre/post-expression stages
-  shaped as single-ended triodes, a calibratable capacitive swell response,
-  post-V4B tone shelf, V3B output stage and T3 output transformer;
-- the documented vibrato/chorus circuit: an eighteen-section LC ladder with
-  its tap dividers and termination, scanned by a sixteen-stack capacitive
-  rotor, with the depth tablet selecting tap sets and the vibrato/chorus
-  tablet switching the source resistor;
-- single-trigger second/third-harmonic percussion with console-style switches
-  and a dedicated post-scanner summing path, cancelling the 1' drawbar and
-  taking Hammond's documented 6 dB out of the upper drawbars at Normal volume,
-  with an attack and a recovery after release rather than a gate;
-- a mains supply switch, which the cabinet's motors follow in proportion and
-  the console's drive shaft follows to its market's synchronous speed;
-- a drive that is resiliently coupled at every joint, so the shaft is never
-  perfectly steady and all 91 wheels stray together;
-- leakage that grows faster than what is played, because every contact that
-  closes gives the harness another way onto the busbar;
-- wheel levels and per-contact key tapering derived from published readings
-  of real consoles - Hammond's own tables among them - and checked against
-  readings that were not used to derive them;
-- the woofer's own unmodulated bass, which reaches the microphones without
-  passing through a rotor, and a choice of capsule for each pair of
-  microphones, which start where a studio would put them;
-- an integrated rotary speaker with counter-rotating horn and drum at their
-  specified speeds, separate rise, fall and brake times per rotor, spectral
-  directivity, microphone geometry and early cabinet reflections;
-- the cabinet's own valve amplifier and passive crossover, from the published
-  schematic of its main amplifier, clipping and blocking the way a push-pull
-  pair with no global feedback does;
-- a RackForge play surface implemented in Rust/WASM, with console-style
-  drawbars, direct access to every automatable parameter, host-driven
-  parameter synchronization, day/stage lighting and a plan view of the
-  cabinet driven by the engine's own rotor model;
-- a manifest at schema 3 with its own artwork.
+RF-Organ is included in the RackForge Standard bundle. To install it separately, download `RF-Organ.rfplugin` and choose **Install plugin** in RackForge's **Plugin Manager**. [Download RF-Organ](https://github.com/kalexis1994/RF-Organ/releases/latest)
 
-The sound constants are intentionally provisional. This baseline is a
-testable scaffold for measurement and calibration, not a finished clone.
+## Start playing
 
-## MIDI baseline
+Open **RF-Organ** in PLAY and pick one of its 21 factory programs.
 
-- Channel 1 notes: upper manual, MIDI notes 36 through 96.
-- Channel 2 notes: lower manual, MIDI notes 36 through 96.
-- Channel 1 and 2 notes 24 through 35: that manual's twelve preset keys, in
-  the order they sit on the console, the octave below its playing keys -
-  cancel at C, the nine presets from C sharp to A, the adjust keys at A sharp
-  and B. On an eighty-eight-key controller that is the bottom full octave. A
-  key stays down until another is pressed, as on the console, and the Preset
-  Key control on the surface follows it.
-- Channel 3 notes: pedal clavier, MIDI notes 24 through 48.
-- CC 1: rotary speed, Chorale below 64 and Tremolo at or above 64.
-- CC 4: rotor stop, braking below 64 and returning at or above 64 to the speed
-  last chosen, by CC 1 or by the rotary speed parameter.
-- CC 11: expression pedal.
-- CC 64: the sustain pedal, which a tonewheel console has no use for, is the
-  cabinet's speed switch. By default each press changes speed and holding it
-  for a second stops the rotors, as Hammond's own clones do it; the Sustain
-  Pedal parameter makes it fast-while-held instead, or turns it off. It does
-  nothing while the cabinet is switched out.
-- CC 120/123: all notes off for the addressed channel/part.
+- **Straight 888** gives you the sound of the first three drawbars with a direct signal.
+- **Chorale 888** adds C3 scanner chorus and slow rotary movement.
+- **Jazz Trio** gives you soft third-harmonic percussion and a registration for left-hand bass.
 
-What MIDI sets stays set when a control moves: a parameter change reaches only
-the part of the engine that parameter drives, so the pedal and the cabinet
-speed hold until the next controller or a change to their own parameters. The
-preset keys are not a controller beside a parameter but the parameter itself,
-pressed from the keyboard: the surface reads the key back, and a saved project
-keeps it.
+Pull the lower-pitched drawbars for body and bring in the higher ones for bite. Use percussion for an accent at the start of a phrase. With the cabinet engaged, switch from **Chorale** to **Tremolo** during a held chord to hear the rotors speed up.
 
-## Installing a build
+## Connect a controller
 
-`tools/release.sh` rebuilds everything the package contains, runs the same
-gates CI does, and packs an installable archive:
+| MIDI | Assignment |
+| --- | --- |
+| Channel 1 | Upper manual |
+| Channel 2 | Lower manual |
+| Channel 3 | Pedalboard |
+| CC11 | Expression pedal |
+| CC1 | Chorale below 64 and Tremolo from 64 |
+| CC64 | Switch rotary speed with a pedal press or hold it to stop the rotors by default |
 
-```text
-bash tools/release.sh
-```
+Use the on-screen drawbars to shape each manual independently. The **Sustain Pedal** setting changes what CC64 does.
 
-It writes `dist/RF-Organ-<version>.rfplugin` and packs it a second time to
-prove the archive is reproducible: an unchanged tree gives the same bytes and
-the same digest. Install it on another machine with:
+## License
 
-```text
-rackforge-store install-local RF-Organ-<version>.rfplugin <STORE_ROOT>
-```
-
-`--quick` skips the test suite and the sample-rate sweep when iterating.
-
-## Development
-
-```text
-cargo test --workspace
-cargo clippy --workspace --all-targets -- -D warnings
-cargo run --release -p rf-organ-lab -- sweep artifacts/sweep
-cargo build --release -p rf-organ-plugin --target wasm32-unknown-unknown
-Copy-Item target/wasm32-unknown-unknown/release/rf_organ_plugin.wasm package/component.wasm
-bash tools/build-surface.sh
-cargo run --manifest-path ../rackforge/Cargo.toml --target-dir target/rackforge-core -p rackforge-core -- inspect package
-target/rackforge-core/debug/rackforge-core.exe smoke package --preset chorale-888
-```
-
-The RackForge plugin SDK is a git dependency pinned by revision, and
-`Cargo.lock` records it, so building and testing need nothing beside this
-checkout. Inspecting, smoking and packing the package run through the host's
-own tools, which come from a sibling `rackforge` checkout at the same
-revision; `bash tools/pins.sh rackforge` prints it. Package metadata lives
-under `package/`.
-
-To build against a local RackForge with changes of its own, override the
-dependency in an untracked `.cargo/config.toml`:
-
-```toml
-[patch."https://github.com/kalexis1994/rackforge"]
-rackforge-plugin-sdk = { path = "../rackforge/crates/rackforge-plugin-sdk" }
-```
-
-That rewrites the lockfile's entry to the local path, so it is not something
-to commit: CI builds `--locked` and refuses it. Moving to a newer SDK is a
-change to the `rev` in `Cargo.toml`, and CI and the release follow the lock.
-
-`.github/workflows/ci.yml` runs on every push and pull request: it checks out
-RackForge at the revision `Cargo.lock` records, then runs formatting, clippy,
-the test suite, both wasm32 builds, package inspection and smoke, the
-sample-rate sweep, and `tools/check-package.sh`, which proves the committed
-`component.wasm` still reports the same parameter schema, state size and
-rendered output as a build from the current sources.
-
-The manifest is at schema 3, which asks for a short name and a branding
-section. `tools/make-artwork.py` draws the icon, banner and splash from the
-same palette as the play surface, at the exact sizes the host requires; it
-needs Pillow and writes into `package/branding/`.
-
-The custom surface is declared through the package's `web_ui` manifest table.
-Its HTML and CSS are static, `bootstrap.js` only initializes the module, and
-the generated `app.js` bridge plus `app_bg.wasm` contain the Rust UI runtime.
-Those two are not committed: wasm-bindgen output carries the paths of the
-machine that built it, so a committed copy could not be checked against the
-sources. `tools/build-surface.sh` builds them with the wasm-bindgen version
-`Cargo.lock` pins, and CI and the release always do.
-
-Deterministic calibration renders and quantitative measurements are produced
-by the Rust-only laboratory:
-
-```text
-cargo run --release -p rf-organ-lab -- render artifacts/calibration
-cargo run --release -p rf-organ-lab -- compare artifacts/calibration path/to/reference-captures artifacts/comparison
-```
-
-`render` also accepts `--transformer-drive-trims T1,T2,T3`, which produces a
-synthetic reference set with known transformer coefficients. Comparing it with
-the untrimmed calibration render recovers those coefficients and is how the
-fitting chain is verified.
-
-`sweep` measures one quantity per subsystem at 32, 44.1, 48, 96 and 192 kHz and
-fails when any of them moves with the sample rate, then benchmarks five loads at
-each rate — from an idle generator up to a fully engaged console — so that the
-cost of each subsystem is the difference between two rows.
-
-Every number the engine is built from is registered with what it rests on -
-documented, measured, derived, borrowed from another model, or provisional -
-and the span it could plausibly take; `docs/PROVENANCE.md` is the table.
-`sensitivity` moves each unmeasured constant to both ends of its span, renders
-the calibration phrases again - and five of its own that play what they do
-not: keys let go one by one under a softened click, the percussion's soft and
-slow settings, the swell pedal moving, the cabinet braked with a dynamic
-capsule, the pedals released, and the cabinet's amplifier pushed - and ranks
-the constants by how far the sound moved, in decibels of level, spectral
-shape and envelope, which is where a measurement would be worth the most.
-Every constant is reached by at least one phrase:
-
-```text
-cargo run --release -p rf-organ-lab -- sensitivity artifacts/sensitivity
-```
-
-`wheel-levels` derives the wheel and key tapers the engine ships from Kon
-Zissis's tonewheel generator data, reduced by `tools/kon-wheel-levels.py`,
-writes the tables for `taper.rs`, and reports how far the engine is from the
-readings taken straight off a busbar and from those taken through the keys,
-which are not used to derive anything. The same data checks the manuals'
-wiring: every contact has to reach the wheel five measured manuals wire it to.
-
-```text
-cargo run --release -p rf-organ-lab -- wheel-levels artifacts/wheel-levels
-```
-
-The output includes scalar measurements, expression, tone-control and
-transformer-intermodulation response, percussion envelopes, scanner sidebands,
-isolated pedal spectra and key-off response, and rotary acceleration/braking
-curves alongside the audio renders.
-The comparator aligns reference captures without resampling or normalizing
-them, then reports level, crest, envelope and stereo differences. Isolated
-pedal captures additionally produce per-harmonic errors and provisional
-resistor-bus/L20 fitting candidates. Transformer captures are recorded at three
-documented levels; their intermodulation products yield drive-trim candidates
-for T3 from the optional bench injection grid, and then for T2 and T1. Without
-an injection measurement the two manual paths are reported as underdetermined
-rather than fitted. A capture-quality gate prevents clipped, mistimed, noisy or
-unstable recordings from producing coefficients.
-See `docs/CALIBRATION.md` for the comparison and provenance protocol.
-
-## Trademarks
-
-HAMMOND, B-3 and LESLIE are trademarks of Hammond Suzuki. RF-Organ is an
-independent implementation and is not affiliated with, endorsed by or sponsored
-by Hammond Suzuki. Those names are used here only to state factually which
-published instrument or document a model was derived from; the module that
-models a rotating-baffle cabinet is called the rotary speaker throughout. See
-`THIRD_PARTY_NOTICES.md`.
+RF-Organ is distributed under GPL-2.0-or-later. [License](LICENSE) · [Notices](THIRD_PARTY_NOTICES.md)
