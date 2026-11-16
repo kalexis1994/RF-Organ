@@ -231,6 +231,7 @@ fn mark_travel(input: &HtmlInputElement) {
 fn control_events(app: &Shared) -> Result<(), JsValue> {
     for (index, id) in CONTROL_IDS.into_iter().enumerate() {
         let element = app.borrow().element(id);
+        element.set_attribute("data-rackforge-parameter-index", &index.to_string())?;
         let control = element.clone();
         let shared = app.clone();
         let callback = Closure::<dyn FnMut(Event)>::new(move |_| {
